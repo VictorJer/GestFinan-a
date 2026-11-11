@@ -1,0 +1,44 @@
+# Environment variables and local secrets
+.env
+.env.*
+!.env.example
+!.env.template
+secrets.json
+
+# .NET
+**/bin/
+**/obj/
+**/TestResults/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Node.js and Angular
+**/node_modules/
+**/dist/
+**/coverage/
+**/.angular/cache/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# IDEs
+.vs/
+.idea/
+*.iml
+
+# OS-generated files
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+
+#Ignore .key
+*.key
