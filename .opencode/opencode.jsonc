@@ -16,6 +16,10 @@
             "neon": {
               "type": "remote",
               "url": "https://mcp.neon.tech/mcp?readonly=true"
+            },
+            "microsoft-learn": {
+              "type": "remote",
+              "url": "https://learn.microsoft.com/api/mcp"
             }
         }
     }
