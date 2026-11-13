@@ -1,8 +1,8 @@
 # Finora — TDD v0
 
 **Technical Design Document — documento de desenho técnico**  
-**Estado:** v0 consolidada para revisão e início da implementação; propostas técnicas e validações pendentes identificadas no texto.  
-**Base:** Finora — PRD v0.  
+**Estado:** v0, revisão documental FNR-001 aprovada explicitamente pelo autor em 13 de novembro de 2026; propostas técnicas e validações pendentes identificadas no texto, sem aprovação de implementação futura.\
+**Base:** Finora — PRD v0, revisão 0.2.\
 **Data de início:** 9 de novembro de 2026.
 
 ## 1. Decisões confirmadas
@@ -24,7 +24,7 @@
 | Repositório Git | Único, com frontend e backend em pastas separadas e publicações independentes |
 | Banco de desenvolvimento | PostgreSQL local em Docker, separado da Neon |
 | Migrations | Comando administrativo antes da publicação; não executar na inicialização da API |
-| Publicação de versões | Automática após cada push na main |
+| Publicação de versões | Automática após atualização da main por integração de PR, condicionada aos checks aprovados do commit publicado; sem push direto |
 | Condição para publicar | Build e testes aprovados; falha impede nova publicação |
 | Estado no Angular | Serviços com Signals; HttpClient/RxJS para chamadas HTTP; sem NgRx no MVP |
 | Banco | PostgreSQL na Neon; substitui a escolha anterior de SQL Server |
@@ -97,6 +97,8 @@ O autor já conectou o Nubank ao Meu Pluggy e visualizou cartão e transações 
 
 A leitura pela API .NET, os campos efetivamente disponíveis, a paginação e a normalização de status e valores ainda precisam ser validados. A prova de conceito continua sendo o primeiro marco técnico.
 
+Essa prova de conceito (FNR-004) será local, após a preparação documental, de ambiente e da estrutura mínima (FNR-001 a FNR-003), sem depender de dashboard ou autenticação hospedada já implementados. Não publicar endpoints financeiros desprotegidos; a evidência deve ser sanitizada. FNR-005 validará o contrato e a normalização antes de fechar a importação persistente.
+
 O dashboard deve consultar o banco da aplicação. Uma nova coleta externa não deve ser executada a cada mudança de tela ou filtro.
 
 Confirmado: configurar Client ID, Client Secret e itemId nos segredos do backend. No MVP, o Angular exibe estado da conexão e permite consultar atualizações; a autorização ou renovação junto ao banco é realizada no ambiente do provedor. Não publicar uma tela que solicite senha bancária. A orientação de reconexão deve diferenciar a configuração no provedor da sessão de login do Finora.
@@ -162,23 +164,24 @@ As escolhas principais de arquitetura e ferramentas estão fechadas nesta versã
 - Limites do Render Free: https://render.com/docs/free
 - Integração pessoal Pluggy: https://docs.pluggy.ai/en/docs/guides/meu-pluggy-personal-use
 
-Este documento registra decisões e propostas de implementação; não representa componentes já implementados ou validados. As escolhas posteriores ao PRD, como hospedagem com autenticação e criação de categorias, complementam a definição inicial e devem ser refletidas em sua próxima revisão.
+Este documento registra decisões e propostas de implementação; não representa componentes já implementados ou validados. A revisão 0.2 do PRD incorpora os comportamentos já confirmados de acesso hospedado, categorias pessoais, observações e atualização. Detalhes técnicos permanecem neste TDD. As propostas das seções 10–12 e 15 continuam propostas, não aprovações implícitas pela revisão documental.
 
 ## 9. Desenvolvimento e publicação
 
-Decisões confirmadas: PostgreSQL local em Docker para desenvolvimento; PostgreSQL na Neon para o ambiente hospedado; migrations executadas por comando administrativo antes da publicação; publicação automática de frontend e API após push na `main`.
+Decisões confirmadas: PostgreSQL local em Docker para desenvolvimento; PostgreSQL na Neon para o ambiente hospedado; migrations executadas por comando administrativo antes da publicação; publicação automática de frontend e API após integração de PR na `main`, somente com os checks aprovados do commit a publicar.
 
 Não executar `Database.Migrate()` como efeito da inicialização da API. Separar as configurações de desenvolvimento e ambiente hospedado e não usar o banco da Neon como base de testes automatizados.
 
 ### Sequência operacional proposta
 
-1. Implementar a alteração fora da `main`, gerar a migration quando necessária e validá-la no PostgreSQL local.
-2. Executar os testes aplicáveis e revisar o impacto da alteração no esquema.
-3. Para uma alteração de esquema, aplicar o comando administrativo no ambiente hospedado, usando as credenciais do destino correto. Não executar comandos destrutivos sem plano específico de migração e recuperação.
-4. Somente depois do sucesso da migration, enviar a alteração à `main`, disparando a publicação automática.
-5. Verificar a saúde da API, o login e os fluxos afetados após a publicação.
+1. Selecionar uma mudança do backlog e criar uma feature branch. Conferir PRD → TDD → SDD no OpenSpec, com rastreabilidade e revisão da especificação antes de implementar. Artefatos existentes ou completos no CLI não significam aprovação humana.
+2. Após as revisões necessárias, implementar somente o escopo aprovado, gerar a migration quando necessária e validá-la no PostgreSQL local; executar os testes aplicáveis.
+3. Abrir PR vinculando PRD, TDD, SDD/OpenSpec e item do backlog; registrar testes, riscos e solicitar revisão. Não substituir aprovações documentais pendentes pela abertura ou aprovação do PR.
+4. Para alteração de esquema, após revisão e checks necessários e antes da integração que disparará a publicação dependente, aplicar o comando administrativo no ambiente hospedado, com as credenciais do destino correto. Não executar comandos destrutivos sem plano específico de migração e recuperação.
+5. Integrar na `main` exclusivamente pelo PR, após revisões, aprovações, checks e migration aplicável bem-sucedida, sem contornar proteções. Publicar automaticamente apenas após os checks aprovados do commit a publicar; se falharem, bloquear o deploy.
+6. Verificar a saúde da API, o login e os fluxos afetados após a publicação. Registrar evidências e atualizar o backlog; manter apenas uma mudança principal em implementação por vez.
 
-Como a versão anterior da API pode continuar ativa durante a migration, as alterações devem ser compatíveis com ela. Mudanças incompatíveis exigem etapas separadas ou janela de manutenção explicitamente planejada. Falha na migration bloqueia o push que publicaria a versão dependente.
+Como a versão anterior da API pode continuar ativa durante a migration, as alterações devem ser compatíveis com ela. Mudanças incompatíveis exigem etapas separadas ou janela de manutenção explicitamente planejada. Falha na migration bloqueia a integração do PR que dispararia a publicação dependente. Não fazer push direto na `main` como atalho.
 
 Confirmado: build e testes são uma condição obrigatória para publicar. Se os checks falharem, a nova versão não deve ser enviada à hospedagem. O pipeline deverá evitar que o deploy nativo dos provedores dispare em paralelo antes do resultado dos checks; o mecanismo exato de acionamento será definido na configuração da integração contínua.
 
