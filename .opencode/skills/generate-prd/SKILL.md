@@ -19,7 +19,7 @@ Transforme a ideia inicial do usuário em um PRD em português, pronto para revi
 
 Use Markdown com títulos claros e detalhe proporcional ao produto. Todas as seções abaixo devem aparecer; quando uma informação não puder ser determinada, registre `A definir` e a decisão pendente, em vez de preencher com afirmações fictícias.
 
-1. **Cabeçalho**: nome do produto/funcionalidade, status `Rascunho`, data e origem do pedido.
+1. **Cabeçalho**: nome do produto/funcionalidade, versão/revisão, status da versão atual, data e origem do pedido. Documento novo começa como `Rascunho`; para atualizações, siga as regras de estado e histórico abaixo.
 2. **Resumo executivo**: proposta de valor, problema e resultado pretendido.
 3. **Contexto e problema**: situação atual, evidências disponíveis, dores e oportunidades; diferencie fatos observados de hipóteses.
 4. **Objetivos e métricas de sucesso**: objetivos mensuráveis, indicadores, definição de medição e metas sugeridas quando justificáveis; identifique baselines e metas pendentes de validação.
@@ -32,6 +32,13 @@ Use Markdown com títulos claros e detalhe proporcional ao produto. Todas as se�
 11. **Dados e integrações**: entidades e informações necessárias, ciclo de vida, interfaces externas e restrições conhecidas; marque desconhecidos.
 12. **Riscos, premissas e dependências**: impacto, mitigação ou ação de validação para cada ponto relevante.
 13. **Questões em aberto e próximos passos**: decisões pendentes com responsável sugerido quando possível e forma de validá-las.
+
+## Estado e histórico de aprovação
+
+- Ao atualizar um PRD aprovado com mudanças de conteúdo, identifique uma nova revisão como `Rascunho` ou `Em revisão`, conforme a convenção do projeto. A aprovação da versão anterior permanece válida para aquela versão e não se transfere automaticamente ao conteúdo alterado.
+- Preserve o histórico existente e acrescente um registro conciso da nova revisão: versão/data, resumo da mudança e aprovação pendente. Referencie a versão anterior aprovada e sua evidência disponível; não invente aprovador, data ou aceite. Use o versionamento já adotado, sem criar cópias concorrentes do documento canônico.
+- Decisões aprovadas e não alteradas podem ser herdadas com sua origem, sem nova entrevista obrigatória. Uma atualização exclusivamente editorial, sem mudança de significado, não exige reclassificar o documento inteiro como rascunho; preserve seu estado e registre a correção conforme a convenção existente.
+- Só registre aprovação da nova revisão quando houver evidência explícita correspondente. Gerar, gravar ou validar o documento não equivale a aprová-lo nem autoriza implementação ou integração.
 
 ## Revisão e entrega
 
