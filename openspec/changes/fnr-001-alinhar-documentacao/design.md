@@ -1,6 +1,6 @@
 # Design
 
-**SDD da FNR-001 — aprovado explicitamente pelo autor em 13/11/2026 nesta conversa.** A aprovação é documental, limitada à FNR-001; revisão do PR, checks e integração permanecem pendentes, sem autorização de merge ou implementação de funcionalidades futuras.
+**SDD da FNR-001 — aprovado explicitamente pelo autor em 13/11/2026 nesta conversa.** FNR-001 concluída documentalmente com aprovação, revisão confirmada pelo autor, validações locais e PR #1 integrado no commit `075af73`. Nenhuma exigência adicional não atendida foi identificada; não há revisão formal ou checks reportados no GitHub. Evidências e limites constam em `tasks.md`, seção Verificação das exigências de integração. O PR desta branch apenas consolida o registro, sem novo merge, arquivamento ou implementação de funcionalidades futuras nesta etapa.
 
 ## Context
 
@@ -55,11 +55,11 @@ Alternativa rejeitada: criar uma capability genérica de documentação ou espec
 | C3 — Histórico e atualização confirmados | RF02, RF16; §8 | §§1, 6, 12 | Até 12 meses disponíveis, parcelas futuras separadas, prazo de 24h desde sucesso completo |
 | C4 — Separação produto/técnica | §§10, 15 | §§1, 3, 7, 9 | Sem SQLite como decisão pendente; escolhas técnicas preservadas no TDD e compatibilidade não declarada validada |
 | C5 — Integração e deploy protegidos | §13 | §9 | PR obrigatório, revisão documental independente, migrations antes do deploy dependente e checks do commit publicado |
-| C6 — Limites e evidência de conclusão | §§4, 12–15 | §§4, 7–8, 14 | README/backlog coerentes, sem código ou tarefa futura iniciada, aprovação documental registrada separadamente das pendências de revisão do PR, checks e integração |
+| C6 — Limites e evidência de conclusão | §§4, 12–15 | §§4, 7–8, 14 | README/backlog coerentes, sem código ou tarefa futura iniciada; aprovação documental, revisão confirmada pelo autor, validações, exigências aplicáveis e integração registradas separadamente, sem inventar evidências no GitHub |
 
 ## Risks / Trade-offs
 
-- [Confundir aprovação documental com conclusão] → Registrar a aprovação explícita nos documentos e manter revisão do PR, checks e integração como pendências independentes; não declarar a FNR-001 concluída.
+- [Confundir aprovação documental ou integração isoladas com conclusão] → Fundamentar a conclusão no conjunto de aprovação explícita, revisão confirmada pelo autor, validações locais, verificação das exigências aplicáveis e integração, sem inventar revisão formal/checks no GitHub; registrar a limitação histórica da consulta às proteções.
 - [Tratar ambiente informado como verificado] → Preservar a validação em FNR-002, sem executar instalação ou fixar pacotes aqui.
 - [Confundir resumo com contrato] → README aponta para PRD/TDD; requisitos e mecanismos não são redefinidos no resumo.
 - [Backlog previamente não versionado] → Preservar o conteúdo preexistente, alterando apenas coerência e rastreabilidade; o Git mostrará o arquivo inteiro como novo até seu primeiro versionamento.

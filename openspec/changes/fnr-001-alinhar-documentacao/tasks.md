@@ -21,12 +21,31 @@ Verificação em 13 de novembro de 2026: validação OpenSpec estrita aprovada (
 
 - [x] 3.1 Reexecutar validações documentais e conferir o diff incluindo os arquivos novos; verificar OpenSpec estrito, diff check, links e ausência de código no conjunto a commitar. Em 13/11/2026, OpenSpec estrito e oito links locais passaram; `git diff --cached --check` passou após substituir três quebras Markdown com espaços finais no backlog novo por barras invertidas, sem alteração de conteúdo. Os oito arquivos staged são exclusivamente documentais; não há workflows de CI versionados neste estado do projeto, e checks remotos não foram presumidos aprovados.
 - [x] 3.2 Criar commit na branch atual e abrir PR para `main` com resumo, rastreabilidade, validações e riscos; verificar hash, URL e estado aberto do PR, sem merge. Commit documental `77dcde40a13dc88a042611170d23e4c7bad0e525` enviado na branch `docs/fnr-001-alinhar-documentacao`; [PR #1](https://github.com/VictorJer/GestFinan-a/pull/1) confirmado `OPEN`, base `main`, auto-merge ausente. O registro do PR é incluído em commit complementar na mesma branch.
-- [ ] 3.3 Obter revisão/aprovações do PR e checks exigidos; conclusão verificável no GitHub, sem equiparar aprovação documental à aprovação do PR. Não executar integração sem autorização posterior.
+- [x] 3.3 Verificar exigências e evidências de revisão/aprovações do PR e checks aplicáveis, sem equiparar aprovação documental à aprovação formal do PR. Verificação descrita abaixo: nenhuma exigência adicional não atendida identificada; aprovação explícita, revisão confirmada pelo autor e validações locais atendem ao escopo documental. Não há evento formal APPROVED nem checks reportados no GitHub, e nenhum foi inventado ou marcado como aprovado.
+- [x] 3.4 Conferir a integração do PR #1 por consulta ao GitHub e referência remota da main; registrar autor, horário e commit de merge sem executar novo merge. Estado `MERGED`, integrado por `VictorJer` em 13/11/2026 às 18:14:07 UTC, commit `075af734571a1a8aa096a718d5f9b133d1078db6`, confirmado em `origin/main` após fetch.
 
-Consulta inicial do PR em 13/11/2026: sem revisão e com `statusCheckRollup` vazio. Não há checks reportados; isso não comprova aprovação dos checks exigidos nem autoriza integração. PR aberto e nenhuma proteção alterada ou contornada. FNR-001 permanece não concluída, sem merge, arquivamento ou início de FNR-002.
+Consulta inicial do PR em 13/11/2026: PR aberto, sem revisão formal e com `statusCheckRollup` vazio. Consulta posterior: PR `MERGED`, `reviews: []` e `statusCheckRollup: []`; o autor informou “ja revisei o PR” nesta conversa e autorizou registrar a integração. Essa declaração confirma revisão pelo autor, não um evento formal `APPROVED` no GitHub. Nenhuma aprovação de check foi presumida. Após a verificação das exigências abaixo, a FNR-001 fica concluída no escopo documental, sem arquivamento ou início de FNR-002. O agente não executou o merge nem alterou proteções.
+
+### Verificação das exigências de integração — 13/11/2026
+
+| Fonte consultada | Resultado e interpretação |
+|---|---|
+| `AGENTS.md` na base do merge (`git show 075af73^1:AGENTS.md`) | Exige feature branch, PRD → TDD → SDD, revisão, aprovações, verificações aplicáveis e integração por PR. Não exige revisão formal APPROVED no GitHub, revisor independente ou quantidade mínima de reviews. Aprovação documental explícita e confirmação de revisão pelo autor estão registradas nesta conversa. |
+| `GET /repos/VictorJer/GestFinan-a/branches/main/protection` | HTTP 404 com mensagem específica `Branch not protected`: nenhuma proteção clássica configurada na consulta, não erro genérico de acesso. |
+| `GET /repos/VictorJer/GestFinan-a/rules/branches/main` | `[]`: nenhuma regra ativa aplicável à main na consulta. |
+| `GET /repos/VictorJer/GestFinan-a/rulesets?includes_parents=true` | `[]`: nenhum ruleset do repositório ou herdado retornado na consulta. |
+| `git ls-tree -r --name-only 075af73 -- .github` | Sem arquivos: não havia workflows de CI versionados no commit integrado. |
+| Check runs do head do PR #1 (`f0258863ec8756c21ac9fc5a95bd4e0a4b67353a`) | `total_count: 0`, sem check runs; não há checks a apresentar como executados/aprovados. |
+| Status combinado do mesmo head | `total_count: 0`, `statuses: []`; o agregado `state: pending` sem contexts não identifica um check obrigatório pendente e não significa sucesso de checks. |
+| PR #1 | `MERGED`, `reviews: []`, `statusCheckRollup: []`; merge por `VictorJer` em `075af73`, sem comprovação de review formal no GitHub. |
+| Validações documentais | OpenSpec estrito, diff check incluindo arquivos novos e oito links locais aprovados. Builds/testes de aplicação, migrations e deploy não se aplicam à mudança exclusivamente documental. A exigência do TDD de build/testes antes de publicar continua válida para publicação da aplicação, não é evidência de que houve build neste PR. |
+
+Limite da evidência: as APIs de proteção e rulesets mostram a configuração consultada, não um histórico auditado das regras exatamente às 18:14:07 UTC do merge. O histórico versionado confirma a ausência de workflows naquele commit. Não foi identificado indício de exigência adicional não atendida ou proteção contornada; não se afirma que a configuração atual prove retroativamente sua imutabilidade. A conclusão usa as evidências disponíveis e a aprovação/revisão explícitas, sem dispensar um check conhecido, inventar um review formal ou alterar proteções.
+
+Conclusão: FNR-001 documental concluída em 13/11/2026 pelo conjunto de aprovação explícita dos documentos e SDD, revisão do PR confirmada pelo autor, validações documentais aprovadas, exigências aplicáveis verificadas e integração no commit `075af734571a1a8aa096a718d5f9b133d1078db6`. A aprovação documental e a integração, isoladamente, não seriam suficientes. Nenhum código da aplicação foi iniciado.
 
 ## Workflow follow-up
 
-- PR #1 aberto com PRD, TDD, SDD, testes documentais e riscos vinculados. Solicitação de revisão consta no corpo do PR; não houve autoaprovação. Integrar exclusivamente por PR após autorização posterior, aprovações e checks necessários, sem contornar proteções.
-- PR e evidências registrados no backlog; registrar conclusão somente após resolver as pendências de revisão/checks/integração, nunca pela aprovação documental isolada. Não há deploy de aplicação nesta mudança documental.
+- PR #1 integrado pelo autor; a solicitação de revisão e os vínculos constam no corpo do PR. Registrar separadamente revisão relatada na conversa, ausência de revisão formal e ausência de checks reportados; não houve autoaprovação pelo agente.
+- PR, merge e evidências de conclusão registrados no backlog, após a verificação 3.3. Um único commit e PR de registro na branch `docs/fnr-001-registrar-integracao` consolida esta evidência; sua própria abertura/integração não exige outro ciclo documental. Não há deploy de aplicação nesta mudança documental.
 - Não iniciar FNR-002 nem arquivar esta mudança nesta etapa.
