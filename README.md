@@ -6,7 +6,7 @@ Projeto desenvolvido como proposta de Trabalho de Conclusão de Curso (TCC), com
 
 Como complementos, o projeto prevê uma carteira de investimentos com cadastro manual e um simulador de evolução patrimonial com aportes.
 
-> **Status:** ideia aprovada pelo professor, protótipo navegável disponível e PRD/TDD v0 elaborados. A aplicação definitiva em Angular e .NET ainda não foi implementada neste workspace.
+> **Status:** ideia aprovada pelo professor e protótipo navegável disponível. Documentos e SDD da FNR-001 aprovados explicitamente pelo autor em 13/11/2026; revisão do PR, checks e integração continuam pendentes. A aplicação definitiva em Angular e .NET ainda não foi implementada neste workspace.
 
 ## Objetivo
 
@@ -20,13 +20,24 @@ Desenvolver uma aplicação web que consulte dados de cartão de crédito por me
 |---|---|
 | Aprovação da ideia | Concluída, conforme confirmação do autor |
 | Protótipo com dados fictícios | Disponível |
-| PRD v0 | Elaborado |
-| TDD v0 | Consolidado para revisão e implementação |
+| PRD v0 | Revisão 0.2 aprovada documentalmente |
+| TDD v0 | Revisão FNR-001 aprovada documentalmente; validações técnicas futuras pendentes |
 | Conexão no painel do provedor | Cartão e transações visualizados pelo autor |
 | Consulta pelo backend .NET | Pendente |
 | Aplicação integrada e publicação definitiva | Pendentes |
 
 A visualização no painel da Pluggy é evidência preliminar de acesso aos dados. A leitura pela API do Finora, a cobertura dos campos e o comportamento da sincronização ainda precisam ser validados.
+
+A primeira meta funcional é consultar transações reais pelo backend .NET em prova de conceito local, sem exposição pública. Dashboard e aplicação hospedada vêm depois dessa validação.
+
+## Documentação e fluxo de trabalho
+
+- [PRD](docs/PRD.md): requisitos e critérios de aceite do produto.
+- [TDD](docs/TDD.md): decisões técnicas, propostas e validações pendentes.
+- [Backlog](docs/BACKLOG.md): ordem de execução e evidências por tarefa.
+- [FNR-001 no OpenSpec](openspec/changes/fnr-001-alinhar-documentacao/proposal.md) e [desenho/SDD](openspec/changes/fnr-001-alinhar-documentacao/design.md): aprovados documentalmente; FNR-001 não concluída, pendente de revisão do PR, checks e integração.
+
+Uma mudança por vez: backlog → feature branch → especificação OpenSpec e revisão → implementação → testes → PR → integração na `main` → deploy após checks. Não desenvolver nem enviar alterações diretamente à `main`; artefatos prontos não significam aprovação.
 
 ## Funcionalidades planejadas
 
@@ -94,3 +105,6 @@ finora/
 │   ├── Finora.Infrastructure/   # EF Core, PostgreSQL e cliente Pluggy
 │   └── tests/                  # Testes com MSTest
 ├── frontend/                   # Angular e Tailwind CSS
+├── docs/                       # PRD, TDD e backlog
+└── openspec/                   # Mudanças e especificações
+```
