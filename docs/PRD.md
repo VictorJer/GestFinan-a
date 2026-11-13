@@ -1,11 +1,24 @@
 # Finora — PRD v0
 
 **Documento de requisitos do produto**  
-**Versão:** 0.2 — alinhamento documental FNR-001 aprovado pelo autor em 13 de novembro de 2026\
+**Versão:** 0.3 — aprovada documentalmente pelo autor em 13/11/2026; validações pendentes preservadas\
 **Data:** 13 de novembro de 2026 (definição inicial em 9 de novembro)\
 **Contexto:** TCC individual; ideia aprovada pelo professor sem alterações, conforme relato do aluno.  
 **Prazo de referência:** duas semanas de desenvolvimento; data final de entrega a confirmar.  
 **Responsável pelo produto e desenvolvimento:** aluno autor do TCC.
+
+**Origem desta revisão:** pedido do autor, nesta conversa em 13/11/2026, para alinhamento às skills atuais `generate-prd` e `generate-tdd`. Escopo exclusivamente documental; elaboração assistida. O pedido posterior de aplicação autoriza preparar a revisão, não a aprova nem autoriza código ou integração.
+
+**Aprovação desta revisão:** após a entrega do diff, o autor confirmou pelo harness a opção “Registrar minha aprovação” para PRD 0.3, TDD 0.1 e SDD, em 13/11/2026. Confirmou também os registros documentais correspondentes. Essa manifestação posterior aprova os documentos com suas propostas e pendências explícitas; não comprova medições, não fecha decisões técnicas pendentes e não autoriza código, PR, merge ou arquivamento.
+
+### Histórico de revisões
+
+| Revisão | Data | Alteração e estado |
+|---|---|---|
+| 0.2 — FNR-001 | 13/11/2026 | Alinhamento documental aprovado pelo autor; PR #1 integrado em `075af73`. Evidências e limites preservados no §15 e no [backlog](BACKLOG.md), §7. A aprovação continua restrita àquela revisão. |
+| 0.3 | 13/11/2026 | IDs dos RNFs, métricas e encaminhamento das pendências; decisões e RF01–RF16 preservados. Entregue em revisão e posteriormente **aprovada documentalmente pelo autor**, por confirmação explícita no harness. Propostas, baselines desconhecidos e validações continuam nos estados indicados. Preparação registrada na [proposta](../openspec/changes/alinhar-prd-tdd-skills/proposal.md) e no [SDD](../openspec/changes/alinhar-prd-tdd-skills/design.md). |
+
+O restante do documento descreve o produto pretendido, não funcionalidades já implementadas. Nenhuma aprovação histórica se transfere às adições desta revisão.
 
 ## 1. Visão do produto
 
@@ -35,6 +48,15 @@ O Finora pretende reduzir o trabalho de transcrever compras manualmente e oferec
 - **Apresentação acadêmica:** usar dados fictícios ou anonimizados por padrão; dados pessoais reais não devem compor material público.
 
 A primeira versão não atenderá contas de terceiros. A conexão de múltiplos usuários e a oferta comercial ficam fora do escopo.
+
+### Stakeholders conhecidos
+
+| Interessado | Necessidade / participação conhecida | Limite da evidência |
+|---|---|---|
+| Autor do TCC / titular | Responsável pelo produto e desenvolvimento; precisa consultar e organizar suas compras e demonstrar o trabalho com privacidade. | As necessidades vêm da conversa de definição do produto, não de pesquisa com múltiplos usuários. |
+| Professor | Interessado na avaliação acadêmica e na proposta do TCC. | Aprovação da ideia/protótipo relatada pelo aluno; não comprova aprovação das revisões atuais nem define prazo final. |
+
+Não há entrevista registrada em `docs/entrevista.md` nas fontes disponíveis desta revisão. Provedores são dependências externas (§11), não aprovadores do produto. Redução de esforço é resultado pretendido, ainda sem medição.
 
 ## 4. Situação atual e evidências
 
@@ -71,6 +93,19 @@ A visualização no painel do provedor é evidência preliminar de viabilidade. 
 
 O protótipo é referência de experiência e apresentação. Seus indicadores fictícios não são requisitos automáticos: receitas e saldo financeiro consolidado, por exemplo, exigiriam fontes adicionais que não integram o P0.
 
+### Métricas de sucesso e método de medição
+
+Os métodos abaixo são **propostas desta revisão**, ainda não executados. Critérios já presentes nos requisitos são referências de aceite, não novas metas nem resultados. Não há baseline medido ou evidência de ganho de produtividade. Não se pressupõe telemetria automática ou envio de dados financeiros para serviços analíticos.
+
+| ID / objetivo | Indicador e método proposto | Baseline | Meta ou critério de referência | Encaminhamento / estado |
+|---|---|---|---|---|
+| M-01 — integração utilizável | Registrar sucesso/falha da PoC, páginas processadas e cobertura efetiva, reproduzindo a consulta pelo backend e guardando evidência sanitizada. | Não medido | Aceite existente de RF01/RF02; não prometer 12 meses disponíveis. | Autor sugerido; FNR-004/005, antes de fechar importação persistente. Pendente. |
+| M-02 — integridade | Comparar IDs, quantidade de registros e anotações antes/depois de duas importações iguais e de uma atualização controlada. Registrar diferenças indevidas. | Não medido | RF03/RF06/RF15: sem duplicações indevidas ou perda de anotações; alterações legítimas da origem conciliadas. | Autor sugerido; FNR-012/017/024. Pendente. |
+| M-03 — conciliação | Comparar total filtrado de todas as páginas e dashboard com cálculo independente de um conjunto controlado, mesmos filtros, situações e BRL. Registrar diferenças e casos elegíveis. | Não medido | RF05/RF07 e §8: totais correspondem ao conjunto elegível. | Autor sugerido; FNR-018/023/028. Pendente. |
+| M-04 — acesso e falhas compreensíveis | Registrar resultado por cenário de login, recarga, expiração, logout/reset, falha parcial/externa e atualização antiga; observar mensagens e preservação do histórico. | Não medido | RF08/RF09/RF14/RF16 e §13, sem taxa numérica de sucesso inventada. | Autor sugerido; FNR-010/013/014/020/021/028. Pendente. |
+| M-05 — desempenho local | Medir duração das consultas da interface ao banco com até 5.000 transações fictícias, identificando ambiente, volume e filtros; medir API externa separadamente. Amostra, ferramenta e estatística a definir antes da execução. | Não medido | Meta local já existente de RNF-08: até 2 segundos. Não define percentil nem SLA hospedado. | Autor sugerido; propor roteiro em FNR-024 e validar em FNR-028. Protocolo pendente (§15, VP-05). |
+| M-06 — esforço do titular | Proposta: comparar tempo e intervenções manuais para uma tarefa equivalente de organizar compras com e sem Finora, em dados seguros e condições registradas. | A definir por medição | A definir; não há redução percentual ou duração prometida. | Autor sugerido, com orientação acadêmica se pertinente; validar utilidade/método antes da avaliação no TCC. Pendente (§15, VP-05). |
+
 ## 6. Jornada principal
 
 1. O usuário autoriza o Nubank no Meu Pluggy e disponibiliza essa conexão à aplicação no provedor.
@@ -82,6 +117,16 @@ O protótipo é referência de experiência e apresentação. Seus indicadores f
 7. Uma nova consulta atualiza os registros sem duplicar compras e preserva a categoria e a observação escolhidas pelo usuário.
 
 No P0, o fluxo de autorização acontece no ambiente do provedor. Um botão que inicia a conexão bancária dentro do Angular não é obrigatório. A aplicação deve explicar como configurar e renovar a conexão.
+
+### Alternativas e recuperação na jornada
+
+| Situação | Experiência já prevista / critério relacionado |
+|---|---|
+| Sessão perdida ao recarregar ou expirada | Orientar novo login; recuperação administrativa de acesso, sem cadastro público ou e-mail no MVP (RF14). |
+| Filtro sem registros ou tela carregando | Exibir o estado correspondente; ausência de registros filtrados não prova ausência de histórico na origem (RF05/RF09; §8). |
+| Falha, importação incompleta ou autorização expirada | Preservar histórico, informar falha/desatualização e orientar renovação no provedor, sem simular sucesso ou zerar gastos (RF08/RF09/RF16). |
+| Histórico/campos indisponíveis | Informar cobertura e campos não disponíveis; não preencher com dados fictícios nem concluir integração real por demonstração (RF02/RF04; §8). |
+| Categoria ou observação alterada | Refletir a organização pessoal nos filtros/indicadores e preservá-la após nova importação (RF06/RF15). |
 
 ## 7. Requisitos funcionais e critérios de aceite
 
@@ -145,18 +190,20 @@ No P0, o fluxo de autorização acontece no ambiente do provedor. Um botão que 
 
 ## 9. Requisitos não funcionais
 
-| Área | Requisito |
-|---|---|
-| Credenciais | Manter Client Secret e chaves da API no backend, usando configuração local de segredos ou variáveis de ambiente. Não versionar, registrar em logs ou enviar ao Angular. |
-| Privacidade | Persistir somente os dados necessários. Não coletar senha, token bancário, CPF ou identidade completa para este escopo. Dados reais não entram no repositório nem no conjunto de demonstração. |
-| Acesso | MVP hospedado restrito ao titular, com autenticação e autorização antes de receber dados reais. A prova de conceito inicial é local e não pode expor dados publicamente. A tela de login pública não torna os dados financeiros públicos. |
-| Persistência | Reiniciar a aplicação não perde transações, categorias manuais ou investimentos cadastrados. |
-| Integridade | Usar precisão decimal para dinheiro, restrições de unicidade e operações de banco consistentes para importação. |
-| Uso | Interface em português, formato monetário brasileiro, datas claras, navegação por teclado e identificação textual dos estados. |
-| Responsividade | Dashboard e filtros utilizáveis em desktop e celular; tabelas podem oferecer rolagem horizontal. |
-| Desempenho | Meta local: consultas da interface ao banco em até 2 segundos para até 5.000 transações. Tempo da API externa deve ser medido separadamente e não é garantido. |
-| Falhas externas | Timeout, mensagens compreensíveis e tentativas limitadas. Respeitar limites de requisição do provedor. |
-| Operação | Exibir logs técnicos sem segredos ou conteúdo financeiro completo e disponibilizar instruções de execução local e acesso ao ambiente hospedado, com limitações conhecidas. |
+| ID | Área | Requisito |
+|---|---|---|
+| RNF-01 | Credenciais | Manter Client Secret e chaves da API no backend, usando configuração local de segredos ou variáveis de ambiente. Não versionar, registrar em logs ou enviar ao Angular. |
+| RNF-02 | Privacidade | Persistir somente os dados necessários. Não coletar senha, token bancário, CPF ou identidade completa para este escopo. Dados reais não entram no repositório nem no conjunto de demonstração. |
+| RNF-03 | Acesso | MVP hospedado restrito ao titular, com autenticação e autorização antes de receber dados reais. A prova de conceito inicial é local e não pode expor dados publicamente. A tela de login pública não torna os dados financeiros públicos. |
+| RNF-04 | Persistência | Reiniciar a aplicação não perde transações, categorias manuais ou investimentos cadastrados. |
+| RNF-05 | Integridade | Usar precisão decimal para dinheiro, restrições de unicidade e operações de banco consistentes para importação. |
+| RNF-06 | Uso | Interface em português, formato monetário brasileiro, datas claras, navegação por teclado e identificação textual dos estados. |
+| RNF-07 | Responsividade | Dashboard e filtros utilizáveis em desktop e celular; tabelas podem oferecer rolagem horizontal. |
+| RNF-08 | Desempenho | Meta local: consultas da interface ao banco em até 2 segundos para até 5.000 transações. Tempo da API externa deve ser medido separadamente e não é garantido. |
+| RNF-09 | Falhas externas | Timeout, mensagens compreensíveis e tentativas limitadas. Respeitar limites de requisição do provedor. |
+| RNF-10 | Operação | Exibir logs técnicos sem segredos ou conteúdo financeiro completo e disponibilizar instruções de execução local e acesso ao ambiente hospedado, com limitações conhecidas. |
+
+Os IDs apenas identificam requisitos já existentes. Encaminhamento proposto de verificação: inspeção de configuração/logs e demonstração para RNF-01/02/10; testes de autorização para RNF-03; reinicialização e importação repetida/transacional para RNF-04/05; roteiro manual em português, teclado e tamanhos de tela para RNF-06/07; medição M-05 (§5) para RNF-08; simulação de falhas externas para RNF-09. A matriz do TDD §19 relaciona componentes, verificações e itens do backlog. Não se estabelece SLA de disponibilidade: limites operacionais continuam pendentes no TDD §17.
 
 ## 10. Fronteiras do produto e informações necessárias
 
@@ -204,6 +251,8 @@ Se o acesso real pela aplicação falhar, registrar o bloqueio, a tentativa e a 
 
 O texto do TCC acompanha todos os marcos. Datas de calendário e disponibilidade diária devem ser registradas no planejamento de execução, sem presumir que o prazo foi renovado com a aprovação.
 
+As janelas acima são sugestões do planejamento inicial, não um prazo reiniciado. O [backlog](BACKLOG.md), §§3–4, detalha as dependências e ordena a entrega P0 antes dos complementos; o roadmap do TDD §16 explicita os critérios de passagem. Os nomes M1–M5 desta visão resumida não equivalem aos M0–M6 do backlog. Nada nesta revisão inicia FNR-002 ou autoriza publicação.
+
 ## 13. Validação e definição de pronto
 
 O núcleo está pronto quando:
@@ -234,7 +283,24 @@ Pagamentos, transferências, compra ou venda de ativos; recomendação automáti
 3. Regra de datas e situações observada no retorno real, antes de fechar os indicadores financeiros.
 4. Viabilidade de leitura real pelo backend e limitações operacionais dos serviços escolhidos. Validação de ambiente, compatibilidade e contrato técnico seguem o TDD §7 e as tarefas FNR-002, FNR-004 e FNR-005 do [backlog](BACKLOG.md).
 
+### Encaminhamento das pendências
+
+Responsáveis abaixo são **sugeridos**, sem atribuição aceita ou prazo inventado. O autor deve registrar evidência sanitizada e revisar os artefatos afetados se a validação alterar escopo, custo ou comportamento.
+
+| ID / pendência | Impacto | Responsável sugerido | Ação e condição de validação | Referência |
+|---|---|---|---|---|
+| VP-01 — data e capacidade diária (item 1) | Risco de P0 não caber no prazo; janelas não viram compromisso. | Autor, confirmando entrega com professor | Registrar data final e disponibilidade ao planejar a execução, antes de assumir cronograma. | §12; backlog §3; TDD §16 |
+| VP-02 — histórico e campos (item 2) | Cobertura limitada e informações de parcelas/faturas/limites podem estar ausentes. | Autor | Registrar amostras sanitizadas, paginação e cobertura observadas antes de fechar importação/indicadores. | FNR-004/005; RF02/RF04 |
+| VP-03 — datas, sinais e situações (item 3) | Indicadores incorretos se naturezas ou competência forem inferidas indevidamente. | Autor | Validar casos reais e conjunto controlado de §13; fechar normalização antes de FNR-012/018. | FNR-005; RF07; TDD §§10/13 |
+| VP-04 — leitura e limites operacionais (item 4) | Integração real ou publicação podem permanecer bloqueadas. | Autor | Validar ambiente/compatibilidade, PoC e condições dos serviços antes das fases dependentes; registrar falha e alternativa para avaliação, sem substituir aceite real. | FNR-002/004/005/025–028; TDD §§7/17 |
+| VP-05 — protocolo e baselines M-01–M-06 | Sem medição não se pode afirmar desempenho ou ganho do titular. | Autor; professor como consultado para método acadêmico, se pertinente | Validar métodos/amostra e coletar resultados antes de declarar sucesso; metas desconhecidas continuam a definir. | §5; proposta de verificação em FNR-024/028; TDD §14 |
+| VP-06 — recuperação e retenção | Perda de dados e tratamento inadequado do histórico se a operação não for definida. | Autor | Avaliar e decidir políticas/procedimentos, registrar limitações e validar recuperação antes de declarar operação validada; descarte depende de decisão explícita. | Pendências OP-01–OP-07 do TDD §17; encaminhamento proposto FNR-025/026/028, sem mudar critérios do backlog |
+
+### Histórico de aprovação anterior
+
 Esses pontos refinam o PRD v0; não alteram a ideia aprovada. A revisão FNR-001 reflete decisões já registradas no TDD, sem comprovar implementação ou validação funcional. O autor aprovou explicitamente os documentos e o SDD da FNR-001 em 13 de novembro de 2026, nesta conversa, e confirmou a revisão do PR #1. A conclusão documental combina essa aprovação com as validações locais, a verificação das exigências aplicáveis e a integração no commit `075af73`; não se baseia apenas na aprovação ou no merge. Não há revisão formal ou checks reportados no GitHub; evidências e limites estão no backlog e nas tarefas OpenSpec. Não iniciar código ou FNR-002 nesta etapa.
+
+O parágrafo anterior preserva o registro da revisão 0.2/FNR-001, que não aprova a revisão 0.3. A revisão 0.3 recebeu aprovação documental própria e posterior do autor, registrada no cabeçalho; métodos propostos, baselines e validações pendentes não se tornam resultados ou decisões técnicas fechadas por essa aprovação.
 
 ## 16. Referências do projeto
 
