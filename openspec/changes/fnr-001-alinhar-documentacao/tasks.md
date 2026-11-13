@@ -20,11 +20,13 @@ Verificação em 13 de novembro de 2026: validação OpenSpec estrita aprovada (
 ## 3. Entrega por Pull Request
 
 - [x] 3.1 Reexecutar validações documentais e conferir o diff incluindo os arquivos novos; verificar OpenSpec estrito, diff check, links e ausência de código no conjunto a commitar. Em 13/11/2026, OpenSpec estrito e oito links locais passaram; `git diff --cached --check` passou após substituir três quebras Markdown com espaços finais no backlog novo por barras invertidas, sem alteração de conteúdo. Os oito arquivos staged são exclusivamente documentais; não há workflows de CI versionados neste estado do projeto, e checks remotos não foram presumidos aprovados.
-- [ ] 3.2 Criar commit na branch atual e abrir PR para `main` com resumo, rastreabilidade, validações e riscos; verificar hash, URL e estado aberto do PR, sem merge.
+- [x] 3.2 Criar commit na branch atual e abrir PR para `main` com resumo, rastreabilidade, validações e riscos; verificar hash, URL e estado aberto do PR, sem merge. Commit documental `77dcde40a13dc88a042611170d23e4c7bad0e525` enviado na branch `docs/fnr-001-alinhar-documentacao`; [PR #1](https://github.com/VictorJer/GestFinan-a/pull/1) confirmado `OPEN`, base `main`, auto-merge ausente. O registro do PR é incluído em commit complementar na mesma branch.
 - [ ] 3.3 Obter revisão/aprovações do PR e checks exigidos; conclusão verificável no GitHub, sem equiparar aprovação documental à aprovação do PR. Não executar integração sem autorização posterior.
+
+Consulta inicial do PR em 13/11/2026: sem revisão e com `statusCheckRollup` vazio. Não há checks reportados; isso não comprova aprovação dos checks exigidos nem autoriza integração. PR aberto e nenhuma proteção alterada ou contornada. FNR-001 permanece não concluída, sem merge, arquivamento ou início de FNR-002.
 
 ## Workflow follow-up
 
-- Somente após revisão e autorização para continuar, abrir PR com PRD, TDD, SDD, testes documentais e riscos vinculados; integrar exclusivamente por PR após aprovações e checks necessários, sem contornar proteções.
-- Registrar PR, evidências e conclusão da FNR-001 no backlog; não declarar concluída enquanto revisão/integração estiverem pendentes. Não há deploy de aplicação nesta mudança documental.
+- PR #1 aberto com PRD, TDD, SDD, testes documentais e riscos vinculados. Solicitação de revisão consta no corpo do PR; não houve autoaprovação. Integrar exclusivamente por PR após autorização posterior, aprovações e checks necessários, sem contornar proteções.
+- PR e evidências registrados no backlog; registrar conclusão somente após resolver as pendências de revisão/checks/integração, nunca pela aprovação documental isolada. Não há deploy de aplicação nesta mudança documental.
 - Não iniciar FNR-002 nem arquivar esta mudança nesta etapa.
