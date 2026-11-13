@@ -35,7 +35,7 @@ A primeira meta funcional é consultar transações reais pelo backend .NET em p
 - [PRD](docs/PRD.md): requisitos e critérios de aceite do produto.
 - [TDD](docs/TDD.md): decisões técnicas, propostas e validações pendentes.
 - [Backlog](docs/BACKLOG.md): ordem de execução e evidências por tarefa.
-- [FNR-001 no OpenSpec](openspec/changes/fnr-001-alinhar-documentacao/proposal.md) e [desenho/SDD](openspec/changes/fnr-001-alinhar-documentacao/design.md): aprovados e concluídos no escopo documental; evidências e limites da verificação registrados nas tarefas e no backlog, sem arquivamento ou início de FNR-002.
+- [FNR-001 no OpenSpec](openspec/changes/archive/2026-11-13-fnr-001-alinhar-documentacao/proposal.md) e [desenho/SDD](openspec/changes/archive/2026-11-13-fnr-001-alinhar-documentacao/design.md): aprovados e concluídos no escopo documental; mudança arquivada em 13/11/2026 por solicitação do autor, com 11/11 tarefas concluídas e sem delta specs. Evidências e limites da verificação preservados nas tarefas e no backlog; FNR-002 não iniciada.
 
 Uma mudança por vez: backlog → feature branch → especificação OpenSpec e revisão → implementação → testes → PR → integração na `main` → deploy após checks. Não desenvolver nem enviar alterações diretamente à `main`; artefatos prontos não significam aprovação.
 
