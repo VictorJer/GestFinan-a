@@ -3,7 +3,7 @@
 **Versão:** 0.1\
 **Criado em:** 13 de novembro de 2026\
 **Base:** `docs/PRD.md`, `docs/TDD.md` e `AGENTS.md` do projeto `D:\financeiro`.\
-**Estado:** documentos e SDD da FNR-001 aprovados explicitamente pelo autor em 13/11/2026; revisão do PR, checks e integração pendentes. Nenhuma tarefa de implementação foi considerada concluída.
+**Estado:** FNR-001 concluída documentalmente em 13/11/2026, com aprovação explícita dos documentos e do SDD, revisão do PR confirmada pelo autor, validações documentais e integração pelo PR #1. Sem revisão formal ou checks reportados no GitHub; nenhuma exigência adicional não atendida foi identificada nas fontes consultadas. Nenhuma tarefa de código da aplicação foi iniciada.
 
 ## 1. Resultado esperado
 
@@ -321,8 +321,8 @@ Ao iniciar uma tarefa, preencher este quadro sem alterar o significado dos crit�
 
 | Item | Status | Mudança OpenSpec | Branch / PR | Evidência ou bloqueio |
 |---|---|---|---|---|
-| FNR-001 | Aguardando revisão (PR) | [fnr-001-alinhar-documentacao](../openspec/changes/fnr-001-alinhar-documentacao/proposal.md) | `docs/fnr-001-alinhar-documentacao`; [PR #1](https://github.com/VictorJer/GestFinan-a/pull/1), commit documental `77dcde4` | Aprovação explícita dos documentos (PRD, TDD, README, backlog e artefatos) e do SDD pelo autor nesta conversa em 13/11/2026. OpenSpec estrito, diff check incluindo arquivos novos e oito links locais aprovados. PR aberto, sem revisão ou checks reportados pelo GitHub na consulta inicial e sem auto-merge. Aprovação documental não conclui a tarefa: revisão do PR, verificação dos checks exigidos e integração pendentes. Sem código, merge, arquivamento ou avanço para FNR-002. |
+| FNR-001 | Concluído | [fnr-001-alinhar-documentacao](../openspec/changes/fnr-001-alinhar-documentacao/proposal.md) | `docs/fnr-001-alinhar-documentacao`; [PR #1](https://github.com/VictorJer/GestFinan-a/pull/1); merge `075af734571a1a8aa096a718d5f9b133d1078db6` | Documentos e SDD aprovados explicitamente pelo autor nesta conversa em 13/11/2026; revisão do PR confirmada por ele: “ja revisei o PR”. OpenSpec estrito, diff check e oito links locais aprovados. Integração por `VictorJer` em 13/11/2026 às 18:14:07 UTC. Verificação das exigências: main sem proteção clássica, regras aplicáveis ou rulesets na consulta; sem workflows no commit integrado, sem check runs/status contexts no head do PR e sem exigência documental de revisão formal no GitHub. Nenhum bloqueio adicional identificado. Não houve evento formal APPROVED nem checks remotos aprovados; conclusão fundamentada nas evidências aplicáveis, não apenas no merge. Limite histórico da consulta registrado nas tarefas OpenSpec. Sem código, arquivamento ou avanço para FNR-002. |
 
 Adicionar os demais itens conforme entrarem em execução. Um PR aberto não significa tarefa concluída. Manter apenas uma mudança principal em implementação por vez no trabalho individual.
 
-**Próxima ação:** revisar o PR #1 da FNR-001 e verificar os checks exigidos, mantendo a integração pendente e independente da aprovação documental. Não fazer merge, arquivar ou iniciar FNR-002 nesta etapa. A sequência posterior permanece FNR-002, FNR-003 e FNR-004, cada uma em sua mudança e após autorização. A escrita do TCC acompanha os marcos desde o início.
+**Próxima ação:** apresentar o único PR de registro preparado na branch `docs/fnr-001-registrar-integracao`, sem novo merge nesta execução. Esse PR consolida as evidências da conclusão da FNR-001 já integrada pelo PR #1; não exige novo ciclo de registros apenas para anotar sua própria abertura ou integração. Não arquivar nem iniciar FNR-002 nesta etapa. A sequência posterior permanece FNR-002, FNR-003 e FNR-004, cada uma em sua mudança e após autorização. A escrita do TCC acompanha os marcos desde o início.

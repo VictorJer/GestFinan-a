@@ -234,7 +234,7 @@ Pagamentos, transferências, compra ou venda de ativos; recomendação automáti
 3. Regra de datas e situações observada no retorno real, antes de fechar os indicadores financeiros.
 4. Viabilidade de leitura real pelo backend e limitações operacionais dos serviços escolhidos. Validação de ambiente, compatibilidade e contrato técnico seguem o TDD §7 e as tarefas FNR-002, FNR-004 e FNR-005 do [backlog](BACKLOG.md).
 
-Esses pontos refinam o PRD v0; não alteram a ideia aprovada. A revisão FNR-001 reflete decisões já registradas no TDD, sem comprovar implementação ou validação. O autor aprovou explicitamente os documentos e o SDD da FNR-001 em 13 de novembro de 2026, nesta conversa. A aprovação é documental: não conclui a tarefa nem substitui revisão do PR, checks e integração; não autoriza iniciar código ou FNR-002 nesta etapa.
+Esses pontos refinam o PRD v0; não alteram a ideia aprovada. A revisão FNR-001 reflete decisões já registradas no TDD, sem comprovar implementação ou validação funcional. O autor aprovou explicitamente os documentos e o SDD da FNR-001 em 13 de novembro de 2026, nesta conversa, e confirmou a revisão do PR #1. A conclusão documental combina essa aprovação com as validações locais, a verificação das exigências aplicáveis e a integração no commit `075af73`; não se baseia apenas na aprovação ou no merge. Não há revisão formal ou checks reportados no GitHub; evidências e limites estão no backlog e nas tarefas OpenSpec. Não iniciar código ou FNR-002 nesta etapa.
 
 ## 16. Referências do projeto
 
