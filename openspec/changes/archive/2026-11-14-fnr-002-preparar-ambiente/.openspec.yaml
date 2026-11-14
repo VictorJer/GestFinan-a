@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-11-14
+# Preparação de ferramentas sem alteração do comportamento da aplicação.
+skip_specs: true

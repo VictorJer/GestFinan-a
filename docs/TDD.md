@@ -1,22 +1,25 @@
 # Finora — TDD v0
 
 **Technical Design Document — documento de desenho técnico**  
-**Estado:** v0, revisão documental 0.1 — aprovada documentalmente pelo autor em 13/11/2026; propostas e validações pendentes preservadas.\
+**Estado:** v0, revisão documental 0.2 — aprovada documentalmente pelo autor em 14/11/2026; revisão 0.1 aprovada em 13/11/2026 permanece no histórico.\
 **Base atual:** [Finora — PRD v0, revisão 0.3](PRD.md), aprovada documentalmente; base anterior aprovada: revisão 0.2.\
 **Data de início:** 9 de novembro de 2026.
 
-**Data desta revisão:** 13 de novembro de 2026. **Responsável/decisor conhecido:** autor do TCC, com elaboração assistida. **Origem:** solicitação do autor para alinhar PRD/TDD às skills atuais, seguida de solicitação para aplicar a mudança documental. Não constitui aprovação desta revisão, do SDD ou de implementação futura.
+**Data desta revisão:** 14 de novembro de 2026. **Responsável/decisor conhecido:** autor do TCC, com elaboração assistida. **Origem:** solicitação para aplicar FNR-002 e aprovação explícita do SDD/baselines nesta conversa. A revisão de conteúdo 0.2 foi aprovada separadamente pelo autor após a apresentação do diff nesta conversa; isso não transfere a aprovação da revisão 0.1 nem da revisão do SDD.
 
 **Aprovação posterior:** após a entrega do diff, o autor confirmou no harness “Registrar minha aprovação” para PRD 0.3, TDD 0.1 e SDD em 13/11/2026, e confirmou a atualização dos registros. Aprova-se o documento com seus estados explícitos: propostas/decisões pendentes, capacidades dos provedores e verificações técnicas continuam sujeitos às condições indicadas. Não autoriza código, PR, merge, publicação ou arquivamento.
+
+**Aprovação documental 0.2:** após a apresentação do diff FNR-002, o autor confirmou “Aprovo o diff” nesta conversa do OpenCode em 14/11/2026. A aprovação cobre esta revisão documental e as alterações apresentadas, sem comprovar build/testes de projetos futuros e sem autorizar commit, PR, merge, publicação ou arquivamento.
 
 ### Histórico e fontes
 
 | Revisão | Data | Resumo / estado |
 |---|---|---|
 | v0 — FNR-001 | 13/11/2026 (início em 09/11) | Revisão documental aprovada explicitamente pelo autor; PR #1 integrado em `075af73`. Propostas e validações técnicas permaneciam pendentes. Evidências e limites no [backlog](BACKLOG.md), §7, e no [SDD histórico](../openspec/changes/archive/2026-11-13-fnr-001-alinhar-documentacao/design.md). |
-| v0 — documental 0.1 | 13/11/2026 | Resumo, registro DT-xx, roadmap, rastreabilidade e operação/recuperação. Entregue em revisão e posteriormente **aprovada documentalmente pelo autor**, por confirmação no harness, sem transferência da aprovação anterior. Propostas e validações pendentes preservadas. Ver [proposta](../openspec/changes/alinhar-prd-tdd-skills/proposal.md) e [SDD desta revisão](../openspec/changes/alinhar-prd-tdd-skills/design.md). |
+| v0 — documental 0.1 | 13/11/2026 | Resumo, registro DT-xx, roadmap, rastreabilidade e operação/recuperação. Entregue em revisão e posteriormente **aprovada documentalmente pelo autor**, por confirmação no harness, sem transferência da aprovação anterior. Propostas e validações pendentes preservadas. Ver [proposta](../openspec/changes/archive/2026-11-13-alinhar-prd-tdd-skills/proposal.md) e [SDD desta revisão](../openspec/changes/archive/2026-11-13-alinhar-prd-tdd-skills/design.md). |
+| v0 — documental 0.2 | 14/11/2026 | Baseline de ferramentas aprovada para FNR-002 e redistribuição de locks/testes entre FNR-002/003/006/019; diff da revisão 0.2 aprovado explicitamente pelo autor em 14/11/2026. Validações de instalação/execução continuam identificadas no §7 e em [AMBIENTE.md](AMBIENTE.md). Ver [SDD fnr-002-preparar-ambiente](../openspec/changes/fnr-002-preparar-ambiente/design.md). |
 
-Fontes desta complementação: PRD, TDD v0/FNR-001, backlog, [README](../README.md), [AGENTS.md](../AGENTS.md), skills `generate-prd`/`generate-tdd` e solicitação desta conversa. Não há nova entrevista, medição ou validação de compatibilidade tecnológica nesta revisão. Desconhecidos e eventuais divergências futuras devem ser resolvidos nos gates dos §§7 e 16–18, não por suposição.
+Fontes desta complementação: PRD, TDD v0/FNR-001, backlog, [README](../README.md), [AGENTS.md](../AGENTS.md), SDD de FNR-002 e aprovação explícita do autor nesta conversa em 14/11/2026. A aprovação fecha a escolha das baselines registradas abaixo, mas não comprova instalação, restore, build, testes ou compatibilidade integrada. Desconhecidos e divergências futuras devem ser resolvidos nos gates dos §§7 e 16–18, não por suposição.
 
 ### Resumo e objetivos técnicos
 
@@ -223,7 +226,11 @@ Categoria e observação pessoal são os únicos campos de compra editáveis pel
 5. Verificar emissão/revogação do JWT, comandos administrativos e persistência das chaves de proteção usadas pelos recursos do Identity.
 6. Configurar publicação do commit aprovado pelos checks sem disparos paralelos dos provedores.
 
-As escolhas principais de arquitetura e ferramentas estão fechadas nesta versão. As validações acima são tarefas técnicas, sem necessidade de novas rodadas sobre detalhes rotineiros, salvo descoberta que altere escopo, custo ou comportamento definido.
+Baseline aprovada para preparação em FNR-002: .NET SDK 10.0.402 sem prerelease e sem roll-forward; Node 24.22.0; npm 11.19.1; `dotnet-ef` local 10.0.15; Angular CLI/build 22.2.7 e framework/compiler 22.2.6; TypeScript 6.0.3; Vitest 5.1.0; Tailwind 4.3.5; Chart.js 4.6.1; EF Core 10.0.15; Npgsql EF 10.0.3. Para os testes backend, MSTest.Sdk 4.5.3 com Microsoft.Testing.Platform. A decisão fecha as versões de referência, não o resultado de instalação ou compatibilidade transitiva.
+
+A divisão das validações é explícita: FNR-002 fixa e documenta ferramentas, confere versões disponíveis e diagnostica Docker/Compose; FNR-003 cria o backend, gera o lock NuGet com dependências reais e executa restore bloqueado/build/test MSTest; FNR-006 valida EF Core/Npgsql/PostgreSQL e migrations localmente; FNR-019 cria o workspace Angular, gera `package-lock.json`, executa `npm ci`, build e Vitest. Não criar projetos ou locks fictícios em FNR-002. Falhas/indisponibilidades são registradas no guia e atribuídas ao gate correspondente.
+
+As decisões de arquitetura herdadas e seus IDs permanecem preservados. Detalhes de execução e compatibilidade integrada são tarefas técnicas; nova decisão do autor só é necessária se uma falha exigir alterar escopo, custo, comportamento ou baseline aprovada.
 
 ## 8. Referências técnicas consultadas
 
@@ -366,7 +373,7 @@ Rotas Angular propostas: `/login`, `/dashboard`, `/card`, `/transactions`, `/inv
 
 Referências: ferramenta confirmada DT-12, plano proposto DT-46; matriz requisito → verificação no §19.
 
-Confirmado: MSTest para o backend e Chart.js para os gráficos. O pacote/runner exato será fixado conforme compatibilidade com .NET 10 e ambiente de CI.
+Confirmado: MSTest para o backend e Chart.js para os gráficos. Baseline aprovada nesta revisão: MSTest.Sdk 4.5.3 com Microsoft.Testing.Platform e Vitest 5.1.0 para Angular. A existência da escolha não significa runner instalado ou teste executável: FNR-003 e FNR-019 devem validar os respectivos projetos reais e locks, sem criar projetos/locks nesta preparação. FNR-002 verifica metadados e documenta compatibilidade declarada; restore/build/test integrados permanecem nos itens correspondentes.
 
 Plano técnico proposto:
 
