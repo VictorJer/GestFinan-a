@@ -6,7 +6,7 @@ Projeto desenvolvido como proposta de Trabalho de Conclusão de Curso (TCC), com
 
 Como complementos, o projeto prevê uma carteira de investimentos com cadastro manual e um simulador de evolução patrimonial com aportes.
 
-> **Status:** ideia aprovada pelo professor e protótipo navegável disponível. FNR-001/002 concluídas conforme o backlog. Base backend FNR-003 implementada, validada localmente, revisada e aceita pelo autor nesta branch: diagnóstico e Swagger de desenvolvimento, sem dados financeiros, banco ou autenticação. Aguarda integração por PR; não publicada. Angular e fluxo financeiro integrado continuam pendentes.
+> **Status:** ideia aprovada pelo professor e protótipo navegável disponível. FNR-001/002/003 concluídas nos respectivos escopos conforme o backlog. Base backend FNR-003 validada localmente, revisada, aceita pelo autor e integrada pelo [PR #8](https://github.com/VictorJer/GestFinan-a/pull/8), merge `2bd63ae`: diagnóstico e Swagger de desenvolvimento, sem dados financeiros, banco ou autenticação. Sync e arquivamento preparados no encerramento documental; sem publicação aplicável. Angular e fluxo financeiro integrado continuam pendentes; FNR-004 não iniciada.
 
 ## Objetivo
 
@@ -22,7 +22,7 @@ Desenvolver uma aplicação web que consulte dados de cartão de crédito por me
 | Protótipo com dados fictícios | Disponível |
 | PRD v0 | Revisão 0.2 aprovada documentalmente |
 | TDD v0 | Revisão 0.3 aprovada documentalmente; base backend validada localmente, demais validações futuras pendentes |
-| Base backend FNR-003 | Restore bloqueado/build e 20 testes aprovados localmente; Swagger verificado no navegador; entrega ainda não integrada |
+| Base backend FNR-003 | Restore com --locked-mode/build e 20 testes aprovados localmente; Swagger verificado no navegador; revisão e aceite explícitos; PR #8 integrado. Sem reviews formais/checks reportados no GitHub; evidências e limites no backlog e guia. |
 | Conexão no painel do provedor | Cartão e transações visualizados pelo autor |
 | Consulta pelo backend .NET | Pendente |
 | Aplicação integrada e publicação definitiva | Pendentes |

@@ -33,7 +33,9 @@ Plano da FNR-003, com execução indicada pelas caixas abaixo. Referências: [pr
 
 ## Workflow follow-up
 
-Registro em 14/11/2026: revisão somente por leitura do diff completo sem problemas que exigissem correção no escopo; autor aprovou a entrega e autorizou registro do aceite, commits locais pelo committer e abertura do PR. Evidências e limites em [AMBIENTE.md](../../../docs/AMBIENTE.md#revisão-e-aceite-da-entrega--14112026). Sem autorização de merge, arquivamento, publicação ou avanço para FNR-004; estas ações não serão executadas neste acompanhamento.
+Registro em 14/11/2026: revisão somente por leitura do diff completo sem problemas que exigissem correção no escopo; autor aprovou a entrega e autorizou registro do aceite, commits locais pelo committer e abertura do PR. Evidências e limites em [AMBIENTE.md](../../../../docs/AMBIENTE.md#revisão-e-aceite-da-entrega--14112026). Naquela etapa não havia autorização de merge, arquivamento, publicação ou avanço para FNR-004.
+
+Encerramento posterior solicitado explicitamente pelo autor: PR #8 integrado no merge `2bd63ae`, com revisão, aceite e validações locais registrados no [desenho](design.md#encerramento-confirmado--14112026). As duas delta specs foram sincronizadas e conferidas antes do arquivamento; todos os artefatos e 14/14 tarefas completos, mudança validada estritamente antes de mover. Histórico de aceites preservado. Registros finais em `docs/fnr-003-encerrar`, para commits pelo committer e um PR documental, sem merge, publicação ou FNR-004 e sem nova mudança apenas para registrar esse registro.
 
 - Após validação e com autorização de commits, enviar ao committer raiz, branch, caminhos explícitos, referências e evidências; conferir hashes/conteúdo e alterações restantes, preservando trabalho não relacionado. Planejamento não concede essa autorização.
 - Abrir PR somente com autorização pertinente, vinculando FNR-003, PRD, TDD e esta mudança; distinguir checks ausentes, pendentes, falhos e aprovados e integrar apenas após revisão e gates aplicáveis. Não criar pipeline/deploy fora do escopo.
