@@ -1,0 +1,3 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- O domínio permanece independente, sem tipos provisórios ou referências externas. -->
+</Project>

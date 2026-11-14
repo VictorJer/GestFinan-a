@@ -6,7 +6,7 @@ Projeto desenvolvido como proposta de Trabalho de Conclusão de Curso (TCC), com
 
 Como complementos, o projeto prevê uma carteira de investimentos com cadastro manual e um simulador de evolução patrimonial com aportes.
 
-> **Status:** ideia aprovada pelo professor e protótipo navegável disponível. FNR-001 concluída documentalmente: documentos e SDD aprovados, revisão do PR confirmada pelo autor, validações locais aprovadas e PR #1 integrado em 13/11/2026 (`075af73`). Nenhuma exigência adicional não atendida foi identificada; não há revisão formal ou checks reportados no GitHub. A aplicação definitiva em Angular e .NET ainda não foi implementada neste workspace.
+> **Status:** ideia aprovada pelo professor e protótipo navegável disponível. FNR-001/002 concluídas conforme o backlog. Base backend FNR-003 implementada, validada localmente, revisada e aceita pelo autor nesta branch: diagnóstico e Swagger de desenvolvimento, sem dados financeiros, banco ou autenticação. Aguarda integração por PR; não publicada. Angular e fluxo financeiro integrado continuam pendentes.
 
 ## Objetivo
 
@@ -21,7 +21,8 @@ Desenvolver uma aplicação web que consulte dados de cartão de crédito por me
 | Aprovação da ideia | Concluída, conforme confirmação do autor |
 | Protótipo com dados fictícios | Disponível |
 | PRD v0 | Revisão 0.2 aprovada documentalmente |
-| TDD v0 | Revisão FNR-001 aprovada documentalmente; validações técnicas futuras pendentes |
+| TDD v0 | Revisão 0.3 aprovada documentalmente; base backend validada localmente, demais validações futuras pendentes |
+| Base backend FNR-003 | Restore bloqueado/build e 20 testes aprovados localmente; Swagger verificado no navegador; entrega ainda não integrada |
 | Conexão no painel do provedor | Cartão e transações visualizados pelo autor |
 | Consulta pelo backend .NET | Pendente |
 | Aplicação integrada e publicação definitiva | Pendentes |
@@ -39,6 +40,27 @@ A primeira meta funcional é consultar transações reais pelo backend .NET em p
 - [FNR-001 no OpenSpec](openspec/changes/archive/2026-11-13-fnr-001-alinhar-documentacao/proposal.md) e [desenho/SDD](openspec/changes/archive/2026-11-13-fnr-001-alinhar-documentacao/design.md): aprovados e concluídos no escopo documental; mudança arquivada em 13/11/2026 por solicitação do autor, com 11/11 tarefas concluídas e sem delta specs. Evidências e limites da verificação preservados nas tarefas e no backlog; FNR-002 não iniciada.
 
 Uma mudança por vez: backlog → feature branch → especificação OpenSpec e revisão → implementação → testes → PR → integração na `main` → deploy após checks. Não desenvolver nem enviar alterações diretamente à `main`; artefatos prontos não significam aprovação.
+
+## Executar o backend local
+
+Requer SDK .NET `10.0.402`. Da raiz do repositório:
+
+```powershell
+# Restaura somente o grafo aceito nos locks versionados.
+dotnet restore backend/Finora.slnx --locked-mode
+# Compila a solução sem novo restore.
+dotnet build backend/Finora.slnx --no-restore
+# Executa os testes MSTest pelo runner MTP selecionado em global.json.
+dotnet test --solution backend/Finora.slnx --no-build
+# Inicia em Development e loopback, sem banco ou segredos.
+dotnet run --project backend/Finora.Api --launch-profile http --no-build --no-restore
+```
+
+Acesse `http://127.0.0.1:5080/health`: HTTP 200 e `{"status":"ok"}`. É apenas **liveness**: não valida banco, Pluggy, autenticação ou dados reais. Não existem endpoints financeiros nesta base.
+
+Para testar pelo navegador, abra `http://127.0.0.1:5080/swagger`, expanda `GET /health`, clique em **Try it out** e **Execute**. Confira código 200 e corpo `{"status":"ok"}`. O documento fica em `/openapi/v1.json`; documento, UI e assets locais estão disponíveis **somente em Development** (404 em Production/Staging). Não há Authorize/JWT neste incremento. Encerre com `Ctrl+C`.
+
+Configuração versionada contém apenas opções não sensíveis. Detalhes de JSON, locks, portas e evidências no [guia de ambiente](docs/AMBIENTE.md#backend-fnr-003--versões-verificadas-em-14112026). Banco, Docker e credenciais de provedor não são pré-requisitos para estes comandos.
 
 ## Funcionalidades planejadas
 

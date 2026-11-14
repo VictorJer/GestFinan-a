@@ -42,3 +42,6 @@ Desktop.ini
 
 #Ignore .key
 *.key
+
+# Capturas locais geradas pela verificação no navegador não integram a aplicação.
+.playwright-mcp/

@@ -1,7 +1,7 @@
 # Finora — TDD v0
 
 **Technical Design Document — documento de desenho técnico**  
-**Estado:** v0, revisão documental 0.2 — aprovada documentalmente pelo autor em 14/11/2026; revisão 0.1 aprovada em 13/11/2026 permanece no histórico.\
+**Estado:** v0, revisão documental 0.3 — aprovada pelo autor em 14/11/2026; revisões 0.2 (14/11/2026) e 0.1 (13/11/2026) aprovadas preservadas no histórico.\
 **Base atual:** [Finora — PRD v0, revisão 0.3](PRD.md), aprovada documentalmente; base anterior aprovada: revisão 0.2.\
 **Data de início:** 9 de novembro de 2026.
 
@@ -13,11 +13,14 @@
 
 ### Histórico e fontes
 
+**Revisão 0.3 — FNR-003:** concretiza DT-38 e registra diagnóstico/Swagger conforme SDD aprovado explicitamente no harness em 14/11/2026 (“Aprovar SDD e prosseguir”). Após apresentação do diff, o autor confirmou separadamente “Aprovo o diff”, aprovando esta revisão canônica. Não altera requisitos do PRD, baseline ou decisões não relacionadas. Na aprovação, a implementação e a validação ainda não haviam sido executadas; evidências posteriores da base backend constam em [AMBIENTE.md](AMBIENTE.md). Não autoriza commit, PR, merge ou publicação.
+
 | Revisão | Data | Resumo / estado |
 |---|---|---|
 | v0 — FNR-001 | 13/11/2026 (início em 09/11) | Revisão documental aprovada explicitamente pelo autor; PR #1 integrado em `075af73`. Propostas e validações técnicas permaneciam pendentes. Evidências e limites no [backlog](BACKLOG.md), §7, e no [SDD histórico](../openspec/changes/archive/2026-11-13-fnr-001-alinhar-documentacao/design.md). |
 | v0 — documental 0.1 | 13/11/2026 | Resumo, registro DT-xx, roadmap, rastreabilidade e operação/recuperação. Entregue em revisão e posteriormente **aprovada documentalmente pelo autor**, por confirmação no harness, sem transferência da aprovação anterior. Propostas e validações pendentes preservadas. Ver [proposta](../openspec/changes/archive/2026-11-13-alinhar-prd-tdd-skills/proposal.md) e [SDD desta revisão](../openspec/changes/archive/2026-11-13-alinhar-prd-tdd-skills/design.md). |
-| v0 — documental 0.2 | 14/11/2026 | Baseline de ferramentas aprovada para FNR-002 e redistribuição de locks/testes entre FNR-002/003/006/019; diff da revisão 0.2 aprovado explicitamente pelo autor em 14/11/2026. Validações de instalação/execução continuam identificadas no §7 e em [AMBIENTE.md](AMBIENTE.md). Ver [SDD fnr-002-preparar-ambiente](../openspec/changes/fnr-002-preparar-ambiente/design.md). |
+| v0 — documental 0.2 | 14/11/2026 | Baseline de ferramentas aprovada para FNR-002 e redistribuição de locks/testes entre FNR-002/003/006/019; diff da revisão 0.2 aprovado explicitamente pelo autor em 14/11/2026. Validações de instalação/execução continuam identificadas no §7 e em [AMBIENTE.md](AMBIENTE.md). Ver [SDD fnr-002-preparar-ambiente](../openspec/changes/archive/2026-11-14-fnr-002-preparar-ambiente/design.md). |
+| v0 — documental 0.3 | 14/11/2026 | DT-38 e diagnóstico/Swagger conforme [SDD FNR-003](../openspec/changes/fnr-003-criar-base-backend/design.md), aprovados pelo autor; diff canônico aceito separadamente no harness. Evidências locais da base backend em AMBIENTE.md; sem integração ou publicação nesta execução. |
 
 Fontes desta complementação: PRD, TDD v0/FNR-001, backlog, [README](../README.md), [AGENTS.md](../AGENTS.md), SDD de FNR-002 e aprovação explícita do autor nesta conversa em 14/11/2026. A aprovação fecha a escolha das baselines registradas abaixo, mas não comprova instalação, restore, build, testes ou compatibilidade integrada. Desconhecidos e divergências futuras devem ser resolvidos nos gates dos §§7 e 16–18, não por suposição.
 
@@ -81,7 +84,7 @@ Origem **P**: desenho já descrito no TDD v0/FNR-001, nas seções indicadas; ap
 
 | ID | Tema / direção | Estado / origem / decisor | Justificativa registrada ou análise identificada | Alternativas / consequências | Condição de validação |
 |---|---|---|---|---|---|
-| DT-38 | Referências Domain ← Application ← Infrastructure; Api compõe Application/Infrastructure | Proposta; P §3 / decisor pendente | Análise desta revisão: preservar fronteiras do monólito | Direções alternativas não registradas; não expor EF/IQueryable ao caso de uso | FNR-003, antes de fixar referências |
+| DT-38 | Domain sem referências; Application → Domain; Infrastructure → Application/Domain; Api → Application/Infrastructure | Confirmada no SDD FNR-003 e na revisão canônica 0.3 pelo autor em 14/11/2026 | Preservar fronteiras do monólito, conforme D1 do SDD | Projeto único e framework adicional de arquitetura não adotados; Api usa Infrastructure como raiz de composição | FNR-003: testar ProjectReference e revisar Controllers; implementação ainda não validada |
 | DT-39 | Claims mínimas e direção HS256 com chave de pelo menos 256 bits; rotação/tolerância explícitas | Direção/proposta; P §5 / decisor pendente | Emissor/consumidor único já indicado no §5 | Alternativas de assinatura não registradas; segredo estável por ambiente exige operação segura | FNR-009/025; algoritmo/validação/rotação testados |
 | DT-40 | Modelo relacional, UUIDs, numeric(19,4), índices, datas e reconciliação de identidade | Proposta; P §10 / decisor pendente | Integridade/identidade e semântica de datas descritas no §10 | Índices a refinar; não deduplicar por descrição/data/valor; não excluir por ausência | FNR-005/007/012, contrato e migrations locais verificados |
 | DT-41 | Contratos DTO, paginação, erros e rotas HTTP | Proposta; P §11 / decisor pendente | Totais de todo o filtro e erros sanitizados descritos no §11 | Alternativas de contrato não registradas; preservar autorização e compatibilidade | FNR-011/015 e respectivos SDDs antes de estabilizar contratos |
@@ -125,11 +128,11 @@ flowchart LR
     I --> E["Pluggy / HTTPS"]
 ```
 
-Legenda: visão **planejada**, sem componentes implementados ou implantação comprovada. Angular/API/banco e hospedagens são escolhas herdadas; as dependências entre projetos seguem a direção proposta no §3. Setas internas mostram dependências/responsabilidades, não chamadas de rede entre serviços: Api, Application, Domain e Infrastructure compõem um backend. PostgreSQL local em Docker substitui Neon no desenvolvimento; a interface não consulta Pluggy nem banco diretamente. A evolução deve manter os limites dos módulos e rever contratos antes de ampliar o escopo, sem introduzir microserviços ou novos usuários implicitamente.
+Legenda: visão **planejada** do produto integrado, sem implantação comprovada. A base backend FNR-003 tem evidências locais em AMBIENTE.md; isso não implementa as integrações do diagrama. Angular/API/banco e hospedagens são escolhas herdadas; as dependências entre projetos seguem DT-38, aprovada no SDD FNR-003 e nesta revisão canônica no §3. Setas internas mostram dependências/responsabilidades, não chamadas de rede entre serviços: Api, Application, Domain e Infrastructure compõem um backend. PostgreSQL local em Docker substitui Neon no desenvolvimento; a interface não consulta Pluggy nem banco diretamente. A evolução deve manter os limites dos módulos e rever contratos antes de ampliar o escopo, sem introduzir microserviços ou novos usuários implicitamente.
 
 ## 3. Estrutura confirmada
 
-Referências: DT-01–DT-14, DT-18 e direção proposta DT-38. A estrutura é confirmada; a direção das referências explicitamente proposta abaixo continua sujeita à revisão em FNR-003.
+Referências: DT-01–DT-14, DT-18 e DT-38 aprovada no SDD FNR-003 e nesta revisão canônica 0.3; a implementação continua sujeita aos testes e à revisão.
 
 ```text
 Finora.Api             endpoints, autenticação e composição das dependências
@@ -141,7 +144,9 @@ finora-web             Angular
 
 Organizar as funcionalidades por módulos dentro dessa estrutura: integração, transações, dashboard e investimentos. Endpoints implementados em Controllers no projeto Finora.Api; regras financeiras e importação não devem ficar nos Controllers.
 
-Direção proposta das referências: Domain não referencia os outros projetos; Application referencia Domain; Infrastructure implementa os contratos necessários e referencia Application/Domain; Api referencia Application e Infrastructure para compor a aplicação. Contratos HTTP não devem expor entidades do EF ou respostas brutas da Pluggy.
+Direção aprovada no SDD FNR-003: Domain não referencia os outros projetos; Application referencia Domain; Infrastructure implementa os contratos necessários e referencia Application/Domain; Api referencia Application e Infrastructure para compor a aplicação. Contratos HTTP não devem expor entidades do EF ou respostas brutas da Pluggy.
+
+O incremento FNR-003 estabelece `backend/Finora.slnx`, os quatro projetos `net10.0` e testes MSTest.Sdk/MTP, sem classes de negócio artificiais. O único endpoint é `GET /health`, por Controller e DTO, com HTTP 200 e JSON exato `{"status":"ok"}`, sem credenciais ou consultas externas: liveness, não prontidão de banco/Pluggy. OpenAPI nativo (Microsoft.AspNetCore.OpenApi) em `/openapi/v1.json` e Swagger UI (somente Swashbuckle.AspNetCore.SwaggerUI, sem SwaggerGen) em `/swagger` ficam exclusivamente em Development, com assets locais e perfis em loopback. Testes HTTP cobrem documento/UI/assets em Development e indisponibilidade fora dele; Try it out será verificado no navegador. Não antecipar JWT/Authorize, banco, integração financeira ou deploy. Versões exatas e evidências pertencem a [AMBIENTE.md](AMBIENTE.md), conforme D4 do [SDD FNR-003](../openspec/changes/fnr-003-criar-base-backend/design.md), preservando a baseline aprovada.
 
 Application acessa a persistência por contratos específicos, como ITransactionRepository, implementados na Infrastructure com EF Core. As interfaces devem atender às operações dos casos de uso; não retornar IQueryable para que a camada Application componha consultas dependentes do provedor. Fronteiras de transação e gravação serão detalhadas com o fluxo de importação.
 

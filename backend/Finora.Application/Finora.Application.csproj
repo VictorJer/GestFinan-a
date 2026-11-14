@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Casos de uso dependem somente do domínio. -->
+  <ItemGroup>
+    <ProjectReference Include="../Finora.Domain/Finora.Domain.csproj" />
+  </ItemGroup>
+</Project>
