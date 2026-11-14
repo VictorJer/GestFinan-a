@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!-- A API compõe a infraestrutura; somente o gerador OpenAPI nativo produz contratos. -->
+  <ItemGroup>
+    <ProjectReference Include="../Finora.Application/Finora.Application.csproj" />
+    <ProjectReference Include="../Finora.Infrastructure/Finora.Infrastructure.csproj" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.15" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.2.3" />
+  </ItemGroup>
+</Project>
