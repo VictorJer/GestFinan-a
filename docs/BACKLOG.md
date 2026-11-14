@@ -108,14 +108,16 @@ O status inicial dos itens é **A fazer**; atualizações ficam no registro de e
 
 **FNR-002 — Ambiente**
 
-- Conferir .NET SDK, Node, Angular CLI, Docker e gerenciador de pacotes; validar compatibilidade das versões escolhidas.
-- Fixar versões compatíveis, arquivos de lock, ferramenta EF e runner dos testes Angular; documentar os comandos reais, sem presumir ferramentas instaladas.
+- Fixar/documentar versões aprovadas do SDK .NET, Node/npm e ferramenta EF local; registrar fontes, comandos e evidências reais de compatibilidade e disponibilidade.
+- Conferir o acesso ao engine Docker Linux e Compose; registrar eventual bloqueio sem criar containers, baixar imagens ou alterar configurações do sistema.
+- Não criar projetos nem locks vazios: o lock NuGet e testes executáveis pertencem ao projeto backend de FNR-003; o `package-lock.json`, `npm ci` e testes executáveis pertencem ao projeto frontend de FNR-019. Validação EF/Npgsql/PostgreSQL pertence a FNR-006.
+- Documentar a matriz, política de atualização e validações adiadas; não declarar o ambiente concluído enquanto os gates desta tarefa estiverem pendentes.
 
 **FNR-003 — Estrutura backend**
 
 - Criar Api, Application, Domain e Infrastructure com referências na direção definida no TDD; Controllers sem regras financeiras.
-- Preparar MSTest e um check real de build; incluir arquivos de configuração de exemplo sem segredos e regras de ignore adequadas.
-- A solução compila e o comando documentado de verificação funciona. Não expor dados bancários em endpoint desprotegido.
+- Preparar MSTest.Sdk/Microsoft.Testing.Platform conforme a baseline aprovada, gerar e versionar o lock NuGet com as dependências reais do backend e demonstrar restore bloqueado e teste executável; incluir configuração de exemplo sem segredos e regras de ignore adequadas.
+- A solução compila e os comandos documentados de restore/build/test funcionam. Não expor dados bancários em endpoint desprotegido.
 
 **FNR-004 — Leitura real**
 
@@ -220,8 +222,8 @@ O status inicial dos itens é **A fazer**; atualizações ficam no registro de e
 **FNR-019 — Base Angular**
 
 - Criar Angular, HTML/Tailwind, rotas e componentes compartilhados, com organização por funcionalidades.
-- Serviços com Signals e HttpClient/RxJS; configurar URL da API por ambiente, sem segredos de servidor.
-- Build e runner de testes funcionam. O visual usa o protótipo como referência, sem inventar funcionalidades prontas.
+- Serviços com Signals e HttpClient/RxJS; configurar URL da API por ambiente, sem segredos de servidor. Fixar o gerenciador npm e as versões acordadas no manifesto do workspace.
+- Gerar/versionar `package-lock.json` a partir do projeto real e validar com `npm ci`; build e runner Vitest executável funcionam. O visual usa o protótipo como referência, sem inventar funcionalidades prontas.
 
 **FNR-020 — Sessão na interface**
 
@@ -322,6 +324,7 @@ Ao iniciar uma tarefa, preencher este quadro sem alterar o significado dos crit�
 | Item | Status | Mudança OpenSpec | Branch / PR | Evidência ou bloqueio |
 |---|---|---|---|---|
 | FNR-001 | Concluído | [fnr-001-alinhar-documentacao — arquivada em 13/11/2026](../openspec/changes/archive/2026-11-13-fnr-001-alinhar-documentacao/proposal.md) | `docs/fnr-001-alinhar-documentacao`; [PR #1](https://github.com/VictorJer/GestFinan-a/pull/1); merge `075af734571a1a8aa096a718d5f9b133d1078db6` | Documentos e SDD aprovados explicitamente pelo autor nesta conversa em 13/11/2026; revisão do PR confirmada por ele: “ja revisei o PR”. OpenSpec estrito, diff check e oito links locais aprovados. Integração por `VictorJer` em 13/11/2026 às 18:14:07 UTC. Verificação das exigências: main sem proteção clássica, regras aplicáveis ou rulesets na consulta; sem workflows no commit integrado, sem check runs/status contexts no head do PR e sem exigência documental de revisão formal no GitHub. Nenhum bloqueio adicional identificado. Não houve evento formal APPROVED nem checks remotos aprovados; conclusão fundamentada nas evidências aplicáveis, não apenas no merge. Limite histórico da consulta registrado nas tarefas OpenSpec. Arquivada por solicitação do autor, com 11/11 tarefas completas e sem delta specs; sem código ou avanço para FNR-002. |
+| FNR-002 | Em validação | [fnr-002-preparar-ambiente](../openspec/changes/archive/2026-11-14-fnr-002-preparar-ambiente/proposal.md) | `chore/fnr-002-preparar-ambiente`; [PR #7 aberto](https://github.com/VictorJer/GestFinan-a/pull/7) | Transição de Em implementação para Em validação em 14/11/2026, após revisão e aceite explícito do autor. SDD, baseline e diff aprovados; versões locais, EF local, Docker/Compose, links e validações documentais confirmados. PR sem checks reportados; revisão pendente. Testes integrados continuam com FNR-003/006/019. Não concluída. |
 
 Adicionar os demais itens conforme entrarem em execução. Um PR aberto não significa tarefa concluída. Manter apenas uma mudança principal em implementação por vez no trabalho individual.
 
