@@ -1,5 +1,7 @@
 using System.Net;
 using System.Text.Json;
+using Finora.Infrastructure.Pluggy;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Finora.Api.Tests;
@@ -26,5 +28,14 @@ public sealed class HealthTests
         using var json = JsonDocument.Parse(body);
         Assert.AreEqual(1, json.RootElement.EnumerateObject().Count());
         Assert.AreEqual("ok", json.RootElement.GetProperty("status").GetString());
+    }
+
+    // O host HTTP normal não resolve cliente financeiro nem exige configuração Pluggy.
+    [TestMethod]
+    public async Task HttpHostDoesNotRegisterPluggyClient()
+    {
+        await using var factory = new ApiFactory("Development");
+
+        Assert.IsNull(factory.Services.GetService<PluggyApiClient>());
     }
 }

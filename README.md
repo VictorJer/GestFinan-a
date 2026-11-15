@@ -6,7 +6,7 @@ Projeto desenvolvido como proposta de Trabalho de Conclusão de Curso (TCC), com
 
 Como complementos, o projeto prevê uma carteira de investimentos com cadastro manual e um simulador de evolução patrimonial com aportes.
 
-> **Status:** ideia aprovada pelo professor e protótipo navegável disponível. FNR-001/002/003 concluídas nos respectivos escopos conforme o backlog. Base backend FNR-003 validada localmente, revisada, aceita pelo autor e integrada pelo [PR #8](https://github.com/VictorJer/GestFinan-a/pull/8), merge `2bd63ae`. FNR-004 foi aceita localmente pelo autor após prova real em 15/11/2026: 321 transações em uma página, sem comprovar importação completa. Aguardam-se autorização para commits/PR e integração. Ainda não há importação persistente, dashboard ou publicação desta funcionalidade. Angular e fluxo financeiro integrado continuam pendentes.
+> **Status:** ideia aprovada pelo professor e protótipo navegável disponível. FNR-001/002/003 concluídas nos respectivos escopos conforme o backlog. Base backend FNR-003 validada localmente, revisada, aceita pelo autor e integrada pelo [PR #8](https://github.com/VictorJer/GestFinan-a/pull/8), merge `2bd63ae`. FNR-004 foi aceita e integrada pelo [PR #10](https://github.com/VictorJer/GestFinan-a/pull/10), com prova real limitada a uma página (321 transações). FNR-005 está em validação parcial: incremento técnico e três coletas reais limitadas a uma página cada; a matriz não reconhece compras e a competência permanece semânticamente não confirmada, portanto o gate financeiro está bloqueado. Ainda não há importação persistente, dashboard ou publicação desta funcionalidade; a tarefa 5.3 e o aceite final continuam pendentes.
 
 ## Objetivo
 
@@ -24,12 +24,13 @@ Desenvolver uma aplicação web que consulte dados de cartão de crédito por me
 | TDD v0 | Revisões 0.5 e 0.6 aprovadas documentalmente; 0.6 registra DT-49/MediatR 12.5.0 |
 | Base backend FNR-003 | Restore com --locked-mode/build e 20 testes aprovados localmente; Swagger verificado no navegador; revisão e aceite explícitos; PR #8 integrado. Sem reviews formais/checks reportados no GitHub; evidências e limites no backlog e guia. |
 | Conexão no painel do provedor | Cartão e transações visualizados pelo autor |
-| Consulta local pelo backend .NET | Em implementação; fluxo simulado cobre uma página, prova real pendente |
+| Consulta local pelo backend .NET (FNR-004) | Concluída no escopo limitado, com prova real de uma página; não comprova importação completa |
+| Contrato e normalização Pluggy (FNR-005) | Em validação; análise limitada documentada; regra positiva de compra e competência bloqueadas por evidência insuficiente |
 | Aplicação integrada e publicação definitiva | Pendentes |
 
-A visualização no painel da Pluggy é evidência preliminar de acesso aos dados. A leitura pela API do Finora, a cobertura dos campos e o comportamento da sincronização ainda precisam ser validados.
+A visualização no painel da Pluggy é evidência preliminar de acesso aos dados. A leitura local pela API foi demonstrada em FNR-004; FNR-005 observou campos e agregados em três coletas autorizadas de uma página cada, mas não valida histórico completo, regra positiva de compra, competência por instituição ou comportamento de sincronização.
 
-A primeira meta funcional é consultar transações reais pelo backend .NET em prova de conceito local, sem exposição pública. Dashboard e aplicação hospedada vêm depois dessa validação.
+A prova de conceito local de consulta real foi concluída em FNR-004 sem exposição pública. Validar o contrato financeiro conservador em FNR-005 ainda é um gate anterior à persistência, dashboard e aplicação hospedada.
 
 ## Documentação e fluxo de trabalho
 
@@ -70,7 +71,15 @@ dotnet run --project backend/Finora.Api --no-build --no-restore --no-launch-prof
 
 Configure `Pluggy:ClientId`, `Pluggy:ClientSecret` e `Pluggy:ItemId` em User Secrets do projeto `backend/Finora.Api` ou em variáveis de ambiente protegidas; `Pluggy:AccountId` é opcional e serve para selecionar um cartão quando houver mais de um. Não passe credenciais ou IDs como argumentos do comando, não os cole em logs/saídas e não os adicione a arquivos versionados. As chaves de configuração são descritas em [AMBIENTE.md](docs/AMBIENTE.md#início-e-aprovação-do-sdd--fnr-004--15112026) e os segredos de desenvolvimento devem permanecer fora do repositório.
 
-O comando consulta a conexão, seleciona uma conta de cartão e lê **somente a primeira página** de `/v2/transactions`. A saída resume etapa, quantidade e existência de continuação; cursor e dados de compra não são exibidos. Uma resposta vazia é inconclusiva, e uma página com transações não significa importação completa, persistência no Finora ou atualização forçada na instituição. Cada chamada tem timeout de 30 segundos; o fluxo inteiro, 120 segundos; não há retries. Códigos atuais: `0` leitura com lançamentos; `1` falha operacional/timeout; `2` configuração/argumentos inválidos ou conta não selecionável; `3` leitura sem lançamentos (inconclusiva); `4` conexão bloqueada; `130` cancelamento. Logs padrão do `HttpClientFactory` estão desativados para o cliente Pluggy. Em 15/11/2026, uma prova real autorizada leu 321 transações em uma página; o resultado e seus limites estão registrados em `docs/AMBIENTE.md`. A revisão final e o aceite desta mudança continuam pendentes.
+Para analisar a cobertura disponível, sem iniciar listener HTTP, usar explicitamente `pluggy-analyze` com a mesma configuração protegida:
+
+```powershell
+dotnet run --project backend/Finora.Api --no-build --no-restore --no-launch-profile -- pluggy-analyze
+```
+
+A análise consulta desde a data de calendário de 12 meses antes da referência UTC, não envia `dateTo` para preservar registros futuros e percorre no máximo 100 páginas, com 30 segundos por chamada e 120 segundos totais, sem retry automático. A saída contém somente contagens agregadas, duração, meses distintos com registros e disponibilidade de campos; não comprova 12 meses de histórico e não valida regras financeiras sem evidência. Consulte [PLUGGY-CONTRACT.md](docs/PLUGGY-CONTRACT.md) para filtros, limites e limitações. O código 0 indica apenas coleta terminada com registros; amostra vazia retorna 3, falhas operacionais/incompletas 1, configuração/argumentos 2, conexão bloqueada 4 e cancelamento 130.
+
+O comando consulta a conexão, seleciona uma conta de cartão e lê **somente a primeira página** de `/v2/transactions`. A saída resume etapa, quantidade e existência de continuação; cursor e dados de compra não são exibidos. Uma resposta vazia é inconclusiva, e uma página com transações não significa importação completa, persistência no Finora ou atualização forçada na instituição. Cada chamada tem timeout de 30 segundos; o fluxo inteiro, 120 segundos; não há retries. Códigos atuais: `0` leitura com lançamentos; `1` falha operacional/timeout; `2` configuração/argumentos inválidos ou conta não selecionável; `3` leitura sem lançamentos (inconclusiva); `4` conexão bloqueada; `130` cancelamento. Logs padrão do `HttpClientFactory` estão desativados para o cliente Pluggy. A prova limitada da FNR-004 e a evidência agregada da FNR-005 estão registradas em `docs/AMBIENTE.md`; a segunda não confirmou regra positiva de compra nem competência. A revisão final e o aceite da FNR-005 continuam pendentes.
 
 Configuração versionada contém apenas opções não sensíveis. Detalhes de JSON, locks, portas e evidências no [guia de ambiente](docs/AMBIENTE.md#backend-fnr-003--versões-verificadas-em-14112026). Banco, Docker e credenciais de provedor não são pré-requisitos para estes comandos.
 

@@ -6,7 +6,13 @@ using MediatR;
 // Qualquer argumento de processo é tratado como comando, exceto a assinatura fixa do host de testes.
 if (args.Length > 0 && !PluggyReadCommand.IsApiTestHostInvocation(args))
 {
-    if (!PluggyReadCommand.HasValidArguments(args))
+    var isAnalysisCommand = string.Equals(args[0], "pluggy-analyze", StringComparison.Ordinal);
+    if (isAnalysisCommand && !PluggyAnalyzeCommand.HasValidArguments(args))
+    {
+        return await PluggyAnalyzeCommand.RejectArgumentsAsync(args, Console.Error);
+    }
+
+    if (!isAnalysisCommand && !PluggyReadCommand.HasValidArguments(args))
     {
         return await PluggyReadCommand.RejectArgumentsAsync(args, Console.Error);
     }
@@ -28,7 +34,9 @@ if (args.Length > 0 && !PluggyReadCommand.IsApiTestHostInvocation(args))
     Console.CancelKeyPress += cancelHandler;
     try
     {
-        return await PluggyReadCommand.RunAsync(args, commandHost.Services, Console.Out, cancellation.Token);
+        return isAnalysisCommand
+            ? await PluggyAnalyzeCommand.RunAsync(args, commandHost.Services, Console.Out, cancellation.Token)
+            : await PluggyReadCommand.RunAsync(args, commandHost.Services, Console.Out, cancellation.Token);
     }
     finally
     {

@@ -25,6 +25,7 @@ public static class PluggyServiceCollectionExtensions
             serviceProvider.GetRequiredService<PluggyOptions>()));
         services.AddScoped<PluggyConnectionInspector>();
         services.AddScoped<IPluggyLocalReader, PluggyLocalReader>();
+        services.AddScoped<IPluggyAnalysisReader, PluggyAnalysisReader>();
         return services;
     }
 }
