@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Integrações futuras implementarão contratos sem inverter a direção das referências. -->
+  <!-- Infraestrutura implementa contratos externos e alinha HttpClientFactory à baseline .NET 10. -->
   <ItemGroup>
     <ProjectReference Include="../Finora.Application/Finora.Application.csproj" />
     <ProjectReference Include="../Finora.Domain/Finora.Domain.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.15" />
   </ItemGroup>
 </Project>

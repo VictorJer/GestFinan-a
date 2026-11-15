@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Casos de uso dependem somente do domínio. -->
+  <!-- Casos de uso dependem do domínio e do mediador; I/O externo fica atrás de contratos. -->
   <ItemGroup>
     <ProjectReference Include="../Finora.Domain/Finora.Domain.csproj" />
+    <PackageReference Include="MediatR" Version="12.5.0" />
   </ItemGroup>
 </Project>
