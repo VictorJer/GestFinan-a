@@ -26,6 +26,6 @@ Nenhuma. `api-diagnostics` e `api-exploration` permanecem inalteradas: o health 
 
 - Implementação futura: `backend/Finora.Api` (modo de comando/composição), `backend/Finora.Application` (query/handler e contratos), `backend/Finora.Infrastructure` (HTTPS/configuração), testes e locks afetados.
 - Documentação futura: instruções/evidências em `docs/AMBIENTE.md`, resumo no `README.md` e status verdadeiro de FNR-004 em `docs/BACKLOG.md`; nenhum desses arquivos é alterado nesta proposta.
-- Referências canônicas: [backlog FNR-004](../../../docs/BACKLOG.md), [PRD 0.3](../../../docs/PRD.md) RF01, RNF-01/02/03/09/10 e [TDD 0.5](../../../docs/TDD.md) §§3/4/7, DT-27/38/48/49. RF02 e FNR-005 orientam limites, sem serem declaradas concluídas por esta prova.
+- Referências canônicas: [backlog FNR-004](../../../../docs/BACKLOG.md), [PRD 0.3](../../../../docs/PRD.md) RF01, RNF-01/02/03/09/10 e [TDD 0.5](../../../../docs/TDD.md) §§3/4/7, DT-27/38/48/49. RF02 e FNR-005 orientam limites, sem serem declaradas concluídas por esta prova.
 - Dependência externa: API Pluggy e autorização pessoal da aplicação sobre o item; acesso real ainda não verificado. MediatR 12.x requer seleção/aprovação de versão exata e verificação de licença, segurança e compatibilidade antes de instalação.
 - Estado: planejamento para revisão humana; não é aprovação do SDD, autorização de implementação, commit, PR ou deploy.

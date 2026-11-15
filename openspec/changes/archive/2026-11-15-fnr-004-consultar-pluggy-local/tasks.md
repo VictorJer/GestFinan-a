@@ -1,6 +1,6 @@
 # Tasks
 
-Planejamento aprovado e implementação parcial de FNR-004. Referências: [proposta](proposal.md), [SDD](design.md) e [spec](specs/pluggy-local-read/spec.md). As caixas só são concluídas com evidência correspondente; a existência dos artefatos não substitui revisão humana nem prova real.
+Implementação de FNR-004 concluída e aceita pelo autor; as 16 tarefas abaixo estão concluídas com evidências registradas. A prova real validou a leitura de 321 transações em uma única página, `has_more=false`, sem demonstrar importação completa nem persistência. Referências: [proposta](proposal.md), [SDD](design.md) e [spec](specs/pluggy-local-read/spec.md). O aceite não amplia o escopo para FNR-005.
 
 Em 15/11/2026, o autor autorizou executar as tarefas 3.1, 3.2 e 3.3 antes da 2.3 para completar a leitura antes de documentar um comando utilizável. A ordem alterada não amplia requisitos nem remove os gates 3.4–3.6; depois da primeira página funcional, retornar à tarefa 2.3.
 
