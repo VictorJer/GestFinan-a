@@ -12,18 +12,24 @@ internal sealed class PluggyApiClient : IDisposable
     private readonly HttpClient httpClient;
     private readonly PluggyOptions options;
     private readonly TimeSpan requestTimeout;
+    private readonly TimeProvider timeProvider;
     internal static readonly Uri BaseAddress = new("https://api.pluggy.ai/", UriKind.Absolute);
     private string? _apiKey;
     internal Uri? ConfiguredBaseAddress => httpClient.BaseAddress;
     internal string? ConfiguredItemId => options.ItemId;
     internal string? ConfiguredAccountId => options.AccountId;
 
-    // O tempo configurável internamente permite testar timeouts sem alterar o limite de produção.
-    internal PluggyApiClient(HttpClient httpClient, PluggyOptions options, TimeSpan? requestTimeout = null)
+    // Timeout e relógio são injetáveis para testar cancelamento sem esperar pelo tempo real.
+    internal PluggyApiClient(
+        HttpClient httpClient,
+        PluggyOptions options,
+        TimeSpan? requestTimeout = null,
+        TimeProvider? timeProvider = null)
     {
         this.httpClient = httpClient;
         this.options = options;
         this.requestTimeout = requestTimeout ?? DefaultRequestTimeout;
+        this.timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     // Impede chamadas quando faltam opções obrigatórias e nunca inclui os valores no resultado.
@@ -36,7 +42,11 @@ internal sealed class PluggyApiClient : IDisposable
         }
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(requestTimeout);
+        using var timer = timeProvider.CreateTimer(
+            static state => ((CancellationTokenSource)state!).Cancel(),
+            timeout,
+            requestTimeout,
+            Timeout.InfiniteTimeSpan);
         HttpResponseMessage response;
         try
         {
@@ -112,7 +122,11 @@ internal sealed class PluggyApiClient : IDisposable
         CancellationToken cancellationToken) where T : class
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(requestTimeout);
+        using var timer = timeProvider.CreateTimer(
+            static state => ((CancellationTokenSource)state!).Cancel(),
+            timeout,
+            requestTimeout,
+            Timeout.InfiniteTimeSpan);
         try
         {
             using var request = CreateAuthenticatedRequest(HttpMethod.Get, relativePath);
@@ -165,6 +179,101 @@ internal sealed class PluggyApiClient : IDisposable
     {
         var path = $"v2/transactions?accountId={Uri.EscapeDataString(accountId)}";
         return GetJsonAsync<PluggyTransactionsPage>(path, cancellationToken);
+    }
+
+    // A análise fixa host e endpoint, acrescentando a query opaca somente após validar seus filtros.
+    internal Task<PluggyApiResponse<PluggyAnalysisTransactionsPage>> GetAnalysisTransactionsPageAsync(
+        string accountId,
+        DateOnly dateFrom,
+        string? next,
+        CancellationToken cancellationToken)
+    {
+        if (!TryBuildAnalysisPath(accountId, dateFrom, next, out var path))
+        {
+            return Task.FromResult(new PluggyApiResponse<PluggyAnalysisTransactionsPage>(
+                null, PluggyLocalReadFailureCategory.InvalidResponse));
+        }
+
+        return GetJsonAsync<PluggyAnalysisTransactionsPage>(path, cancellationToken);
+    }
+
+    // Aceita somente accountId/dateFrom/after esperados e transporta a query original sem reserializá-la.
+    internal static bool TryBuildAnalysisPath(
+        string accountId,
+        DateOnly dateFrom,
+        string? next,
+        out string path)
+    {
+        path = string.Empty;
+        var account = Uri.EscapeDataString(accountId);
+        var date = dateFrom.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        if (next is null)
+        {
+            path = $"v2/transactions?accountId={account}&dateFrom={date}";
+            return true;
+        }
+
+        if (!next.StartsWith('?')
+            || next.Length < 2
+            || next.Contains('#')
+            || next.Contains('\\')
+            || next.Any(char.IsWhiteSpace))
+        {
+            return false;
+        }
+
+        var values = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var segment in next[1..].Split('&', StringSplitOptions.None))
+        {
+            var separator = segment.IndexOf('=');
+            if (separator <= 0)
+            {
+                return false;
+            }
+
+            string key;
+            string value;
+            try
+            {
+                key = Uri.UnescapeDataString(segment[..separator].Replace('+', ' '));
+                value = Uri.UnescapeDataString(segment[(separator + 1)..].Replace('+', ' '));
+            }
+            catch (UriFormatException)
+            {
+                return false;
+            }
+
+            if (key is not ("accountId" or "dateFrom" or "after"))
+            {
+                return false;
+            }
+
+            if (!values.TryGetValue(key, out var entries))
+            {
+                entries = [];
+                values.Add(key, entries);
+            }
+
+            entries.Add(value);
+        }
+
+        if (!HasSingle(values, "accountId", accountId)
+            || !HasSingle(values, "dateFrom", date)
+            || !values.TryGetValue("after", out var cursors)
+            || cursors.Count != 1
+            || string.IsNullOrWhiteSpace(cursors[0]))
+        {
+            return false;
+        }
+
+        path = "v2/transactions" + next;
+        return true;
+
+        // Parâmetros repetidos ou diferentes da consulta original não são normalizados silenciosamente.
+        static bool HasSingle(Dictionary<string, List<string>> query, string key, string expected) =>
+            query.TryGetValue(key, out var entries)
+            && entries.Count == 1
+            && string.Equals(entries[0], expected, StringComparison.Ordinal);
     }
 
     // Mantém redirects desativados para impedir que credenciais acompanhem respostas 3xx externas.
