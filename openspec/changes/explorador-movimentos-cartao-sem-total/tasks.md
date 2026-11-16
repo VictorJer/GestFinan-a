@@ -1,12 +1,14 @@
 # Tasks
 
+Direção de escopo e conteúdo documental revisado aprovados pelo titular em 16/11/2026 como parte do gate FNR-005/7.1; isso não aceita a implementação ou o encerramento deste explorador. O rastreamento próprio desta mudança não foi avançado nesta execução. O incremento técnico da FNR-005 está integrado pelo PR #12, merge `adee6998342722e905a1db98ed1423620ce77ee4`; isso não implementa este explorador. As tarefas de implementação permanecem pendentes. Os grupos 2–4 mapeiam trabalho futuro das entregas indicadas no backlog, não autorizam iniciá-las em sequência nem duplicar suas implementações. Recorrência será especificada e implementada em mudança própria.
+
 ## 1. Aprovar e alinhar o escopo documental
 
-- [ ] 1.1 Obter aprovação explícita desta mudança e do modelo sem soma monetária; registrar que isso não aprova regra de compra/competência nem fecha FNR-005/5.3.
-- [ ] 1.2 Revisar `docs/PRD.md` em RF04/RF07, regras de cartão e definição de pronto para separar explorador descritivo de indicadores financeiros completos; preservar o objetivo de longo prazo como dependente de gates e registrar a revisão pendente de aprovação.
-- [ ] 1.3 Revisar `docs/TDD.md` nos §§10–13 e §19 para manter natureza/situação/cobertura explícitas, proibir somas no frontend e definir dados de origem versus competência; validar rastreabilidade a RFs e backlog.
-- [ ] 1.4 Após aprovação das revisões canônicas, atualizar `docs/BACKLOG.md` para manter FNR-005/5.3 aberta, discriminar fatias descritivas de FNR-018/023 e suas dependências, e conferir que nenhum status de aceite representa trabalho não executado.
-- [ ] 1.5 Propor no backlog a separação entre o incremento técnico da FNR-005 já registrado como validado e a investigação financeira da tarefa 5.3 ainda bloqueada; conferir a rastreabilidade com as tarefas históricas sem reclassificar evidências nem marcar 5.3 concluída.
+- [x] 1.1 Apresentar e obter aprovação explícita do conteúdo revisado desta mudança e do modelo sem soma monetária; verificar que a direção já aprovada está distinguida do aceite documental final e que nenhuma regra de compra/competência é declarada validada.
+- [x] 1.2 Revisar `docs/PRD.md` em RF04/RF07, regras de cartão e definição de pronto para separar explorador descritivo de indicadores financeiros completos; preservar o objetivo de longo prazo dependente de gates e registrar a aprovação documental explícita de 16/11/2026, distinta do aceite da implementação.
+- [x] 1.3 Revisar `docs/TDD.md` nos §§10–13 e §19 para manter natureza/situação/cobertura explícitas, proibir somas no frontend e definir dados de origem versus competência; validar rastreabilidade a RFs e backlog.
+- [x] 1.4 Preparar o backlog revisado com FNR-005/5.3 substituída por revisão de escopo, não tecnicamente atendida; discriminar consulta FNR-015, lista FNR-022, resumos não monetários FNR-018 e visão descritiva FNR-023, verificando dependências sem ciclos ou lista duplicada. Registrar o aceite já obtido das revisões canônicas antes de qualquer implementação; não declarar encerramento fora dos limites aceitos.
+- [x] 1.5 Registrar no backlog o incremento técnico integrado pelo PR #12, o critério original de 5.3 não atendido, os critérios revisados de encerramento e o encaminhamento da recorrência para item/mudança próprios; verificar que o padrão de três meses exige confirmação pelo usuário, distingue metadados de parcelamento e mantém tolerâncias pendentes, sem reclassificar evidências nem marcar 5.3 concluída.
 
 ## 2. Expor movimentos e cobertura na API
 
@@ -17,7 +19,7 @@
 
 ## 3. Construir a visão de movimentos
 
-- [ ] 3.1 Após as dependências de base Angular e consulta de transações (FNR-019/FNR-022) estarem aceitas, montar a lista descritiva usando somente DTOs do backend; testes verificam valor por movimento, moeda, data de origem, natureza e situação.
+- [ ] 3.1 Após aceites da base Angular/sessão, da consulta protegida, da lista FNR-022 e dos resumos FNR-018 conforme dependências revisadas no backlog, integrar a lista existente à visão descritiva de FNR-023, sem reconstruí-la; testes de integração verificam apresentação de valor individual, moeda, data de origem, natureza e situação a partir dos DTOs do backend.
 - [ ] 3.2 Exibir cobertura/completude e rótulo explicativo para naturezas desconhecidas; testes de componente cobrem carga, ausência, falha, consulta parcial e conjunto com ambiguidades.
 - [ ] 3.3 Não calcular, retornar nem renderizar qualquer agregado monetário (incluindo total, subtotal, bruto/líquido, média, série, gráfico ou agrupamento por período/status/natureza/categoria); teste de API e UI comprova a proibição mesmo sob rótulos como “parcial” ou “informativo”.
 - [ ] 3.4 Fornecer resumo HTML acessível e documentar a diferença entre movimentos observados, natureza identificada e gasto financeiro não validado; verificar teclado e leitura sem gráficos enganadores.
@@ -30,8 +32,11 @@
 
 ## Workflow follow-up
 
-- O incremento técnico já validado da FNR-005 (tarefas 5.1–5.2, 5.4–5.15 e 6.1–6.3) permanece registrado como histórico; a investigação financeira da tarefa 5.3 permanece aberta e nenhuma tarefa/status histórico é reclassificado por esta proposta.
+- O incremento técnico integrado pelo PR #12 e suas tarefas já concluídas permanecem como histórico. O objetivo original de FNR-005/5.3 será registrado como substituído por revisão de escopo, não tecnicamente atendido, preservando o critério original; não converter a caixa pendente em conclusão técnica.
+- Encerrar a FNR-005 somente após alinhamento, validação e aceite explícito do conteúdo revisado e de seus critérios próprios. Implementar este explorador ou o detector de recorrência não é pré-requisito desse encerramento; nenhum deles é declarado pronto por esta proposta.
 - FNR-007/012/013/014 e as fatias de movimentos de FNR-015/022 podem avançar com identidade, campos de origem, paginação/cobertura e classificação conservadora, respeitando suas dependências próprias e sem total monetário.
-- FNR-019/021 podem avançar em sua base visual/conexão; somente uma fatia descritiva de FNR-018 e a visão de movimentos de FNR-023 podem avançar após revisão explícita das dependências do backlog.
-- Permanecem bloqueados a tarefa 5.3, totais/quantidades financeiras de compras em FNR-015/018/023, distribuição monetária por categoria e evolução de gastos por competência. Gasto líquido também exige vínculo confiável de estorno.
+- FNR-019 pode fornecer a base visual; FNR-021 depende da atualização e sessão. FNR-018 fornece resumos não monetários e FNR-023 reúne a visão descritiva, reutilizando a lista de FNR-022; revisar e aceitar as dependências do backlog antes de implementar cada entrega.
+- Permanecem adiados o reconhecimento automático de compras e os indicadores financeiros originais de FNR-015/018/023, incluindo totais/quantidades de compras, distribuição monetária por categoria e evolução por competência. Não são considerados atendidos por resumos descritivos. Gasto líquido também exige vínculo confiável de estorno.
+- Planejar recorrência em item/mudança próprios após histórico persistido, consulta protegida e fluxo de confirmação. A direção é candidato após padrão em três meses consecutivos, confirmação pelo usuário como assinatura/parcela/compras independentes e metadados de parcelamento separados. Tolerâncias de valor, datas e descrição permanecem pendentes e bloqueiam implementar o detector; valor igual sozinho não basta. Não criar capability ou implementar o detector nesta mudança.
 - Indicadores de gasto só podem ser planejados em mudança posterior após evidência aprovada para reconhecer compras, cobertura classificatória suficiente, semântica temporal/competência e, para líquido, vínculo confiável de estornos.
+- Esta etapa documental não executa coletas reais, código, commits, PR, sync, arquivamento ou publicação. A aprovação da direção não substitui aprovação do conteúdo final ou aceite de encerramento.
