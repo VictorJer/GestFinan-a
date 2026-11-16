@@ -2,17 +2,19 @@
 
 ## Context
 
-Motivação em [proposal.md](proposal.md). Proposta, specs e SDD originais foram aprovados e a implementação-base da FNR-005 foi aceita parcialmente. O adendo D7 foi aprovado explicitamente pelo titular no harness em 15/11/2026; a autorização de uma coleta adicional será usada somente após implementar e testar o diagnóstico. Referências canônicas: PRD 0.3 e TDD 0.6; decisões não alteradas continuam herdadas.
+Motivação em [proposal.md](proposal.md). Proposta, specs e SDD originais foram aprovados e a implementação-base da FNR-005 foi aceita parcialmente. D7 e a revisão conservadora D4 foram posteriormente aprovados e entregues no [PR #12](https://github.com/VictorJer/GestFinan-a/pull/12), merge `adee6998342722e905a1db98ed1423620ce77ee4`. As autorizações históricas de coleta já foram consumidas nas execuções documentadas; não existe autorização de nova coleta neste pedido. PRD 0.4, TDD 0.7 e backlog 0.2 foram aprovados documentalmente em 16/11/2026, e o titular aceitou o encerramento técnico conservador da FNR-005; decisões não alteradas continuam herdadas.
 
-A `main` contém FNR-004 integrada pelo PR #10 e encerramento pelo PR #11. O `Program.cs` distingue modo HTTP e `pluggy-read`; a query usa MediatR 12.5.0, o inspetor valida item/cartão e o leitor faz uma única consulta a `/v2/transactions`. Os DTOs de transação retêm somente `id`/`accountId`; há 58 testes aprovados historicamente, não reexecutados neste planejamento. O README e trechos introdutórios dos documentos ainda descrevem estados anteriores; o registro FNR-004 do backlog e o Git são a referência de entrega.
+**Contexto de abertura — histórico preservado:** a base era FNR-004 integrada pelo PR #10 e encerramento pelo PR #11. O `Program.cs` distinguia modo HTTP e `pluggy-read`; a query usava MediatR 12.5.0, o inspetor validava item/cartão e o leitor fazia uma única consulta a `/v2/transactions`. Os DTOs estreitos da PoC retinham somente `id`/`accountId`; havia 58 testes aprovados historicamente. Isso não descreve todos os contratos da análise posteriormente integrada.
+
+**Estado atual desta revisão:** PR #12 integrado e presente na main local, com `pluggy-analyze`, contratos ampliados isolados, regras puras conservadoras e testes históricos registrados nas tarefas (último resultado 127/127, não reexecutado aqui). O titular aprovou o conteúdo documental e aceitou o encerramento técnico conservador em 16/11/2026; o objetivo original de 5.3 continua substituído por revisão de escopo e não atendido tecnicamente. D1–D7 conservam o desenho/evidência do incremento; D8 registra o destino do objetivo pendente e os critérios de encerramento. A consulta ao PR retornou reviews/checks reportados vazios, o que não equivale a aprovação formal.
 
 Este desenho é necessário por atravessar camadas, introduzir semântica financeira e envolver paginação autenticada e privacidade. Não pressupõe semântica já comprovada pelos 321 registros: a evidência anterior não contém valores nem datas.
 
 ## Goals / Non-Goals
 
-**Goals:** produzir contrato mínimo reutilizável e regras puras, separar transporte de interpretação, medir uma leitura real limitada e documentar exatamente o que foi validado. As duas specs desta mudança definem o comportamento observável.
+**Goals do incremento preservado:** produzir contrato mínimo reutilizável e regras puras, separar transporte de interpretação, medir uma leitura real limitada e documentar exatamente o que foi validado. As duas specs desta mudança definem o comportamento observável. **Objetivo desta revisão documental:** preservar o incremento integrado e seu resultado, registrar 5.3 como substituída e não tecnicamente atendida e definir o aceite revisado do contrato conservador, sem ampliar regras financeiras ou efetuar nova medição.
 
-**Non-Goals:** entidades EF, banco, deduplicação persistente, reconciliação de reconexão, SyncRun, RabbitMQ/MassTransit, webhooks, endpoints financeiros, JWT, interface e agregação do dashboard. Não alterar `pluggy-local-read`, `api-diagnostics` ou `api-exploration`. Não prometer normalização de qualquer instituição nem disponibilidade de campos pagos.
+**Non-Goals:** entidades EF, banco, deduplicação persistente, reconciliação de reconexão, SyncRun, RabbitMQ/MassTransit, webhooks, endpoints financeiros, JWT, interface, detector/confirmação de recorrência e agregação do dashboard. Não alterar `pluggy-local-read`, `api-diagnostics` ou `api-exploration`. Não prometer normalização de qualquer instituição nem disponibilidade de campos pagos. O explorador é a mudança existente; FNR-038 terá mudança própria, não capabilities adicionais da FNR-005.
 
 ## Decisions
 
@@ -58,7 +60,7 @@ Cada bucket e cruzamento terá dois contadores separados: **received** increment
 
 A implementação processa e descarta cada payload como hoje, retendo somente estruturas internas de contagem e a identidade/fingerprint temporária já necessária à deduplicação. A allowlist de saída é atualizada explicitamente e testes sentinela cobrem enums desconhecidos, IDs, valores, descrições, cursores, URLs e textos/valores de data; apenas rótulos internos e inteiros agregados podem aparecer. Não são adicionados endpoints, persistência, retries nem alterações a limites: 100 páginas, 30 s por chamada e 120 s totais.
 
-Execução: após a revisão explícita deste adendo, consumir uma única autorização existente para uma coleta lógica, seguindo páginas até `next=null` dentro do orçamento; nenhuma repetição automática nem segunda execução. Depois, entregar roteiro de conferência exclusivamente local ao titular e aguardar confirmação. Sem essa conferência, 5.3 permanece aberta; nenhuma contagem autoriza ampliar classificação ou declarar competência.
+**Roteiro histórico de execução D7 — já executado:** após a revisão explícita do adendo, consumir a autorização então existente de uma coleta lógica, seguindo páginas até `next=null` dentro do orçamento, sem repetição automática ou segunda execução; entregar roteiro de conferência exclusivamente local ao titular. A execução de uma página e a conferência de um caso constam nas tarefas 5.7/5.8 e nos documentos de evidência. O critério original de 5.3 continuou sem atendimento técnico; seu destino nesta revisão é tratado em D8. Este roteiro não renova autorização nem permite ampliar classificação ou declarar competência a partir de contagens.
 
 ### D4 — Matriz financeira conservadora com gate de evidência (hipótese original em revisão)
 
@@ -75,6 +77,8 @@ As regras são o desenho conservador aprovado; a confirmação local citada abai
 | Ausência, `OUTROS`, operação nova ou combinação contraditória sem regra validada | Desconhecido com motivo; não compra por sinal isolado |
 
 Não usar expressões de descrição como classificador padrão. A documentação atual enumera operações especiais, mas não garante um código universal de compra: a regra positiva deve ser fechada por evidência documental e amostra local na tarefa de validação. Até lá, o fallback é desconhecido; se a amostra não sustentar distinguir compras, isso bloqueia declarar normalização validada e exige atualizar/revisar os artefatos antes de ampliar a regra. Ausência de vínculo de estorno é limitação explícita para FNR-018, não permissão de abatimento automático.
+
+**Limite de aceite revisado:** esse bloqueio continua válido para afirmar reconhecimento automático de compras ou produzir os indicadores financeiros adiados, não como requisito de nova prova financeira para encerrar o incremento técnico conservador. D8 registra a substituição do objetivo original de 5.3, sem considerá-lo tecnicamente atendido e sem ligar a regra positiva.
 
 #### Revisão de D4 aprovada e aplicada de forma conservadora
 
@@ -94,6 +98,8 @@ Preservar string/semântica original do campo selecionado e valor temporal tipad
 
 Consequência: a primeira análise compara regras em memória e registra apenas indicadores de coerência, não datas individuais. Sem confirmação da semântica da conexão, competência recebe limitação e registros ambíguos não são elegíveis. Divergência que exija outra regra obriga atualizar este desenho/specs afetadas e revisar antes de continuar; não fechar política silenciosamente durante implementação. Alternativa rejeitada: truncar toda string ISO antes do fuso ou converter data de calendário como instante, pois deslocaria limites de mês.
 
+**Alinhamento 0.7:** preservar o texto original e a normalização técnica testada não comprova competência. Persistência e listagem descritiva podem usar a data de origem explicitada sem exigir competência financeira confirmada. Esse uso não libera agregados monetários ou conclui o critério financeiro original.
+
 ### D6 — Evidência, privacidade e encerramento do contrato
 
 Saída allowlist: estágio, resultado, contagens, duração, paginação terminada, campos presentes/ausentes, contagens por enum interno e motivos fixos de exclusão. Não imprimir enum externo arbitrário, descrições, valores individuais, IDs, cursores ou datas de transação. Cobertura pública apenas por meses/indicador agregado autorizado; se isso não bastar, manter como indeterminada, sem exportar amostra. Não calcular gastos reais no console.
@@ -104,6 +110,24 @@ Usar códigos da família existente: 0 análise terminada com registros (não si
 
 Autorização de planejamento/aplicação não autoriza executar a consulta com credenciais do titular. Pedir autorização específica da prova real após explicar orçamento e saída, sem ler valores secretos por ferramentas. Testes usam handlers HTTP e fixtures sintéticas; jamais copiar payloads pessoais para arquivos ou snapshots. Comentários dos blocos de código e testes serão em português conforme AGENTS.md.
 
+### D8 — Revisão de escopo e critérios de encerramento — aceita pelo titular em 16/11/2026
+
+O titular aprovou a direção e, em 16/11/2026, o conteúdo documental final e o encerramento técnico conservador da FNR-005. Preservar PR #12, as caixas técnicas já concluídas, o texto do critério original, os testes históricos e as observações sanitizadas. Esse aceite não declara 5.3 tecnicamente atendida nem valida compra ou competência.
+
+Registrar **5.3 — substituída por revisão de escopo, não atendida tecnicamente**, sem marcar sua caixa de execução como concluída. O aceite revisado foi registrado separadamente nas tarefas 7.1–7.3; eventual mudança na contagem do CLI não é evidência de atendimento financeiro. A classificação automática de compras e os indicadores dependentes de compra/competência são adiados para investigação/mudança próprias, não implementados pelo explorador ou pela recorrência.
+
+Critérios revisados para encerrar o incremento técnico, verificados e aceitos pelo titular em 16/11/2026:
+
+1. Identificar a entrega integrada pelo PR #12/`adee699` e preservar o resultado original não atendido de 5.3, com referência à direção aprovada e aos documentos revisados.
+2. Conservar contratos, fallback desconhecido e regra positiva desligada, distinguindo evidência real limitada, documentação e testes sintéticos; não reinterpretar os 319 buckets históricos do parser anterior nem o caso individual confirmado.
+3. Alinhar e aprovar explicitamente o conteúdo final de PRD/TDD/backlog e dos artefatos afetados da FNR-005/explorador, com dependências e objetivos adiados rastreáveis.
+4. Executar verificações documentais proporcionais (OpenSpec, links, diff/inventário e preservação de código/evidências), distinguindo validações atuais de testes históricos e checks/reviews reportados pelo GitHub.
+5. Apresentar o resultado para aceite explícito do encerramento revisado. Implementar explorador ou recorrência não é pré-requisito desse aceite; não são declarados prontos por ele. Sync/arquivo e integração deste alinhamento exigem a etapa/autorização aplicável, sem execução neste pedido.
+
+**Fronteiras das próximas entregas:** reutilizar a [mudança do explorador](../explorador-movimentos-cartao-sem-total/proposal.md) para FNR-015/018/022/023, com valores individuais e resumos não monetários, após suas dependências técnicas. FNR-038 planeja recorrência em mudança própria: candidato após padrão em três meses consecutivos de histórico observado; confirmação como assinatura, parcela ou compras independentes; metadados de parcelamento separados. Valor igual sozinho não basta. Tolerâncias de valor, datas e descrição, modelo e contratos ficam pendentes antes de implementar; confirmação não altera natureza, situação ou competência. Não criar artefatos dessa nova mudança neste `/opsx-update`.
+
+**Alternativas:** manter 5.3 como bloqueio absoluto do MVP impediria entregar consulta descritiva já útil; marcá-la tecnicamente atendida falsificaria o resultado; incorporar telas/detector à FNR-005 misturaria intenções. A revisão explícita de escopo preserva o critério não atendido e permite aceitar o incremento técnico pelos resultados reais, deixando os objetivos financeiros e as funcionalidades futuras rastreáveis e separados.
+
 ## Risks / Trade-offs
 
 - [Não encontrar estornos/parcelas ou semântica confiável] --> Registrar não observado, manter fallback desconhecido e bloquear critérios dependentes não demonstrados; testes fictícios não substituem evidência real.
@@ -112,19 +136,20 @@ Autorização de planejamento/aplicação não autoriza executar a consulta com 
 - [Teto interromper volume maior] --> Terminar incompleto e revisar orçamento antes de repetir; não aumentar limites automaticamente.
 - [Campo de parcela/fatura/limite ou enriquecimento pago ausente] --> Modelar como opcional e não disponível; não depender de categoria paga ou adicionar contratação.
 - [Logging HTTP ou exceções vazarem finanças] --> Preservar supressão de logs do cliente e ampliar testes sentinela de stdout/stderr/logs em sucesso, falha e cancelamento.
-- [Normalizador conservador excluir muitos lançamentos] --> Aceitar exclusão explícita em vez de totais falsos; validação bloqueia etapas dependentes até revisão da regra, sem ampliar silenciosamente escopo.
+- [Normalizador conservador excluir muitos lançamentos de elegibilidade financeira] --> Preservar desconhecidos na consulta descritiva e adiar indicadores, em vez de publicar totais falsos; o bloqueio financeiro não impede persistência/listagem com incerteza explícita após aceite do escopo revisado.
 - [Cruzamentos gerarem células raras ou interpretação indevida] --> Exibir somente contagens em categorias fixas, separar recebidos/únicos, declarar os eixos independentes e impedir uso dos diagnósticos para reclassificar ou calcular competência.
 
 ## Migration Plan
 
-Sem migration, deploy ou recursos externos novos. Após aprovação separada dos artefatos, implementar somente FNR-005 na feature branch; validar restore locked/build/testes/privacidade e executar a prova real somente com autorização específica. Atualizar documentos de evidência e revisão do TDD apenas quando necessário, preservando aprovações históricas. Revisão de conteúdo e autorização própria precedem commits/PR. Sync/arquivo somente após validação e aceite; não iniciar FNR-006 ou seguintes automaticamente.
+Sem migration, deploy ou recursos externos novos. O incremento técnico já foi integrado pelo PR #12; restore locked/build/testes/privacidade e coletas autorizadas pertencem ao histórico preservado nas tarefas/evidências. O diff documental foi apresentado, aprovado e aceito pelo titular em 16/11/2026; esta revisão não altera código, repete coleta, atualiza locks, cria mudança de recorrência, faz commit/PR, sincroniza specs ou arquiva. As futuras entregas dependem de suas próprias especificações/aprovações; não iniciar FNR-006 ou seguintes automaticamente.
 
 Rollback aplicável: retirar o novo caminho local por uma mudança revisada sem alterar o comportamento HTTP/PoC; não há dados persistidos a reverter. Não usar descarte de trabalho ou reset Git.
 
 ## Open Questions
 
-- Quais campos/naturezas e meses a conexão realmente retornará? A consulta posterior responde sem mudar o fallback conservador; ausência será registrada como limitação.
-- Qual volume/duração observados recomendarão memória ou staging na futura importação? A recomendação será documentada para FNR-012/013, sem implementar esses mecanismos aqui.
+- Na abertura, campos/naturezas/meses e volume/duração eram perguntas de investigação. As coletas e a recomendação limitada de processamento transitório página a página estão documentadas; não há coleta posterior implícita nesta revisão.
+- A regra discriminatória de compra, a competência e o dimensionamento representativo da importação continuam desconhecidos. Os dois primeiros condicionam os indicadores financeiros futuros, não o encerramento técnico revisado; FNR-012/013 reavaliam memória/staging com seus próprios critérios sem implementação aqui.
+- As tolerâncias de recorrência pertencem à FNR-038/mudança própria e bloqueiam o detector, não a aceitação do contrato conservador. Nenhum número ou algoritmo foi escolhido nesta revisão.
 
 ## Fontes consultadas
 

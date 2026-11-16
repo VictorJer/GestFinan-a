@@ -2,7 +2,9 @@
 
 ## Purpose
 
-Interpretar lançamentos de cartão de forma explícita e verificável, preservando os dados necessários da origem e sinalizando ambiguidades antes da importação e dos indicadores financeiros.
+Interpretar lançamentos de cartão de forma explícita e conservadora, preservando dados da origem, motivos e ambiguidades para consulta descritiva, sem declarar reconhecimento automático de compras ou competência financeira validados.
+
+**Contexto da revisão — conteúdo aprovado e encerramento aceito em 16/11/2026:** o incremento técnico foi integrado pelo PR #12. O titular aprovou substituir o objetivo original FNR-005/5.3 no MVP, não atendido tecnicamente, por movimentos descritivos e recorrência assistida em entregas próprias. Isso não altera as regras conservadoras abaixo nem comprova semântica financeira; compra/competência permanecem não validadas. O aceite revisado e o histórico são tratados em `design.md`, D8, e `tasks.md`; interface e detector não fazem parte desta capability.
 
 ## ADDED Requirements
 
@@ -18,7 +20,7 @@ A normalização SHALL preservar identificador externo opaco, conta, descrição
 - **THEN** o registro é sinalizado como inválido e não se torna compra elegível por preenchimento artificial
 
 ### Requirement: Natureza financeira conservadora
-A normalização SHALL distinguir compra, estorno, pagamento de fatura, encargo, ajuste e desconhecido usando evidência contratual além do sinal. Operação ausente, nova ou contraditória SHALL permanecer desconhecida quando não houver regra validada. Estorno sem vínculo confiável SHALL não ser abatido automaticamente de compras.
+A normalização SHALL distinguir naturezas sustentadas por evidência contratual além do sinal. Sem regra positiva validada, SHALL manter o reconhecimento de compras bloqueado e preservar desconhecidos com motivo. Operação ausente, nova ou contraditória SHALL permanecer desconhecida quando não houver regra validada. Estorno sem vínculo confiável SHALL não ser abatido automaticamente de compras.
 
 #### Scenario: Crédito não é automaticamente estorno
 - **WHEN** um crédito negativo representa pagamento de fatura ou não possui natureza identificável
@@ -59,8 +61,15 @@ A normalização SHALL preservar a data original e explicitar a regra da data de
 - **THEN** o mesmo dia é preservado, sem tratá-lo como instante UTC sujeito a deslocamento
 
 ### Requirement: Elegibilidade explicável sem agregação antecipada
-A normalização SHALL produzir motivo verificável de elegibilidade ou exclusão segundo natureza, situação, moeda e validade. Pagamento de fatura, pendência, parcela futura, encargo, ajuste não elegível e desconhecido SHALL não compor compras efetivadas; esta capacidade SHALL não calcular dashboard nem persistir transações.
+A normalização SHALL produzir motivo verificável de elegibilidade ou exclusão segundo natureza, situação, moeda e validade, sem exigir elegibilidade positiva enquanto a regra de compra não estiver validada. Pagamento de fatura, pendência, parcela futura, encargo, ajuste não elegível e desconhecido SHALL não compor compras efetivadas; esta capacidade SHALL não calcular dashboard nem persistir transações.
 
 #### Scenario: Conjunto controlado
+- **GIVEN** uma regra positiva foi habilitada exclusivamente para um teste com exemplos inteiramente sintéticos, sem confirmar a conexão real
 - **WHEN** são normalizados exemplos fictícios de compra efetivada em BRL, pagamento, pendência, estorno sem vínculo e compra em USD
 - **THEN** somente a compra válida e efetivada em BRL é elegível como compra para gastos em reais, e os demais têm motivos de exclusão distintos
+- **AND** o resultado sintético não comprova atendimento do objetivo original 5.3 nem habilita a regra na conexão real
+
+#### Scenario: Regra positiva não confirmada
+- **GIVEN** a regra positiva de reconhecimento de compras permanece desligada por falta de validação
+- **WHEN** são normalizados lançamentos com direção e sinal compatíveis com compra, mas sem regra discriminatória validada
+- **THEN** nenhum lançamento se torna compra elegível por fallback, descrição ou sinal isolado, e a natureza desconhecida mantém motivo explícito
