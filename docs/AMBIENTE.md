@@ -88,6 +88,86 @@ Depois do build, execute `dotnet run --project backend/Finora.Api --launch-profi
 
 O diagnóstico mede somente liveness do processo. Não comprova banco, autenticação, autorização ou Pluggy. Não há botão Authorize, endpoints financeiros ou segredos necessários. Configurações sensíveis futuras devem usar User Secrets no desenvolvimento ou variáveis de ambiente protegidas, nunca valores versionados neste exemplo. Os ignores existentes já excluem `.env`, `secrets.json`, `bin`, `obj` e TestResults; locks são gerados pelo NuGet e não recebem comentários manuais.
 
+### PostgreSQL local — FNR-006
+
+O `compose.yaml` executa PostgreSQL 18 para desenvolvimento, publica a porta somente em `127.0.0.1` e mantém os dados no volume nomeado `finora-dev_finora-dev-data`. O `compose.test.yaml` usa projeto Compose e porta separados, sem volume persistente: os dados de teste ficam em `tmpfs` e desaparecem quando o container descartável é removido. Nenhuma configuração usa a Neon.
+
+Na primeira execução, copie `.env.example` para `.env` e substitua as duas senhas de exemplo por valores locais fortes e diferentes. `.env` é ignorado pelo Git; não versione, registre em logs nem compartilhe credenciais. `.env.example` contém somente marcadores, nunca senhas utilizáveis. Verifique o ignore local com `git check-ignore -v .env`.
+
+Comandos PowerShell a partir da raiz do repositório:
+
+```powershell
+# Cria .env somente quando ainda não existe; se existir, preserve e atualize manualmente.
+if (-not (Test-Path -LiteralPath '.env')) { Copy-Item .env.example .env }
+# Substitua os marcadores das duas senhas no .env por valores fortes e diferentes antes de subir serviços.
+
+# Valida e inicia o banco persistente de desenvolvimento, aguardando o healthcheck.
+docker compose --env-file .env -f compose.yaml config --quiet
+docker compose --env-file .env -f compose.yaml up -d --wait
+
+# Inspeciona prontidão e encerra somente o projeto de desenvolvimento sem remover seu volume.
+docker compose --env-file .env -f compose.yaml ps
+docker compose --env-file .env -f compose.yaml exec -T postgres pg_isready -U finora -d finora_local
+docker compose --env-file .env -f compose.yaml stop
+docker compose --env-file .env -f compose.yaml down
+
+# Valida e inicia o projeto descartável explicitamente nomeado para testes de integração.
+docker compose --env-file .env --project-name finora-fnr006-test -f compose.test.yaml config --quiet
+docker compose --env-file .env --project-name finora-fnr006-test -f compose.test.yaml up -d --wait
+
+# Lê somente as chaves de teste do .env local sem imprimir seus valores.
+$testSettings = @{}
+foreach ($line in Get-Content -LiteralPath '.env') {
+    if ($line -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$') {
+        $key = $matches[1]
+        $value = $matches[2].Trim()
+        if ($value.Length -ge 2 -and (($value[0] -eq '"' -and $value[$value.Length - 1] -eq '"') -or ($value[0] -eq "'" -and $value[$value.Length - 1] -eq "'"))) {
+            $value = $value.Substring(1, $value.Length - 2)
+        }
+        $testSettings[$key] = $value
+    }
+}
+
+# Recusa configuração de outro database/usuário e garante que a porta publicada é loopback.
+if ($testSettings['POSTGRES_TEST_DB'] -cne 'finora_integration_test' -or $testSettings['POSTGRES_TEST_USER'] -cne 'finora_test') {
+    throw 'A configuração não corresponde ao database e usuário esperados do serviço descartável.'
+}
+$testPublishedPort = docker compose --env-file .env --project-name finora-fnr006-test -f compose.test.yaml port postgres 5432
+if ($LASTEXITCODE -ne 0 -or $testPublishedPort -notmatch '^127\.0\.0\.1:(\d+)$') {
+    throw 'A porta do serviço descartável não está vinculada ao loopback.'
+}
+
+# Monta a connection string em memória com credenciais exclusivas do banco descartável.
+$testConnection = [System.Data.Common.DbConnectionStringBuilder]::new()
+$testConnection['Host'] = '127.0.0.1'
+$testConnection['Port'] = [int]$matches[1]
+$testConnection['Database'] = $testSettings['POSTGRES_TEST_DB']
+$testConnection['Username'] = $testSettings['POSTGRES_TEST_USER']
+$testConnection['Password'] = $testSettings['POSTGRES_TEST_PASSWORD']
+
+# A suíte recebe somente a variável dedicada a testes, removida mesmo se o comando falhar.
+$env:FINORA_TEST_CONNECTION_STRING = $testConnection.ConnectionString
+try {
+    dotnet test backend/tests/Finora.Api.Tests/Finora.Api.Tests.csproj
+    if ($LASTEXITCODE -ne 0) { throw 'A suíte backend falhou.' }
+} finally {
+    Remove-Item Env:FINORA_TEST_CONNECTION_STRING -ErrorAction SilentlyContinue
+}
+
+# Inspeciona e remove somente o container/rede do projeto de teste; não há volume para preservar.
+docker compose --env-file .env --project-name finora-fnr006-test -f compose.test.yaml ps
+docker compose --env-file .env --project-name finora-fnr006-test -f compose.test.yaml exec -T postgres pg_isready -U finora_test -d finora_integration_test
+docker compose --env-file .env --project-name finora-fnr006-test -f compose.test.yaml down --remove-orphans
+```
+
+Os nomes `finora`, `finora_local`, `finora_test` e `finora_integration_test` correspondem aos valores do exemplo; se forem alterados em `.env`, ajuste também os comandos de inspeção. `down` no Compose de desenvolvimento mantém o volume nomeado; não acrescente `--volumes`/`-v`, pois isso apaga os dados locais. Para testes, use sempre o arquivo e o `--project-name` indicados: o banco descartável não compartilha credenciais, porta ou armazenamento persistente com o de desenvolvimento. Não use nenhum deles para dados financeiros reais.
+
+#### Evidências técnicas — FNR-006 — 16/11/2026
+
+A migration `20261116175137_Fnr006PersistenceSmoke` foi gerada em `Finora.Infrastructure` com `Up`/`Down` vazios, sem tabelas de domínio. O comando explícito `dotnet-ef database update`, apontado ao projeto Infrastructure, conectou somente a `finora_integration_test` no loopback do projeto Compose descartável. A consulta confirmou o registro da migration com EF Core 10.0.15 e que a única tabela pública era `__EFMigrationsHistory`; não havia schema de aplicação. A repetição do comando informou que o banco já estava atualizado. A verificação não usou o volume persistente nem a Neon.
+
+Os testes de integração leem somente `FINORA_TEST_CONNECTION_STRING`; não usam fallback de `ConnectionStrings__Finora`. Host não-loopback e database diferente de `finora_integration_test` são rejeitados antes da conexão. Uma compilação inicial dos novos testes falhou por usar `Assert.ThrowsException`, API indisponível na baseline MSTest; foi corrigida para `Assert.Throws` antes da validação final. Em 16/11/2026, restore bloqueado e ambos os `docker compose config --quiet` passaram; o build da solução passou com zero avisos/erros e a suíte backend aprovou 132/132 testes usando o serviço descartável. Com as duas variáveis de conexão ausentes, os testes HTTP de health aprovaram 4/4 e mantiveram HTTP 200 com corpo `{"status":"ok"}`. Não há chamada a `Migrate()`/`MigrateAsync()` nos projetos de produção. `openspec validate fnr-006-postgresql-efcore --strict` passou; `git diff --check` não encontrou erros, apenas avisos informativos LF/CRLF. `.env` permaneceu ignorado e não rastreado, e a inspeção automatizada não encontrou suas senhas nos arquivos alterados/não rastreados.
+
 ### Comandos da solução
 
 Execute da raiz, com o SDK exato disponível:

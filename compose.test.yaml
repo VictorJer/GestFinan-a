@@ -1,0 +1,23 @@
+name: finora-test
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      # O ambiente de teste usa credenciais e banco distintos do serviço local persistente.
+      POSTGRES_DB: ${POSTGRES_TEST_DB:?Defina POSTGRES_TEST_DB no arquivo .env local}
+      POSTGRES_USER: ${POSTGRES_TEST_USER:?Defina POSTGRES_TEST_USER no arquivo .env local}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:?Defina POSTGRES_TEST_PASSWORD no arquivo .env local}
+    ports:
+      # A porta do banco descartável é independente e permanece restrita ao loopback.
+      - "127.0.0.1:${POSTGRES_TEST_PORT:-5433}:5432"
+    tmpfs:
+      # O diretório de dados existe somente enquanto este container descartável estiver ativo.
+      - /var/lib/postgresql:rw,size=536870912
+    healthcheck:
+      # A prontidão não consulta nem depende do banco de desenvolvimento.
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s

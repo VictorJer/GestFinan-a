@@ -1,0 +1,27 @@
+name: finora-dev
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      # As credenciais são injetadas pelo ambiente local e não ficam no Compose versionado.
+      POSTGRES_DB: ${POSTGRES_DB:?Defina POSTGRES_DB no arquivo .env local}
+      POSTGRES_USER: ${POSTGRES_USER:?Defina POSTGRES_USER no arquivo .env local}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no arquivo .env local}
+    ports:
+      # O banco de desenvolvimento fica acessível somente pela máquina local.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # PostgreSQL 18 grava dados sob este diretório versionado por major.
+      - finora-dev-data:/var/lib/postgresql
+    healthcheck:
+      # A prontidão usa as mesmas credenciais já injetadas no container.
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  # O volume nomeado sobrevive à recriação do container e ao comando compose down.
+  finora-dev-data:

@@ -1,8 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Infraestrutura implementa contratos externos e alinha HttpClientFactory à baseline .NET 10. -->
+  <!-- Infraestrutura implementa contratos externos e centraliza EF Core/Npgsql na baseline .NET 10. -->
   <ItemGroup>
     <ProjectReference Include="../Finora.Application/Finora.Application.csproj" />
     <ProjectReference Include="../Finora.Domain/Finora.Domain.csproj" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.15" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.15" />
+    <!-- Propaga o mesmo patch de Relational aos projetos que consomem esta Infrastructure. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.15" />
+    <!-- Mantém as ferramentas de design privadas sem impedir a factory de referenciar suas APIs. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.15">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
   </ItemGroup>
 </Project>
