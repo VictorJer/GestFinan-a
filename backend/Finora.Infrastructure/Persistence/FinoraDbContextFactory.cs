@@ -16,6 +16,7 @@ public sealed class FinoraDbContextFactory : IDesignTimeDbContextFactory<FinoraD
                 "Defina ConnectionStrings__Finora em configuração externa para executar ferramentas do EF Core.");
         }
 
+        // A mesma configuração fornece ao modelo Identity as opções fixas usadas pela factory e pelos testes.
         var optionsBuilder = new DbContextOptionsBuilder<FinoraDbContext>();
         FinoraDbContextConfiguration.Configure(optionsBuilder, connectionString);
         return new FinoraDbContext(optionsBuilder.Options);
