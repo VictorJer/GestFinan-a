@@ -17,6 +17,7 @@ public sealed class PostgreSqlPersistenceTests
         DisposablePostgresTestConfiguration.ConnectionStringVariable;
     internal const string ExpectedDatabase = "finora_integration_test";
     internal const string SmokeMigrationId = "20261116175137_Fnr006PersistenceSmoke";
+    internal const string CoreMigrationId = "20261117193137_Fnr007CorePersistence";
 
     // Uma configuração ausente é rejeitada antes de qualquer tentativa de abrir conexão.
     [TestMethod]
@@ -81,17 +82,16 @@ public sealed class PostgreSqlPersistenceTests
         StringAssert.Contains(exception.Message, ExpectedDatabase);
     }
 
-    // A migração é aplicada somente após validar host/database; o contexto confirma a conexão e o histórico.
+    // O teste histórico parte do schema vazio e aplica somente o alvo FNR-006, sem avançar para migrations futuras.
     [TestMethod]
-    public async Task DisposableDatabaseConnectsAndAppliesOnlyTheSmokeMigration()
+    public async Task DisposableDatabaseAppliesOnlyTheExplicitSmokeTargetFromEmptySchema()
     {
-        var connectionString = DisposablePostgresTestConfiguration.ReadRequired().ConnectionString;
-        var options = new DbContextOptionsBuilder<FinoraDbContext>()
-            .UseNpgsql(connectionString)
-            .Options;
+        await using var fixture = DisposablePostgresMigrationFixture.CreateValidated();
+        await fixture.ResetToEmptySchemaAsync();
+        var context = fixture.Context;
 
-        await using var context = new FinoraDbContext(options);
-        await context.Database.MigrateAsync();
+        await AssertDatabaseIsEmptyAsync(context);
+        await context.Database.MigrateAsync(SmokeMigrationId);
 
         Assert.AreEqual(ExpectedDatabase, context.Database.GetDbConnection().Database);
         var appliedMigrations = (await context.Database.GetAppliedMigrationsAsync()).ToArray();
@@ -101,8 +101,16 @@ public sealed class PostgreSqlPersistenceTests
         CollectionAssert.AreEquivalent(new[] { "__EFMigrationsHistory" }, publicTables);
     }
 
+    // Confirma ausência de tabelas/histórico antes da migration smoke no banco descartável já validado.
+    internal static async Task AssertDatabaseIsEmptyAsync(FinoraDbContext context)
+    {
+        // Ausência de tabelas comprova base vazia sem consultar __EFMigrationsHistory antes de sua criação.
+        var publicTables = await ReadPublicTablesAsync(context);
+        Assert.AreEqual(0, publicTables.Length);
+    }
+
     // Consulta apenas metadados do schema public para detectar tabelas financeiras indevidas.
-    private static async Task<string[]> ReadPublicTablesAsync(FinoraDbContext context)
+    internal static async Task<string[]> ReadPublicTablesAsync(FinoraDbContext context)
     {
         await context.Database.OpenConnectionAsync();
         await using var command = context.Database.GetDbConnection().CreateCommand();

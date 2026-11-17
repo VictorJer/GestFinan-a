@@ -22,6 +22,25 @@ public sealed class ArchitectureTests
         CollectionAssert.AreEquivalent(expected, references);
     }
 
+    // Domain e Application permanecem sem dependências de EF ou Identity, conforme as fronteiras de DT-38.
+    [TestMethod]
+    public void DomainAndApplicationHaveNoEfCoreOrIdentityPackageReferences()
+    {
+        var backend = FindBackendDirectory();
+        foreach (var project in new[] { "Finora.Domain", "Finora.Application" })
+        {
+            var document = XDocument.Load(Path.Combine(backend, project, $"{project}.csproj"));
+            var packageIds = document.Descendants("PackageReference")
+                .Select(reference => (string?)reference.Attribute("Include") ?? string.Empty)
+                .ToArray();
+
+            Assert.IsFalse(packageIds.Any(packageId =>
+                packageId.Contains("EntityFrameworkCore", StringComparison.OrdinalIgnoreCase)
+                || packageId.Contains("Identity", StringComparison.OrdinalIgnoreCase)),
+                $"O projeto {project} não deve referenciar EF Core ou Identity.");
+        }
+    }
+
     // A solução é o marco de localização, independente do diretório de execução e da máquina.
     private static string FindBackendDirectory()
     {

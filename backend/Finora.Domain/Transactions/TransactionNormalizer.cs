@@ -8,7 +8,15 @@ public sealed record TransactionNormalizationResult(
     TransactionDateResult Date,
     bool IsValid,
     bool IsEligibleForRealExpenses,
-    TransactionExclusionReason? ExclusionReason);
+    TransactionExclusionReason? ExclusionReason)
+{
+    // Motivos por dimensão permanecem separados para armazenamento e diagnóstico conservadores.
+    public TransactionExclusionReason? NatureReason { get; init; }
+
+    public TransactionExclusionReason? SituationReason { get; init; }
+
+    public TransactionExclusionReason? DateReason { get; init; }
+}
 
 /// <summary>Combina natureza, situação, data, validade e moeda sem efeitos de persistência.</summary>
 public static class TransactionNormalizer
@@ -82,6 +90,11 @@ public static class TransactionNormalizer
                 date,
                 valid,
                 eligible,
-                reason);
+                reason)
+            {
+                NatureReason = nature.ExclusionReason,
+                SituationReason = situation.ExclusionReason,
+                DateReason = date.ExclusionReason
+            };
     }
 }
