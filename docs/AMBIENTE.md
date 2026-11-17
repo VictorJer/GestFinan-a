@@ -233,7 +233,9 @@ Não executar downgrade em banco pessoal, Neon ou produção; para produção, u
 
 #### Atualização após aceite e arquivamento — 17/11/2026
 
-Após concluir 19/19 tarefas, o titular aceitou explicitamente a implementação FNR-007 nesta conversa do OpenCode. A delta spec `financial-data-persistence`, composta somente por requisitos ADDED, foi sincronizada para `openspec/specs/financial-data-persistence/spec.md`; `openspec validate --specs --strict` aprovou as seis specs. A mudança foi arquivada em `openspec/changes/archive/2026-11-17-fnr-007-modelar-persistencia-nucleo`. A evidência PostgreSQL da tarefa 4.2 foi preservada sem repetição. A movimentação de arquivo FNR-006 será incluída em commit separado no PR, conforme escolha do titular. No momento desta atualização ainda não havia commit, push ou PR; não foram consultados checks/reviews remotos nem acessados Pluggy, Neon ou banco de desenvolvimento.
+Após concluir 19/19 tarefas, o titular aceitou explicitamente a implementação FNR-007 nesta conversa do OpenCode. A delta spec `financial-data-persistence`, composta somente por requisitos ADDED, foi sincronizada para `openspec/specs/financial-data-persistence/spec.md`; `openspec validate --specs --strict` aprovou as seis specs. A mudança foi arquivada em `openspec/changes/archive/2026-11-17-fnr-007-modelar-persistencia-nucleo`. A evidência PostgreSQL da tarefa 4.2 foi preservada sem repetição. Naquele momento, ainda não havia commit, push ou PR; nenhum check/review remoto havia sido consultado, e não houve acesso a Pluggy, Neon ou banco de desenvolvimento.
+
+O committer criou `7c0b941` para arquivar a mudança OpenSpec FNR-006 e `25df020` para implementação, testes, migration, spec sincronizada e arquivo FNR-007. A branch foi enviada a `origin` e o [PR #16](https://github.com/VictorJer/GestFinan-a/pull/16) foi aberto contra `main`; não houve merge ou publicação. Na consulta após abertura, `reviews: []` e `statusCheckRollup: []`; `gh pr checks` não reportou checks. Essa ausência não é aprovação nem demonstra que um check obrigatório passou. A revisão documental do BACKLOG 0.8 permanece pendente.
 
 ### Comandos da solução
 
