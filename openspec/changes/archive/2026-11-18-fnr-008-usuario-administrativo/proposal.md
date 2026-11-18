@@ -27,7 +27,7 @@ Nenhuma. `financial-data-persistence` mantém seus requisitos: a FNR-008 reutili
 
 ## Impact
 
-- **Rastreabilidade:** [BACKLOG FNR-008 e critérios](../../../docs/BACKLOG.md), [PRD RF14 e RNF-01–03](../../../docs/PRD.md), [TDD §§3, 5, 7, 10, 14; DT-23–26/30/38/48–49](../../../docs/TDD.md). A dependência formal FNR-006 está integrada; a base Identity FNR-007 também está integrada e será reutilizada, sem reabrir essas entregas.
+- **Rastreabilidade:** [BACKLOG FNR-008 e critérios](../../../../docs/BACKLOG.md), [PRD RF14 e RNF-01–03](../../../../docs/PRD.md), [TDD §§3, 5, 7, 10, 14; DT-23–26/30/38/48–49](../../../../docs/TDD.md). A dependência formal FNR-006 está integrada; a base Identity FNR-007 também está integrada e será reutilizada, sem reabrir essas entregas.
 - **Áreas previstas:** roteamento e console em `backend/Finora.Api`; casos de uso/contratos em `backend/Finora.Application`; serviços Identity e composição de persistência em `backend/Finora.Infrastructure`; testes em `backend/tests/Finora.Api.Tests`; instruções e evidências em `docs/AMBIENTE.md`/README e registro FNR-008 no backlog durante a execução autorizada.
 - **Compatibilidade:** sem nova rota HTTP ou alteração financeira; preservar health sem banco, OpenAPI/Swagger por ambiente, comandos Pluggy e opções compartilhadas Identity Version2/128. Nenhuma migration prevista.
 - **Dependências:** reutilizar .NET 10, Identity/EF Core 10.0.15, Npgsql EF 10.0.3, MediatR 12.5.0 e MSTest/MTP da baseline. Nenhuma instalação ou acesso a banco/provedor integra este planejamento.
