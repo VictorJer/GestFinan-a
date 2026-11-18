@@ -16,7 +16,7 @@ Inspeção read-only realizada nesta preparação:
 | `DisposablePostgresTestConfiguration` exige `FINORA_TEST_CONNECTION_STRING`, loopback e `finora_integration_test`; Compose de teste usa PostgreSQL 18 em tmpfs. | Reutilizar a barreira existente e dados sintéticos; nunca usar `.env`, conexão de runtime, banco pessoal ou Neon como fallback de teste. |
 | Health/OpenAPI/Swagger funcionam sem banco; README contém estados históricos desatualizados em outras áreas. | Preservar os contratos e limitar as futuras edições documentais aos comandos FNR-008, sem reescrever histórico de entregas alheias. |
 
-Fontes canônicas: [BACKLOG FNR-008, §§5/7](../../../docs/BACKLOG.md), [PRD RF14/RNF-01–03](../../../docs/PRD.md), [TDD §§3/5/7/10/14](../../../docs/TDD.md). FNR-006 satisfaz a dependência formal e FNR-007 fornece a implementação de armazenamento já integrada. `financial-data-persistence` continua inalterada. As mudanças explorador/recorrência existentes não fazem parte desta entrega.
+Fontes canônicas: [BACKLOG FNR-008, §§5/7](../../../../docs/BACKLOG.md), [PRD RF14/RNF-01–03](../../../../docs/PRD.md), [TDD §§3/5/7/10/14](../../../../docs/TDD.md). FNR-006 satisfaz a dependência formal e FNR-007 fornece a implementação de armazenamento já integrada. `financial-data-persistence` continua inalterada. As mudanças explorador/recorrência existentes não fazem parte desta entrega.
 
 ## Goals / Non-Goals
 
