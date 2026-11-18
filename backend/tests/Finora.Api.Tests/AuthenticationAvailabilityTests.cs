@@ -1,0 +1,165 @@
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using Finora.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+namespace Finora.Api.Tests;
+
+// Não depende de PostgreSQL: configuração ausente e entradas inválidas são resolvidas antes de abrir conexão.
+[TestClass]
+[DoNotParallelize]
+public sealed class AuthenticationAvailabilityTests
+{
+    // A rota de prova pertence somente ao assembly de testes; o host normal continua sem cadastro/logout/reset/refresh.
+    [TestMethod]
+    public async Task NormalApiSurfaceContainsOnlyHealthAndLogin()
+    {
+        await using var factory = new ApiFactory("Development");
+        using var client = factory.CreateClient();
+        using var document = JsonDocument.Parse(await client.GetStringAsync("/openapi/v1.json"));
+        CollectionAssert.AreEquivalent(new[] { "/health", "/api/auth/login" },
+            document.RootElement.GetProperty("paths").EnumerateObject().Select(property => property.Name).ToArray());
+        Assert.IsFalse(typeof(Program).Assembly.GetTypes().Any(type => type.Name == nameof(AuthenticationProbeController)));
+        using var probe = await client.GetAsync("/_tests/authentication-probe");
+        Assert.AreEqual(HttpStatusCode.NotFound, probe.StatusCode);
+        foreach (var path in new[] { "/api/auth/register", "/api/auth/logout", "/api/auth/reset-password", "/api/auth/refresh" })
+        {
+            using var response = await client.PostAsJsonAsync(path, new { });
+            Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
+        }
+    }
+
+    // A unidade JWT/banco precisa estar completa; headers Bearer incidentais não afetam liveness/documentação.
+    [TestMethod]
+    [DataRow("missing")]
+    [DataRow("partial")]
+    [DataRow("missing-database")]
+    [DataRow("invalid-database")]
+    [DataRow("invalid-key")]
+    public async Task MissingOrInvalidConfigurationKeepsDiagnosticsAndFailsAuthenticationClosed(string scenario)
+    {
+        var configuration = Configuration();
+        switch (scenario)
+        {
+            case "missing": configuration.Clear(); break;
+            case "partial": configuration["Authentication:Jwt:Audience"] = null; break;
+            case "missing-database": configuration["ConnectionStrings:Finora"] = null; break;
+            case "invalid-database": configuration["ConnectionStrings:Finora"] = "invalid-connection-sentinel"; break;
+            case "invalid-key": configuration["Authentication:Jwt:SigningKeyBase64"] = "invalid-key-sentinel"; break;
+        }
+        await using var factory = new AuthenticationApiFactory(configuration);
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "invalid-token-sentinel");
+        foreach (var path in new[] { "/health", "/openapi/v1.json", "/swagger/index.html" })
+        {
+            using var response = await client.GetAsync(path);
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            if (path == "/health") { Assert.AreEqual("{\"status\":\"ok\"}", await response.Content.ReadAsStringAsync()); }
+        }
+        using var login = await client.PostAsJsonAsync("/api/auth/login", new { email = "email-sentinel@example.invalid", password = "password-sentinel" });
+        await AssertProblemAsync(login, HttpStatusCode.ServiceUnavailable);
+        Assert.IsTrue(login.Headers.CacheControl?.NoStore);
+        using var protectedResponse = await client.GetAsync("/_tests/authentication-probe");
+        await AssertProblemAsync(protectedResponse, HttpStatusCode.ServiceUnavailable);
+        Assert.AreEqual(0, factory.Services.GetRequiredService<AuthenticationProbeCounter>().Calls);
+        using var scope = factory.Services.CreateScope();
+        Assert.IsNull(scope.ServiceProvider.GetService<FinoraDbContext>());
+        Assert.IsFalse(factory.Logs.Text.Contains("sentinel", StringComparison.Ordinal));
+    }
+
+    // Mesmo uma configuração sintaticamente válida não conecta para health/diagnóstico; credencial válida falha como 503 real.
+    [TestMethod]
+    public async Task ConfiguredHostDoesNotContactUnavailableDatabaseForDiagnostics()
+    {
+        await using var factory = new AuthenticationApiFactory(Configuration());
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "invalid-token-sentinel");
+        using var health = await client.GetAsync("/health");
+        Assert.AreEqual(HttpStatusCode.OK, health.StatusCode);
+        using var scope = factory.Services.CreateScope();
+        Assert.AreEqual(System.Data.ConnectionState.Closed, scope.ServiceProvider.GetRequiredService<FinoraDbContext>().Database.GetDbConnection().State);
+        using var login = await client.PostAsJsonAsync("/api/auth/login", new { email = "email-sentinel@example.invalid", password = "password-sentinel" });
+        await AssertProblemAsync(login, HttpStatusCode.ServiceUnavailable);
+        Assert.IsFalse(factory.Logs.Text.Contains("sentinel", StringComparison.Ordinal));
+    }
+
+    // Limites de campos e corpo são anteriores à persistência, inclusive JSON malformado/sem tipo e streams desconhecidos.
+    [TestMethod]
+    public async Task InvalidInputIsSanitizedAndEveryLoginResponseDisablesCaching()
+    {
+        await using var factory = new AuthenticationApiFactory(Configuration());
+        using var client = factory.CreateClient();
+        foreach (var body in new[] { "{}", "null", "{", "{\"email\":123,\"password\":\"password-sentinel\"}",
+                     JsonSerializer.Serialize(new { email = new string('a', 257), password = "password-sentinel" }),
+                     JsonSerializer.Serialize(new { email = "email-sentinel", password = new string('p', 1025) }) })
+        {
+            using var response = await client.PostAsync("/api/auth/login", new StringContent(body, Encoding.UTF8, "application/json"));
+            await AssertProblemAsync(response, HttpStatusCode.BadRequest);
+            Assert.IsTrue(response.Headers.CacheControl?.NoStore);
+        }
+        using var oversized = await client.PostAsync("/api/auth/login", new StringContent(new string('x', 16385), Encoding.UTF8, "application/json"));
+        await AssertProblemAsync(oversized, HttpStatusCode.RequestEntityTooLarge);
+        using var unknownLength = await client.PostAsync("/api/auth/login", new UnknownLengthJsonContent(new string('x', 16385)));
+        await AssertProblemAsync(unknownLength, HttpStatusCode.RequestEntityTooLarge);
+        using var wrongType = await client.PostAsync("/api/auth/login", new StringContent("password-sentinel"));
+        await AssertProblemAsync(wrongType, HttpStatusCode.BadRequest);
+        Assert.IsFalse(factory.Logs.Text.Contains("sentinel", StringComparison.Ordinal));
+    }
+
+    // Porta local sem serviço não representa uma base real; é usada só para provar indisponibilidade sem outro destino.
+    internal static Dictionary<string, string?> Configuration(string? connectionString = null, string? key = null) => new()
+    {
+        ["ConnectionStrings:Finora"] = connectionString ?? "Host=127.0.0.1;Port=1;Database=finora_integration_test;Username=user-sentinel;Password=connection-sentinel;Timeout=1;Pooling=false",
+        ["Authentication:Jwt:Issuer"] = "issuer-sentinel",
+        ["Authentication:Jwt:Audience"] = "audience-sentinel",
+        ["Authentication:Jwt:SigningKeyBase64"] = key ?? Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
+    };
+
+    // Confere apenas contrato fixo e rastreio; nenhuma asserção imprime sentinelas de senha/conexão em caso de falha.
+    internal static async Task AssertProblemAsync(HttpResponseMessage response, HttpStatusCode status)
+    {
+        Assert.AreEqual(status, response.StatusCode);
+        Assert.AreEqual("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        var body = await response.Content.ReadAsStringAsync();
+        using var problem = JsonDocument.Parse(body);
+        Assert.AreEqual((int)status, problem.RootElement.GetProperty("status").GetInt32());
+        var expectedCode = status switch
+        {
+            HttpStatusCode.BadRequest => "AUTH_INVALID_INPUT",
+            HttpStatusCode.RequestEntityTooLarge => "AUTH_BODY_TOO_LARGE",
+            HttpStatusCode.Unauthorized => "AUTH_INVALID_CREDENTIALS",
+            HttpStatusCode.ServiceUnavailable => "AUTH_UNAVAILABLE",
+            _ => "AUTH_UNEXPECTED_FAILURE"
+        };
+        Assert.AreEqual(expectedCode, problem.RootElement.GetProperty("code").GetString());
+        if (response.RequestMessage?.RequestUri?.AbsolutePath == "/api/auth/login")
+        {
+            Assert.IsTrue(response.Headers.CacheControl?.NoStore);
+        }
+        Assert.IsFalse(string.IsNullOrWhiteSpace(problem.RootElement.GetProperty("traceId").GetString()));
+        Assert.IsFalse(body.Contains("sentinel", StringComparison.Ordinal));
+        Assert.IsFalse(problem.RootElement.TryGetProperty("errors", out _));
+    }
+
+    // Força leitura limitada do stream em vez de depender somente do cabeçalho Content-Length.
+    private sealed class UnknownLengthJsonContent : HttpContent
+    {
+        private readonly string _value;
+        public UnknownLengthJsonContent(string value)
+        {
+            _value = value;
+            Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        }
+        protected override bool TryComputeLength(out long length) { length = 0; return false; }
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context)
+        {
+            return stream.WriteAsync(Encoding.UTF8.GetBytes(_value)).AsTask();
+        }
+    }
+}

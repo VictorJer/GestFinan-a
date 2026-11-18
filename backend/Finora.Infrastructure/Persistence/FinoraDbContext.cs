@@ -9,22 +9,22 @@ namespace Finora.Infrastructure.Persistence;
 public sealed class FinoraDbContext(DbContextOptions<FinoraDbContext> options)
     : IdentityUserContext<ApplicationUser, Guid>(options)
 {
-    // O modelo base Identity é configurado antes dos mapeamentos financeiros adicionados em seguida na FNR-007.
+    // Configura o modelo base Identity antes dos mapeamentos financeiros e das sessões de autenticação.
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
-        // Aplica as constraints financeiras somente depois das entidades e relações básicas do Identity.
+        // Aplica constraints financeiras/de sessão depois das entidades e relações básicas do Identity.
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(FinoraDbContext).Assembly);
     }
 
-    // Toda gravação síncrona valida entidades rastreadas antes de entregar valores monetários ao provider.
+    // Toda gravação síncrona valida entidades financeiras e sessões antes de entregar valores ao provider.
     public override int SaveChanges() => SaveChanges(acceptAllChangesOnSuccess: true);
 
     // A sobrecarga completa é a barreira comum também para atualizações, não apenas para objetos recém-criados.
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
-        ValidateTrackedFinancialEntities();
+        ValidateTrackedEntities();
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
@@ -37,14 +37,21 @@ public sealed class FinoraDbContext(DbContextOptions<FinoraDbContext> options)
         bool acceptAllChangesOnSuccess,
         CancellationToken cancellationToken = default)
     {
-        ValidateTrackedFinancialEntities();
+        ValidateTrackedEntities();
         return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
     }
 
-    // Entidades Added/Modified são revalidadas após o tracking, inclusive valores alterados após as fábricas do Domain.
-    private void ValidateTrackedFinancialEntities()
+    // Revalida entidades financeiras e sessões Added/Modified, inclusive valores alterados após as fábricas.
+    private void ValidateTrackedEntities()
     {
         ChangeTracker.DetectChanges();
+
+        // Sessões compartilham a barreira pré-provider, sem misturar regras Identity ao Domain financeiro.
+        foreach (var entry in ChangeTracker.Entries<AuthSession>()
+                     .Where(entry => entry.State is EntityState.Added or EntityState.Modified))
+        {
+            entry.Entity.ValidateForPersistence();
+        }
 
         foreach (var entry in ChangeTracker.Entries<FinancialConnection>()
                      .Where(entry => entry.State is EntityState.Added or EntityState.Modified))

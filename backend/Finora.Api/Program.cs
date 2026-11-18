@@ -1,4 +1,5 @@
 using Finora.Api;
+using Finora.Api.Authentication;
 using Finora.Application.Pluggy;
 using Finora.Infrastructure.Pluggy;
 using MediatR;
@@ -53,11 +54,25 @@ if (args.Length > 0 && !PluggyReadCommand.IsApiTestHostInvocation(args))
 // O modo HTTP preserva o diagnóstico atual e não exige configuração Pluggy.
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
+builder.Services.AddFinoraHttpAuthentication(builder.Configuration);
+// Providers de infraestrutura podem registrar SQL/PII em falhas; autenticação usa somente saídas fixas próprias.
+builder.Logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.None);
+builder.Logging.AddFilter("Npgsql", LogLevel.None);
+builder.Logging.AddFilter("Microsoft.AspNetCore.Identity", LogLevel.None);
+builder.Logging.AddFilter("Microsoft.AspNetCore.Authentication", LogLevel.None);
+builder.Logging.AddFilter("Microsoft.IdentityModel", LogLevel.None);
+builder.Logging.AddFilter("Microsoft.AspNetCore.Mvc", LogLevel.None);
 // O gerador nativo descreve os Controllers; a UI não adiciona outro gerador.
 builder.Services.AddOpenApi();
 
 // Publica somente os Controllers implementados; diagnóstico não implica prontidão de integrações.
 var app = builder.Build();
+
+// A fronteira sanitizada precede autenticação/autorização; diagnóstico anônimo não dispara consulta de sessão.
+app.UseRouting();
+app.UseMiddleware<AuthenticationBoundary>();
+app.UseAuthentication();
+app.UseAuthorization();
 
 // Documento e assets da interface existem exclusivamente no ambiente de desenvolvimento.
 if (app.Environment.IsDevelopment())
