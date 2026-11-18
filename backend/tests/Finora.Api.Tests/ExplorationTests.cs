@@ -22,7 +22,11 @@ public sealed class ExplorationTests
         var root = document.RootElement;
         StringAssert.StartsWith(root.GetProperty("openapi").GetString()!, "3.");
         var paths = root.GetProperty("paths");
-        CollectionAssert.AreEquivalent(new[] { "/health" }, paths.EnumerateObject().Select(p => p.Name).ToArray());
+        CollectionAssert.AreEquivalent(new[] { "/health", "/api/auth/login" }, paths.EnumerateObject().Select(p => p.Name).ToArray());
+        // O contrato de login documenta somente os resultados implementados, sem rotas administrativas/refresh/logout.
+        var login = paths.GetProperty("/api/auth/login").GetProperty("post");
+        CollectionAssert.AreEquivalent(new[] { "200", "400", "401", "413", "503", "500" },
+            login.GetProperty("responses").EnumerateObject().Select(property => property.Name).ToArray());
         var operation = paths.GetProperty("/health").GetProperty("get");
         Assert.IsFalse(string.IsNullOrWhiteSpace(operation.GetProperty("summary").GetString()));
         var schema = operation.GetProperty("responses").GetProperty("200")

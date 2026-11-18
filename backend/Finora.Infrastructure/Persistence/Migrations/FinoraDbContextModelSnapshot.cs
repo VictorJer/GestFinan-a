@@ -442,6 +442,36 @@ namespace Finora.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Finora.Infrastructure.Identity.AuthSession", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("RevokedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("AuthSessions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_AuthSessions_Expiration", "\"ExpiresAtUtc\" > \"CreatedAtUtc\"");
+
+                            t.HasCheckConstraint("CK_AuthSessions_Revocation", "\"RevokedAtUtc\" IS NULL OR \"RevokedAtUtc\" >= \"CreatedAtUtc\"");
+                        });
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserClaim<System.Guid>", b =>
                 {
                     b.Property<int>("Id")
@@ -569,6 +599,15 @@ namespace Finora.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("TransactionId", "UserId")
                         .HasPrincipalKey("Id", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Finora.Infrastructure.Identity.AuthSession", b =>
+                {
+                    b.HasOne("Finora.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

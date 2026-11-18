@@ -30,7 +30,7 @@ Nenhuma. `financial-data-persistence` e `api-diagnostics` mantêm seus contratos
 - Infrastructure: reutilização da composição Identity, transação de login, entidade/mapeamento de sessão e migration no contexto existente.
 - Testes: `backend/tests/Finora.Api.Tests`, inclusive atualização da asserção atual de ausência de AuthSession; guia operacional e rastreabilidade canônica na futura implementação aprovada.
 - Dependências propostas: JwtBearer compatível com .NET 10 e biblioteca Microsoft IdentityModel de emissão, com versões/locks verificados antes de instalar.
-- Dependência FNR-008 integrada pelo PR #18 (`3e976f3`); backlog e sync/arquivamento ainda desatualizados. O encerramento deve ser reconciliado antes de iniciar implementação, sem presumir autorização para fazê-lo nesta proposta.
+- Dependência FNR-008 integrada pelo PR #18 (`3e976f3`); encerramento documental, sync e arquivamento presentes no histórico Git local pelo PR #19 (`0303568`, commit `d4204a5`). Conferência desta sessão não repete testes nem constitui nova verificação GitHub.
 - Fora do escopo: logout/revogação transacional no reset (FNR-010), segurança geral/propriedade/CORS da API (FNR-011), frontend (FNR-020), publicação, coleta Pluggy e encerramento de outras mudanças. RF14 permanece parcialmente atendido até as entregas dependentes.
 
-Estado: planejamento para revisão; somente a política de tentativas foi decidida nesta sessão. Nenhuma implementação ou aprovação integral dos artefatos é declarada.
+Estado em 18/11/2026: proposta, spec, design D1–D7 e tarefas aprovados integralmente pelo titular no harness (“Confirmo e aprovo artefatos”), com confirmação da seleção FNR-009 e nova solicitação de apply. Posteriormente, o titular aprovou o diff TDD 0.13/BACKLOG 0.18 (“Aprovo e continue”), liberando código dependente após tarefa 1.1. Não declara implementação concluída nem autoriza commits, push, PR, merge ou publicação. Política de cinco falhas/cinco minutos preservada.

@@ -21,6 +21,34 @@ public sealed class AdministrativeUserIdentityCompositionTests
     private const string SyntheticConnectionString =
         "Host=127.0.0.1;Database=finora_integration_test;Username=finora_test";
 
+    // O núcleo compartilhado resolve stores/modelo sem incorporar o acesso CLI nem tokens de reset ao HTTP.
+    [TestMethod]
+    public void SharedCompositionDoesNotRegisterAdministrativeAccessOrResetProviders()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddFinoraIdentity(SyntheticConnectionString);
+        using var provider = services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateScopes = true,
+            ValidateOnBuild = true
+        });
+        using var scope = provider.CreateScope();
+        var options = scope.ServiceProvider.GetRequiredService<IOptions<IdentityOptions>>().Value;
+        Assert.AreEqual(IdentitySchemaVersions.Version2, options.Stores.SchemaVersion);
+        Assert.AreEqual(128, options.Stores.MaxLengthForKeys);
+        Assert.AreEqual(6, options.Password.RequiredLength);
+        Assert.IsTrue(options.Lockout.AllowedForNewUsers);
+        Assert.AreEqual(5, options.Lockout.MaxFailedAccessAttempts);
+        Assert.AreEqual(TimeSpan.FromMinutes(5), options.Lockout.DefaultLockoutTimeSpan);
+        Assert.AreEqual(0, options.Tokens.ProviderMap.Count);
+        Assert.IsNull(scope.ServiceProvider.GetService<Finora.Application.AdministrativeUsers.IAdministrativeUserAccess>());
+        Assert.IsNull(scope.ServiceProvider.GetService<IDataProtectionProvider>());
+        Assert.IsNotNull(scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>());
+        Assert.AreEqual(ConnectionState.Closed,
+            scope.ServiceProvider.GetRequiredService<FinoraDbContext>().Database.GetDbConnection().State);
+    }
+
     // Os serviços Identity são scoped e reutilizam as opções do modelo sem habilitar roles ou políticas extras.
     [TestMethod]
     public void CompositionUsesScopedStoresPasswordPolicyAndEphemeralTokens()

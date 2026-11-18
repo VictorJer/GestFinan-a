@@ -51,8 +51,14 @@ public sealed class FinoraDbContextModelTests
             Assert.AreEqual(128, token.FindProperty(nameof(IdentityUserToken<Guid>.Name))!.GetMaxLength());
             Assert.AreEqual(256, user.FindProperty(nameof(IdentityUser<Guid>.PhoneNumber))!.GetMaxLength());
 
-            Assert.IsFalse(model.GetEntityTypes().Any(entityType =>
-                entityType.Name.Contains("AuthSession", StringComparison.Ordinal)));
+            // A sessão guarda somente os cinco campos técnicos aprovados, com vínculo restritivo ao titular.
+            var session = model.FindEntityType(typeof(AuthSession));
+            Assert.IsNotNull(session);
+            Assert.AreEqual("AuthSessions", session.GetTableName());
+            Assert.AreEqual(64, session.FindProperty(nameof(AuthSession.Id))!.GetMaxLength());
+            CollectionAssert.AreEquivalent(new[] { "Id", "UserId", "CreatedAtUtc", "ExpiresAtUtc", "RevokedAtUtc" },
+                session.GetProperties().Select(property => property.Name).ToArray());
+            Assert.AreEqual(DeleteBehavior.Restrict, session.GetForeignKeys().Single().DeleteBehavior);
 
             // Dados de seed pertencem ao modelo de design, não ao modelo runtime otimizado do contexto.
             var designModel = context.GetService<IDesignTimeModel>().Model;

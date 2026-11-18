@@ -3,7 +3,6 @@ using Finora.Application.AdministrativeUsers;
 using Finora.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 
 namespace Finora.Infrastructure.Identity;
@@ -12,8 +11,6 @@ namespace Finora.Infrastructure.Identity;
 internal sealed class AdministrativeUserAccessService : IAdministrativeUserAccess
 {
     private static readonly TimeSpan DefaultDatabaseOperationTimeout = TimeSpan.FromSeconds(30);
-    // A chave bigint fixa identifica o namespace ASCII FINORA e é compartilhada entre todas as mutações administrativas.
-    private const long AdministrativeUserAdvisoryLockKey = 0x46494E4F5241L;
 
     private readonly FinoraDbContext _context;
     private readonly UserManager<ApplicationUser> _userManager;
@@ -357,23 +354,9 @@ internal sealed class AdministrativeUserAccessService : IAdministrativeUserAcces
         return ValidationState.Invalid;
     }
 
-    // Adquire o lock de transação na mesma conexão/contexto que o Identity usará para salvar o usuário.
-    private async Task AcquireAdministrativeLockAsync(CancellationToken cancellationToken)
-    {
-        var connection = _context.Database.GetDbConnection();
-        await using var command = connection.CreateCommand();
-        command.Transaction = _context.Database.CurrentTransaction!.GetDbTransaction();
-        command.CommandTimeout = CommandTimeoutSeconds;
-        command.CommandText = "SELECT pg_advisory_xact_lock(@lock_key)";
-
-        var parameter = command.CreateParameter();
-        parameter.ParameterName = "lock_key";
-        parameter.DbType = DbType.Int64;
-        parameter.Value = AdministrativeUserAdvisoryLockKey;
-        command.Parameters.Add(parameter);
-
-        await command.ExecuteScalarAsync(cancellationToken);
-    }
+    // Delega ao protocolo único que ordena login em relação à criação e ao reset.
+    private Task AcquireAdministrativeLockAsync(CancellationToken cancellationToken) =>
+        IdentityMutationLock.AcquireAsync(_context, CommandTimeoutSeconds, cancellationToken);
 
     // Converte apenas códigos Identity conhecidos em estados enumerados, sem transportar descrições ao chamador.
     private static AdministrativeUserOperationResult MapIdentityFailure(IdentityResult result)

@@ -7,6 +7,9 @@
     <ProjectReference Include="../Finora.Application/Finora.Application.csproj" />
     <ProjectReference Include="../Finora.Infrastructure/Finora.Infrastructure.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.15" />
+    <!-- Autenticação e emissão usam versões verificadas, sem ampliar dependências da Application. -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.15" />
+    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.19.2" />
     <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.2.3" />
   </ItemGroup>
 </Project>
