@@ -26,6 +26,7 @@ Desenvolver uma aplicação web que consulte dados de cartão de crédito por me
 | Conexão no painel do provedor | Cartão e transações visualizados pelo autor |
 | Consulta local pelo backend .NET (FNR-004) | Concluída no escopo limitado, com prova real de uma página; não comprova importação completa |
 | Contrato e normalização Pluggy (FNR-005) | Em validação; análise limitada documentada; regra positiva de compra e competência bloqueadas por evidência insuficiente |
+| Login JWT e sessões persistentes (FNR-009) | Validada localmente na feature branch: 225 testes sem PostgreSQL e 64 no PostgreSQL descartável aprovados. Aceite final, integração e publicação pendentes; revogação completa depende de FNR-010. |
 | Aplicação integrada e publicação definitiva | Pendentes |
 
 A visualização no painel da Pluggy é evidência preliminar de acesso aos dados. A leitura local pela API foi demonstrada em FNR-004; FNR-005 observou campos e agregados em três coletas autorizadas de uma página cada, mas não valida histórico completo, regra positiva de compra, competência por instituição ou comportamento de sincronização.
@@ -51,15 +52,28 @@ Requer SDK .NET `10.0.402`. Da raiz do repositório:
 dotnet restore backend/Finora.slnx --locked-mode
 # Compila a solução sem novo restore.
 dotnet build backend/Finora.slnx --no-restore
-# Executa os testes MSTest pelo runner MTP selecionado em global.json.
-dotnet test --solution backend/Finora.slnx --no-build
+# Executa a suíte sem PostgreSQL pelo runner MTP selecionado em global.json.
+dotnet test --solution backend/Finora.slnx --no-build --filter 'FullyQualifiedName!~PostgreSql'
 # Inicia em Development e loopback, sem banco ou segredos.
 dotnet run --project backend/Finora.Api --launch-profile http --no-build --no-restore
 ```
 
 Acesse `http://127.0.0.1:5080/health`: HTTP 200 e `{"status":"ok"}`. É apenas **liveness**: não valida banco, Pluggy, autenticação ou dados reais. Não existem endpoints financeiros nesta base.
 
-Para testar pelo navegador, abra `http://127.0.0.1:5080/swagger`, expanda `GET /health`, clique em **Try it out** e **Execute**. Confira código 200 e corpo `{"status":"ok"}`. O documento fica em `/openapi/v1.json`; documento, UI e assets locais estão disponíveis **somente em Development** (404 em Production/Staging). Não há Authorize/JWT neste incremento. Encerre com `Ctrl+C`.
+Para testar pelo navegador, abra `http://127.0.0.1:5080/swagger`, expanda `GET /health`, clique em **Try it out** e **Execute**. Confira código 200 e corpo `{"status":"ok"}`. O documento fica em `/openapi/v1.json`; documento, UI e assets locais estão disponíveis **somente em Development** (404 em Production/Staging). O documento descreve somente health e login; não há rota financeira ou cadastro público. Encerre com `Ctrl+C`.
+
+### Login e sessões locais (FNR-009)
+
+`POST /api/auth/login` recebe JSON com `email` e `password`: até 256/1024 caracteres, corpo de até 16 KiB. Identity verifica a senha exata, normaliza somente o e-mail e bloqueia novos logins por cinco minutos após cinco falhas. Sucesso confirma uma nova `AuthSessions` antes de entregar JWT HS256 de 30 minutos, sem cookie/refresh; o token completo não é persistido. Toda resposta de login usa no-store. Conta desconhecida/senha incorreta/bloqueio retornam 401 genérico; falha operacional retorna 503, não senha incorreta. A sessão é consultada em cada chamada protegida; a rota de prova existe somente no projeto de testes.
+
+Configure externamente `ConnectionStrings__Finora`, `Authentication__Jwt__Issuer`, `Authentication__Jwt__Audience` e `Authentication__Jwt__SigningKeyBase64`, sem argumentos ou arquivos versionados. A chave codifica pelo menos 32 bytes aleatórios e precisa ser estável por ambiente/reinício; rotação coordenada invalida tokens anteriores. Sem configuração válida, login/proteção retornam 503 e health continua independente. A migration `20261118173427_AddAuthenticationSessions` precisa ser aplicada explicitamente pelo processo do [guia de ambiente](docs/AMBIENTE.md); nunca é executada no startup.
+
+**Não publicar autenticação antes de FNR-010/011 e demais gates.** Logout/reset revogatório e frontend FNR-020 não estão entregues por FNR-009; atualizar security stamp ou ler uma revogação SQL de fixture não substitui essa entrega. Contrato, configuração, erros, chaves e evidências estão em [AMBIENTE.md](docs/AMBIENTE.md). Para a suíte PostgreSQL, primeiro preparar somente o Compose descartável e a variável dedicada `FINORA_TEST_CONNECTION_STRING` conforme a barreira documentada; depois executar:
+
+```powershell
+# A fixture recusa banco pessoal/Neon e aplica migrations somente no database descartável allowlisted.
+dotnet test --solution backend/Finora.slnx --no-build --filter 'FullyQualifiedName~PostgreSql'
+```
 
 ### Consulta local Pluggy (em validação)
 

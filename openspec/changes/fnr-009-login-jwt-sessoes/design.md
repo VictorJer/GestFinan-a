@@ -4,15 +4,15 @@
 
 Motivação e escopo: [proposal.md](proposal.md). Contrato: [authenticated-sessions](specs/authenticated-sessions/spec.md). Referências canônicas: [PRD RF14](../../../docs/PRD.md), [TDD §5/§10/§14, DT-23–30/38–39/48–49](../../../docs/TDD.md) e [BACKLOG FNR-009](../../../docs/BACKLOG.md).
 
-Estado observado em 18/11/2026:
+Estado observado na preparação, antes da implementação (18/11/2026):
 - `backend/Finora.Api/Program.cs` separa comandos antes de montar HTTP; o ramo HTTP registra Controllers/OpenAPI e expõe somente health.
 - `AdministrativeIdentityServiceCollectionExtensions` já compõe `FinoraDbContext`, `AddIdentityCore` e stores; não há SignInManager, cookies, JWT ou composição HTTP de persistência.
 - `AdministrativeUserAccessService` usa ReadCommitted, timeout de 30 segundos e lock advisory transacional `0x46494E4F5241L` nos comandos de criação/reset.
 - `FinoraDbContext` deriva de `IdentityUserContext<ApplicationUser, Guid>` e aplica configurações por assembly. As migrations existentes possuem campos de lockout do Identity, mas não AuthSessions. `FinoraDbContextModelTests` afirma explicitamente ausência dessa entidade.
 - `ApiFactory` usa WebApplicationFactory; a suíte já possui fixture PostgreSQL descartável com barreira de destino, testes de migrations e arquitetura.
-- FNR-008 está integrada pelo PR #18, mas seu encerramento documental ainda precisa ser reconciliado fora desta proposta.
+- FNR-008 está integrada pelo PR #18; o encerramento documental/sync/arquivo foi conferido nesta sessão no histórico Git local pelo PR #19 (`0303568`, commit `d4204a5`), sem nova verificação de checks/reviews remotos.
 
-Estado das decisões: DT-23–30 e baseline herdados; política de cinco falhas/cinco minutos confirmada pelo titular nesta sessão. D1–D7 abaixo são o desenho proposto para revisão, não aprovação ou implementação. O design é necessário por cruzar camadas, alterar schema e introduzir autenticação.
+Estado das decisões em 18/11/2026: DT-23–30 e baseline herdados; política de cinco falhas/cinco minutos preservada. O titular aprovou integralmente proposta/spec/design D1–D7/tarefas no harness (“Confirmo e aprovo artefatos”) e confirmou a seleção FNR-009. Posteriormente aprovou o diff canônico TDD 0.13/BACKLOG 0.18 (“Aprovo e continue”), liberando código dependente após tarefa 1.1. A aprovação do desenho não comprova implementação. O design é necessário por cruzar camadas, alterar schema e introduzir autenticação.
 
 ## Goals / Non-Goals
 
