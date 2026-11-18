@@ -415,3 +415,171 @@ A conferência é evidência local do titular, não um teste automatizado nem ap
 ### Revisão do incremento parcial — FNR-005 — 15/11/2026
 
 Após a apresentação do estado da branch, do resultado agregado e das limitações, o autor respondeu pelo harness **“Aceito parcial”**. O aceite é somente do incremento parcial documentado e validado: não fecha a tarefa 5.3, não declara a FNR-005 concluída, não aprova revisão nova do TDD e não autoriza commit, PR, merge ou publicação. O gate da regra positiva de compra/competência permanece bloqueado; esta revisão não representa aprovação formal no GitHub nem check remoto.
+
+## Configuração dos comandos administrativos — FNR-008
+
+O ramo `user-create`/`user-reset-password` usa o Generic Host somente para configuração e injeção de dependências. Ele não inicia a API HTTP nem serviços hospedados e não registra o cliente Pluggy. Os argumentos do comando não são entregues ao provider de linha de comando do Host: aceite somente o token exato, sem opções ou valores adicionais.
+
+- O ambiente é selecionado por `DOTNET_ENVIRONMENT`; se estiver ausente ou vazio, o ramo usa `Production`. `launchSettings.json` não configura esta execução, portanto `dotnet run` deve usar `--no-launch-profile`.
+- User Secrets é carregado somente se `DOTNET_ENVIRONMENT=Development` tiver sido escolhido explicitamente. O projeto `backend/Finora.Api` já possui `UserSecretsId`; configure a chave `ConnectionStrings:Finora` no armazenamento local de segredos, fora do repositório. Um exemplo de chave/valor com marcador, nunca com credencial real:
+
+  ```powershell
+  dotnet user-secrets set "ConnectionStrings:Finora" "<valor-obtido-por-canal-seguro>" --project backend/Finora.Api
+  ```
+
+- Em ambiente não Development, forneça `ConnectionStrings:Finora` por configuração externa protegida, por exemplo pela variável de ambiente `ConnectionStrings__Finora` ou pelo gerenciador de segredos do ambiente. Não coloque a connection string em appsettings versionado, argumento, perfil de lançamento ou `.env`; a aplicação não carrega `.env` automaticamente.
+- A connection string é analisada em memória antes de registrar/resolver persistência. Ausência ou formato inválido retorna código 2 sem exibir o valor; indisponibilidade/schema ausente será falha operacional e não dispara migration. A migration FNR-007 continua sendo aplicada explicitamente pelo processo documentado acima.
+
+Exemplo sem credenciais embutidas no comando:
+
+```powershell
+# Escolha Development explicitamente para habilitar User Secrets locais.
+$env:DOTNET_ENVIRONMENT = 'Development'
+# A chave ConnectionStrings:Finora deve estar configurada fora do repositório antes da execução.
+dotnet run --project backend/Finora.Api --no-launch-profile -- user-create
+```
+
+Os comandos FNR-008 estão integrados ao terminal e aos casos de uso, com resultados allowlist e códigos D6. A verificação manual em terminal Windows e banco descartável prevista na tarefa 4.4 está concluída e registrada abaixo; FNR-010 continua responsável pela revogação de sessões e é gate para publicação autenticada.
+
+### Pré-consulta, criação e reset no PostgreSQL descartável — FNR-008 — 17/11/2026
+
+A Infrastructure normaliza e valida e-mail pelos validadores/normalizador do Identity e lê no máximo dois usuários sem tracking. Criação e reset revalidam o estado sob transação `ReadCommitted` e o mesmo `pg_advisory_xact_lock`; a chave é o `bigint` fixo `0x46494E4F5241` (bytes ASCII `FINORA`). A criação decide entre novo titular, repetição idempotente ou conflito. O reset localiza o mesmo UUID visto na pré-consulta e chama `GeneratePasswordResetTokenAsync`/`ResetPasswordAsync` no contexto Identity dessa transação. Os locks são cooperativos e não protegem contra gravações SQL externas que ignorem o protocolo. A aplicação não executa migrations.
+
+- `dotnet build backend/Finora.slnx --no-restore`: aprovado, zero avisos/erros na validação focalizada anterior.
+- `dotnet test backend/tests/Finora.Api.Tests/Finora.Api.Tests.csproj --filter "FullyQualifiedName~PostgreSqlAdministrativeUserCreationTests"`: **7/7 aprovados** no PostgreSQL 18 descartável. A classe cobre hash Identity e idempotência, concorrência com e-mails iguais/diferentes em sessões PostgreSQL independentes, cada regra da política de senha, rollback e liberação do lock após falha pós-save, timeout sem retry automático e cancelamento durante espera pelo lock.
+- `dotnet test backend/tests/Finora.Api.Tests/Finora.Api.Tests.csproj --filter "FullyQualifiedName~PostgreSqlAdministrativeUserPreflightTests"`: **3/3 aprovados**, cobrindo validação/normalização, ausência de tracking, titular ausente/presente, outro e-mail e estado com múltiplos usuários.
+- As duas execuções usaram exclusivamente `FINORA_TEST_CONNECTION_STRING`, montada em memória a partir das chaves `POSTGRES_TEST_*` e validada pela fixture existente para loopback e database `finora_integration_test`. A fixture aplicou explicitamente a migration FNR-007; o projeto Compose descartável usa tmpfs e será removido ao final da validação PostgreSQL desta rodada.
+- `dotnet test backend/tests/Finora.Api.Tests/Finora.Api.Tests.csproj --filter "FullyQualifiedName~PostgreSqlAdministrativeUserResetTests"`: **11/11 aprovados** no mesmo banco descartável. Cobrem sucesso com nova senha/ID/e-mail/security stamp/vínculos preservados; usuário ausente, múltiplos titulares, pré-consulta obsoleta, política de senha, conflito otimista de Identity, rollback após save com lock liberado, timeout, cancelamento e dois resets concorrentes em sessões distintas.
+- O cenário de confirmação incerta injeta uma exceção somente depois do callback de commit bem-sucedido do PostgreSQL: a operação retorna falha operacional embora a nova credencial já esteja persistida. Isso verifica que não há confirmação indevida de sucesso; não simula queda de conexão durante o commit e não é evidência de rollback quando o resultado do servidor é incerto.
+- `dotnet test backend/tests/Finora.Api.Tests/Finora.Api.Tests.csproj --no-restore --filter FullyQualifiedName~AdministrativeUserTerminalTests`: **14/14 aprovados**. O console roteirizado verifica leitura interceptada sem eco, preservação literal da senha, Backspace, confirmação divergente, EOF e Ctrl+C em cada prompt, limpeza dos buffers, recusa de entrada/saída redirecionada e falhas simuladas do terminal. Essa evidência automatizada não substitui a verificação manual de TTY real prevista na tarefa 4.4.
+- `dotnet test backend/tests/Finora.Api.Tests/Finora.Api.Tests.csproj --no-restore --filter "FullyQualifiedName~AdministrativeUserTerminalTests|FullyQualifiedName~AdministrativeUserWorkflowTests|FullyQualifiedName~AdministrativeUserCommandTests"`: **27/27 aprovados**. Os testes do fluxo verificam criação repetida/reset ausente sem solicitar senha, descarte do escopo de pré-consulta antes do prompt seguinte, encaminhamento do ID/senha ao handler correto, operação somente depois da confirmação e ausência de escrita em Ctrl+C/cancelamento.
+- `dotnet build backend/Finora.slnx --no-restore`: aprovado após a integração dos comandos, **0 avisos e 0 erros**.
+- `dotnet test backend/tests/Finora.Api.Tests/Finora.Api.Tests.csproj --no-restore --filter "FullyQualifiedName~AdministrativeUserTerminalTests|FullyQualifiedName~AdministrativeUserWorkflowTests|FullyQualifiedName~AdministrativeUserCommandTests"`: **43/43 aprovados** após a saída allowlist. Inclui códigos 0/1/2/3/4/130, stdout/stderr separados, estado distinto `already_exists`, aviso fixo de revogação no reset, e sentinelas simuladas em entrada, connection string, argumentos e exceções; a composição administrativa não registra providers de logging.
+- `dotnet build backend/Finora.slnx --no-restore`: aprovado após o contrato de saída, **0 avisos e 0 erros**.
+- Invocação local `user-create` com stdin conectado a pipe/NUL e `ConnectionStrings:Finora` sintética: retornou **código 2** e `failure=interactive_terminal_required`, antes de solicitar ou persistir entrada. O shell do harness não fornece TTY Windows interativo; portanto, isso comprova somente a recusa sem terminal e não substitui a validação manual dos fluxos com PostgreSQL descartável.
+
+### Validação integrada e separada — FNR-008 — 17/11/2026
+
+- `dotnet restore backend/Finora.slnx --locked-mode`: aprovado; os projetos já estavam atualizados e nenhum lock foi alterado.
+- `dotnet build backend/Finora.slnx --no-restore`: aprovado com **0 avisos e 0 erros** após a implementação do contrato de saída.
+- `dotnet test --solution backend/Finora.slnx --no-build --filter "FullyQualifiedName!~PostgreSql"`: **206/206 aprovados**, sem testes que dependem do serviço PostgreSQL.
+- `dotnet test backend/tests/Finora.Api.Tests/Finora.Api.Tests.csproj --no-build --filter 'FullyQualifiedName~PostgreSql'`: **35/35 aprovados** no PostgreSQL 18 descartável. A variável dedicada `FINORA_TEST_CONNECTION_STRING` foi montada em memória com `POSTGRES_TEST_*`, database `finora_integration_test` e porta de loopback; a configuração foi validada antes da conexão pela fixture. O teste configurou schema explicitamente; nenhum código de produção aplica migrations.
+- O Compose `finora-fnr006-test` estava saudável, foi consultado por `pg_isready` após os testes e encerrado com `down --remove-orphans`, sem `--volumes`. O serviço usa tmpfs e não compartilha volume com o banco de desenvolvimento. Nenhuma connection string foi exibida e não houve acesso a banco pessoal, Neon ou Pluggy.
+- As execuções foram separadas (206 não-PostgreSQL e 35 PostgreSQL); esse total não é check remoto. A validação manual dos fluxos com TTY Windows continua bloqueada pela ausência de terminal interativo no harness, conforme registrado para a tarefa 4.4.
+- Com `FINORA_TEST_CONNECTION_STRING` e `ConnectionStrings__Finora` ausentes, `dotnet test backend/tests/Finora.Api.Tests/Finora.Api.Tests.csproj --no-build --filter 'FullyQualifiedName~HealthTests|FullyQualifiedName~ExplorationTests|FullyQualifiedName~ExplorationIsolationTests|FullyQualifiedName~AdministrativeUserIdentityCompositionTests|FullyQualifiedName~AdministrativeUserCommandTests|FullyQualifiedName~PluggyReadCommandTests|FullyQualifiedName~PluggyAnalyzeCommandTests|FullyQualifiedName~ArchitectureTests'` passou **51/51**. Health, OpenAPI/Swagger por ambiente, conjunto de rotas (somente `/health`), assinatura do `WebApplicationFactory` e comandos Pluggy foram validados sem tráfego externo.
+- `dotnet test backend/tests/Finora.Api.Tests/Finora.Api.Tests.csproj --no-build --filter 'FullyQualifiedName~AdministrativeUserIdentityCompositionTests|FullyQualifiedName~FinoraDbContextModelTests|FullyQualifiedName~FinancialDataRelationalModelTests|FullyQualifiedName~ArchitectureTests'`: **15/15 aprovados**, incluindo equivalência do modelo Identity runtime/snapshot e regras de arquitetura.
+- Busca estática em `backend/Finora.Api` e `backend/Finora.Infrastructure` não encontrou `Migrate`, `EnsureCreated` ou seed de startup; não há rota administrativa HTTP. Os comandos Pluggy foram exercitados somente com fakes/guards sem chamada real.
+
+#### Limites do reset nesta entrega
+
+O serviço de reset implementado não requer a senha anterior nem envia e-mail. O token é gerado e consumido imediatamente por Identity em uma variável local, sem persistência, saída ou transporte entre processos. A composição usa `EphemeralDataProtectionProvider` singleton somente durante o processo do comando; não cria key ring persistente e não permite reutilizar o token em outra execução. O adaptador sem eco está integrado em duas etapas: pré-consulta e descarte do escopo antes da senha, seguida de operação Identity após confirmação; os timeouts de persistência começam apenas dentro das operações de banco. A saída allowlist e os códigos D6 estão implementados, e o README contém as instruções; a validação manual de TTY e PostgreSQL descartável permanece bloqueada neste harness sem terminal Windows interativo.
+
+Identity renova o security stamp como parte da troca de credencial. O reset não desbloqueia usuário, não zera contadores de falha e não revoga JWT nem sessões existentes; nesta entrega, um stamp novo não equivale a logout global. FNR-009/010 continuam necessárias, e a integração transacional de revogação da FNR-010 é gate obrigatório antes de qualquer publicação autenticada. O aceite final da implementação FNR-008 não antecipa nem substitui essa responsabilidade; FNR-008 isoladamente não satisfaz RF14 integralmente.
+
+Essas são evidências locais e não checks remotos. Nenhum banco de desenvolvimento, segredo de runtime, Neon ou Pluggy foi usado. A interação TTY foi concluída e registrada na tarefa 4.4. As limitações do reset não representam desbloqueio nem revogação de JWT/sessões; FNR-010 continua sendo gate para publicação autenticada e RF14 não é declarada integralmente atendida.
+
+### Revisão final de escopo e artefatos — FNR-008 — 17/11/2026
+
+- `openspec validate fnr-008-usuario-administrativo --strict --json`: válido, sem issues. `git diff --check` passou sem erros; a verificação suplementar de whitespace nos 25 arquivos novos também passou. Avisos LF/CRLF do Git são informativos.
+- Destinos de links Markdown locais foram conferidos em README, AMBIENTE, BACKLOG, TDD e nos quatro artefatos OpenSpec da mudança; os oito documentos/artefatos não têm destinos locais ausentes.
+- `gitleaks` não está instalado no ambiente. Uma inspeção local por padrões percorreu os 30 arquivos alterados (incluindo não rastreados) sem imprimir valores: os únicos candidatos foram literais de senha/sentinelas sintéticas nos testes, revisados como dados de fixture, não credenciais operacionais. Essa busca é limitada e não constitui auditoria exaustiva de segredos.
+- Revisão do diff completo e dos critérios FNR-008 não identificou alterações fora do escopo ou conflito com a spec; comentários novos/alterados nos blocos lógicos de código estão em português. FNR-009/010 permanecem fora do escopo.
+- Execução direta da regressão health/OpenAPI/Swagger/Pluggy/composição/arquitetura: **51/51 aprovados, exit code 0**.
+- Wrapper anterior da regressão: **51/51 reportados, exit code 1**. Causa desconhecida; resultado mantido separado da execução direta.
+- Esta revisão concluiu a tarefa OpenSpec 5.3 e registrou **16/17**. Naquele momento, a tarefa 4.4 estava bloqueada pela indisponibilidade de TTY Windows no harness. A verificação manual posterior e a repetição mínima dos códigos faltantes estão registradas abaixo; juntas, completam 4.4 e elevam o progresso para 17/17, sem substituir o aceite humano final.
+
+Em resposta à apresentação da revisão inicial, o titular aceitou explicitamente no harness a implementação local FNR-008 **com ressalva**, pois naquele momento a tarefa 4.4 estava bloqueada pela ausência de TTY Windows interativo. Esse aceite inicial é preservado como histórico. Após as evidências manuais concluírem 4.4, o titular aprovou explicitamente o aceite final da implementação e o BACKLOG 0.15 em 18/11/2026. Commit, PR, integração e publicação não foram autorizados; sync/arquivamento não foram executados. O backlog atual registra 17/17 tarefas locais e a aprovação documental; checks locais não são checks do GitHub.
+
+Em 18/11/2026, o titular aprovou explicitamente nesta conversa o aceite final da implementação FNR-008 e o BACKLOG 0.15. Essa aprovação posterior conclui a ressalva histórica ligada à tarefa manual 4.4, sem apagar o registro do aceite inicial com ressalva. O fluxo permanece sem commit, PR ou integração; sincronização e arquivamento não foram solicitados. A revogação de sessões, inclusive a integração transacional do reset, continua sob responsabilidade da FNR-010 e é gate antes de publicar autenticação.
+
+### Roteiro manual Windows interativo — tarefa 4.4 (evidência concluída)
+
+O aceite histórico FNR-008 permanece registrado **com ressalva**; a tarefa 4.4 está concluída pelas evidências manuais abaixo. O roteiro serve também para reprodução futura. Use um terminal PowerShell interativo real, nunca pipe ou sessão redirecionada.
+
+**Pré-requisitos:** estar na raiz do repositório; Docker Desktop com engine Linux ativo e imagem `postgres:18` já disponível localmente; `.env` local ignorado pelo Git e com valores de teste válidos em `POSTGRES_TEST_DB`, `POSTGRES_TEST_USER` e `POSTGRES_TEST_PASSWORD`; ferramenta local `dotnet-ef` 10.0.15 já restaurada. Não use valores do banco de desenvolvimento, User Secrets, Neon ou conexão de runtime. Não compartilhe credenciais no chat.
+
+No PowerShell interativo, execute o bloco abaixo. Ele lê apenas as três chaves `POSTGRES_TEST_*` necessárias, confirma o database/usuário de teste e exige porta publicada em loopback; não imprime valores. O `down` limpa apenas o projeto descartável nomeado e sem volume, então use-o somente se não houver outro trabalho dependendo desse teste temporário.
+
+```powershell
+# Leia somente as chaves de teste, sem exibir valores nem carregar configuração do banco de desenvolvimento.
+$testSettings = @{}
+foreach ($line in Get-Content -LiteralPath '.env' -Encoding utf8) {
+    if ($line -match '^\s*(POSTGRES_TEST_(?:DB|USER|PASSWORD))\s*=\s*(.*?)\s*$') {
+        $value = $matches[2].Trim()
+        if ($value.Length -ge 2 -and (($value[0] -eq '"' -and $value[-1] -eq '"') -or ($value[0] -eq "'" -and $value[-1] -eq "'"))) {
+            $value = $value.Substring(1, $value.Length - 2)
+        }
+        $testSettings[$matches[1]] = $value
+    }
+}
+if ($testSettings['POSTGRES_TEST_DB'] -cne 'finora_integration_test' -or $testSettings['POSTGRES_TEST_USER'] -cne 'finora_test' -or [string]::IsNullOrWhiteSpace($testSettings['POSTGRES_TEST_PASSWORD'])) {
+    throw 'As chaves locais não identificam o banco descartável esperado.'
+}
+
+# Guarde a configuração do processo em memória para restaurá-la sem imprimir valores ao final.
+$previousDotnetEnvironment = $env:DOTNET_ENVIRONMENT
+$previousConnectionString = $env:ConnectionStrings__Finora
+
+# Recria somente o serviço efêmero dedicado; não acrescente --volumes.
+docker compose --env-file .env --project-name finora-fnr006-test -f compose.test.yaml down --remove-orphans
+docker compose --env-file .env --project-name finora-fnr006-test -f compose.test.yaml config --quiet
+if ($LASTEXITCODE -ne 0) { throw 'A configuração Compose de teste falhou.' }
+docker image inspect postgres:18 | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'A imagem PostgreSQL 18 não está disponível localmente; não faça pull neste roteiro.' }
+docker compose --env-file .env --project-name finora-fnr006-test -f compose.test.yaml up -d --wait --pull never
+if ($LASTEXITCODE -ne 0) { throw 'O PostgreSQL descartável não iniciou.' }
+
+# Exija mapeamento loopback e monte a configuração runtime em memória para este PowerShell.
+$testPublishedPort = docker compose --env-file .env --project-name finora-fnr006-test -f compose.test.yaml port postgres 5432
+if ($LASTEXITCODE -ne 0 -or $testPublishedPort -notmatch '^127\.0\.0\.1:(\d+)$') { throw 'A porta do banco não está restrita a loopback.' }
+$testPort = [int]$matches[1]
+$testConnection = [System.Data.Common.DbConnectionStringBuilder]::new()
+$testConnection['Host'] = '127.0.0.1'
+$testConnection['Port'] = $testPort
+$testConnection['Database'] = $testSettings['POSTGRES_TEST_DB']
+$testConnection['Username'] = $testSettings['POSTGRES_TEST_USER']
+$testConnection['Password'] = $testSettings['POSTGRES_TEST_PASSWORD']
+$env:DOTNET_ENVIRONMENT = 'Production'
+$env:ConnectionStrings__Finora = $testConnection.ConnectionString
+
+# Aplique explicitamente o schema FNR-007 somente ao destino descartável já validado.
+$efVersion = dotnet tool run dotnet-ef -- --version
+if ($LASTEXITCODE -ne 0 -or $efVersion -notmatch '10\.0\.15') { throw 'A ferramenta local dotnet-ef 10.0.15 não está disponível.' }
+dotnet ef database update 20261117193137_Fnr007CorePersistence --project backend/Finora.Infrastructure/Finora.Infrastructure.csproj --startup-project backend/Finora.Infrastructure/Finora.Infrastructure.csproj --context FinoraDbContext
+if ($LASTEXITCODE -ne 0) { throw 'A migration explícita para o banco descartável falhou.' }
+```
+
+Com o processo ainda na mesma janela, execute cada comando separadamente e capture `$LASTEXITCODE` logo após cada execução. Use um e-mail sintético `.invalid` e senhas temporárias fortes, digitadas apenas nos prompts e nunca devolvidas no relatório:
+
+1. `dotnet run --project backend/Finora.Api --no-launch-profile -- user-create`: informe o e-mail sintético e confirme a senha igual nos dois prompts; espere código 0 e `status=created`, sem caracteres digitados ecoados.
+2. Repita `user-create` com o mesmo e-mail: espere código 0 e `status=already_exists`; deve solicitar somente o e-mail, sem prompts de senha.
+3. `dotnet run --project backend/Finora.Api --no-launch-profile -- user-reset-password`: informe o mesmo e-mail, digite uma senha temporária e, no prompt de confirmação, pressione Ctrl+C; espere código 130 e `failure=cancelled`, sem mensagem de sucesso.
+4. Repita `user-reset-password`, confirme uma nova senha temporária igual nos dois prompts; espere código 0 e `status=password_reset session_revocation=not_implemented`, sem eco da senha. O aviso indica a limitação já aceita; não representa revogação.
+
+Se qualquer etapa falhar ou produzir resultado inesperado, pare e reporte somente o caso, código de saída e mensagem fixa sanitizada. Em qualquer saída, inclusive antecipada, execute a limpeza abaixo na mesma janela PowerShell.
+
+Depois dos quatro comandos — ou ao interromper o roteiro — execute a limpeza abaixo. Ela restaura as variáveis de ambiente anteriores sem exibi-las e remove apenas o projeto Compose descartável; não use `--volumes`.
+
+```powershell
+# Restaure valores prévios do processo ou remova somente os valores temporários deste roteiro.
+if ($null -eq $previousDotnetEnvironment) { Remove-Item Env:DOTNET_ENVIRONMENT -ErrorAction SilentlyContinue } else { $env:DOTNET_ENVIRONMENT = $previousDotnetEnvironment }
+if ($null -eq $previousConnectionString) { Remove-Item Env:ConnectionStrings__Finora -ErrorAction SilentlyContinue } else { $env:ConnectionStrings__Finora = $previousConnectionString }
+
+# Encerre somente o PostgreSQL descartável FNR-008, preservando volumes de qualquer outro projeto.
+docker compose --env-file .env --project-name finora-fnr006-test -f compose.test.yaml down --remove-orphans
+```
+
+**Evidência sanitizada:** não envie e-mail usado, senha, connection string, conteúdo de `.env`, captura com dados digitados ou logs brutos. O resultado manual fica consolidado abaixo; FNR-009/010 permanecem fora do escopo.
+
+#### Repetição mínima dos códigos ausentes — 18/11/2026
+
+Na execução manual anterior, o titular relatou criação `created`/0, repetição `already_exists` sem solicitar senha, reset bem-sucedido `password_reset`/0 com `session_revocation=not_implemented`, cancelamento com `failure=cancelled`, ausência de eco da senha/confirmação e limpeza. Os códigos de `already_exists` e cancelamento não tinham sido capturados. O Compose descartável daquela execução foi removido; para obter somente os códigos faltantes, o titular repetiu esses dois casos em PowerShell interativo no banco descartável.
+
+1. Titular preparou usuário sintético no banco novo; relatou `status=created`.
+2. Após repetir `user-create`, capturou código **0**. O status dessa repetição não foi reenviado; não se atribui a ela status novo. O resultado anterior `already_exists` sem prompt de senha permanece registrado separadamente.
+3. Após cancelar `user-reset-password` com Ctrl+C, capturou código **130**. O status dessa repetição não foi reenviado; não se atribui a ela status novo. O resultado anterior `failure=cancelled` permanece registrado separadamente.
+4. Titular confirmou remoção do container e rede descartáveis, restauração das variáveis e remoção de objetos temporários. Não repetiu o reset bem-sucedido nem a suíte.
+
+**Conferência do contrato:** juntando os estados relatados na execução anterior (`already_exists` e `failure=cancelled`) aos códigos capturados na repetição mínima (0 e 130, respectivamente), ficam comprovados os códigos D6 exigidos sem presumir status não reenviados. A criação e o reset bem-sucedido, a ausência de eco, a falta de prompt de senha na repetição, a confirmação/cancelamento e a limpeza foram relatados. A tarefa OpenSpec 4.4 está concluída; FNR-008 soma 17/17 tarefas locais. O titular aprovou o aceite final em 18/11/2026, conforme registrado acima. Isso não autoriza commit, PR, integração, publicação, sync ou arquivamento.
+
+Na atualização documental de 18/11/2026, `openspec validate fnr-008-usuario-administrativo --strict` passou, `git diff --check` não apontou erros e os destinos de links Markdown locais em AMBIENTE, BACKLOG e tasks.md existem. Não foram repetidos build ou testes de backend nesta atualização de registros.

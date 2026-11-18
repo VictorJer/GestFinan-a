@@ -83,6 +83,35 @@ O comando consulta a conexão, seleciona uma conta de cartão e lê **somente a 
 
 Configuração versionada contém apenas opções não sensíveis. Detalhes de JSON, locks, portas e evidências no [guia de ambiente](docs/AMBIENTE.md#backend-fnr-003--versões-verificadas-em-14112026). Banco, Docker e credenciais de provedor não são pré-requisitos para estes comandos.
 
+### Provisionamento administrativo local (FNR-008)
+
+Os comandos `user-create` e `user-reset-password` usam o processo da API sem iniciar listener HTTP, autenticação JWT ou cliente Pluggy. Execute um comando por vez, sem argumentos adicionais e sem perfil de lançamento:
+
+```powershell
+# Development precisa ser escolhido explicitamente para usar User Secrets locais.
+$env:DOTNET_ENVIRONMENT = 'Development'
+# Configure ConnectionStrings:Finora fora do repositório; não inclua o valor neste comando.
+dotnet run --project backend/Finora.Api --no-launch-profile -- user-create
+
+# O reset solicita o titular e a nova senha com confirmação, no mesmo terminal protegido.
+dotnet run --project backend/Finora.Api --no-launch-profile -- user-reset-password
+```
+
+Configure `ConnectionStrings:Finora` em User Secrets somente para `Development` explicitamente escolhido ou por configuração externa protegida nos demais ambientes. Os comandos não aceitam e-mail, senha, connection string ou opções como argumentos; não usam pipe, arquivo ou `.env`. Digite e-mail, senha e confirmação apenas nos prompts: as teclas são interceptadas, sem eco; Enter finaliza o campo, Backspace remove o caractere anterior e Ctrl+C cancela. EOF, stdin/stdout redirecionados, terminal sem leitura protegida e confirmação divergente são recusados sem fallback com eco. Use a migration FNR-007 aplicada pelo processo documentado em [AMBIENTE.md](docs/AMBIENTE.md); os comandos não criam nem alteram o schema.
+
+Códigos de saída administrativos:
+
+| Código | Significado |
+|---|---|
+| `0` | Titular criado (`created`), já existente sem alteração (`already_exists`) ou senha redefinida (`password_reset`). |
+| `1` | Falha operacional, incluindo banco/schema indisponível ou resultado de persistência não confirmado. |
+| `2` | Argumentos/configuração/entrada inválidos, política de senha não atendida, confirmação divergente ou terminal interativo indisponível. |
+| `3` | Nenhum titular encontrado para redefinição. |
+| `4` | Conflito, como outro titular, múltiplos usuários ou concorrência. |
+| `130` | Cancelamento com Ctrl+C antes da confirmação da persistência. |
+
+O reset não envia e-mail, não desbloqueia a conta e não revoga JWT/sessões existentes. Seu resultado inclui `session_revocation=not_implemented`; FNR-010 continua sendo gate obrigatório antes da publicação autenticada, e a FNR-008 isolada não representa atendimento integral do RF14. A verificação manual em TTY real da tarefa 4.4 foi concluída; evidências combinadas e limitações estão registradas no [guia de ambiente](docs/AMBIENTE.md). O roteiro usa somente o Compose PostgreSQL descartável local.
+
 ## Funcionalidades planejadas
 
 ### Núcleo do MVP

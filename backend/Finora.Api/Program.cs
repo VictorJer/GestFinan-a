@@ -6,6 +6,12 @@ using MediatR;
 // Qualquer argumento de processo é tratado como comando, exceto a assinatura fixa do host de testes.
 if (args.Length > 0 && !PluggyReadCommand.IsApiTestHostInvocation(args))
 {
+    // O fluxo administrativo valida seus próprios tokens e compõe somente configuração/Identity.
+    if (AdministrativeUserCommand.IsAdministrativeCommand(args))
+    {
+        return await AdministrativeUserCommand.RunAsync(args, Console.Out, Console.Error);
+    }
+
     var isAnalysisCommand = string.Equals(args[0], "pluggy-analyze", StringComparison.Ordinal);
     if (isAnalysisCommand && !PluggyAnalyzeCommand.HasValidArguments(args))
     {
