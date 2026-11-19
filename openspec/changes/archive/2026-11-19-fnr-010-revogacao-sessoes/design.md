@@ -2,7 +2,7 @@
 
 ## Context
 
-Motivação e escopo: [proposal.md](proposal.md). Este SDD está **proposto, aguardando revisão humana**, e não autoriza implementação. Referências canônicas: [PRD RF14/§13](../../../docs/PRD.md), [TDD §5, DT-23–30/38–39/48–49](../../../docs/TDD.md) e [BACKLOG FNR-010](../../../docs/BACKLOG.md). A FNR-009 está integrada; o backlog conserva registros históricos anteriores ao encaminhamento do encerramento, que não serão reescritos neste planejamento.
+Motivação e escopo: [proposal.md](proposal.md). Este SDD está **proposto, aguardando revisão humana**, e não autoriza implementação. Referências canônicas: [PRD RF14/§13](../../../../docs/PRD.md), [TDD §5, DT-23–30/38–39/48–49](../../../../docs/TDD.md) e [BACKLOG FNR-010](../../../../docs/BACKLOG.md). A FNR-009 está integrada; o backlog conserva registros históricos anteriores ao encaminhamento do encerramento, que não serão reescritos neste planejamento.
 
 ### Evidência da inspeção somente leitura
 
