@@ -68,12 +68,27 @@ Para testar pelo navegador, abra `http://127.0.0.1:5080/swagger`, expanda `GET /
 
 Configure externamente `ConnectionStrings__Finora`, `Authentication__Jwt__Issuer`, `Authentication__Jwt__Audience` e `Authentication__Jwt__SigningKeyBase64`, sem argumentos ou arquivos versionados. A chave codifica pelo menos 32 bytes aleatórios e precisa ser estável por ambiente/reinício; rotação coordenada invalida tokens anteriores. Sem configuração válida, login/proteção retornam 503 e health continua independente. A migration `20261118173427_AddAuthenticationSessions` precisa ser aplicada explicitamente pelo processo do [guia de ambiente](docs/AMBIENTE.md); nunca é executada no startup.
 
-**Não publicar autenticação antes de FNR-010/011 e demais gates.** Logout/reset revogatório e frontend FNR-020 não estão entregues por FNR-009; atualizar security stamp ou ler uma revogação SQL de fixture não substitui essa entrega. Contrato, configuração, erros, chaves e evidências estão em [AMBIENTE.md](docs/AMBIENTE.md). Para a suíte PostgreSQL, primeiro preparar somente o Compose descartável e a variável dedicada `FINORA_TEST_CONNECTION_STRING` conforme a barreira documentada; depois executar:
+**Não publicar autenticação antes de FNR-010/011 e demais gates.** A afirmação de que logout/reset revogatório não estavam entregues refere-se ao escopo histórico da FNR-009; atualizar security stamp ou ler uma revogação SQL de fixture não substituía essa entrega. O estado local posterior da FNR-010 está descrito abaixo, sem converter a evidência histórica em prova retroativa. Contrato, configuração, erros, chaves e evidências estão em [AMBIENTE.md](docs/AMBIENTE.md). Para a suíte PostgreSQL, primeiro preparar somente o Compose descartável e a variável dedicada `FINORA_TEST_CONNECTION_STRING` conforme a barreira documentada; depois executar:
 
 ```powershell
 # A fixture recusa banco pessoal/Neon e aplica migrations somente no database descartável allowlisted.
 dotnet test --solution backend/Finora.slnx --no-build --filter 'FullyQualifiedName~PostgreSql'
 ```
+
+### Logout da sessão atual (FNR-010, implementação local)
+
+Na implementação local da FNR-010, `POST /api/auth/logout` exige Bearer e não recebe corpo nem seletor de titular/sessão. Query ou corpo enviados pelo cliente não escolhem o alvo: somente a sessão das claims autenticadas pode ser revogada. A resposta 204 é vazia e só é emitida depois da confirmação do commit; não há cookie. Todas as respostas usam `Cache-Control: no-store`.
+
+| Resultado | Significado para o cliente |
+|---|---|
+| `204` | Revogação da sessão autenticada confirmada pelo servidor. Novas autenticações com esse token são recusadas. |
+| `401` + challenge Bearer | Bearer ausente ou sessão/token inválido, expirado, revogado, inexistente ou incompatível; a mutação de logout não foi executada. |
+| `503` sem challenge | Configuração, banco/schema ou timeout indisponível; também pode representar confirmação de commit perdida. Não significa que a sessão permaneceu ativa nem confirma logout remoto. |
+| `500` sanitizado | Falha inesperada; não confirma logout remoto e não expõe exceção interna. |
+
+Se a conexão falhar ou for cancelada, a interface futura FNR-020 não deve mostrar logout remoto como confirmado: deve limpar o token local da memória e informar que não foi possível confirmar o encerramento no servidor. Em especial, após commit incerto a sessão pode já estar revogada; o servidor não repete a mutação automaticamente e o cliente não deve presumir rollback. Essa limpeza/mensagem da interface não é implementada nesta mudança.
+
+A revogação afeta autenticações iniciadas depois da confirmação, inclusive em outro host que use o mesmo banco/chave. Não cancela retroativamente uma requisição cuja autenticação já terminou. Esta seção registra comportamento e testes locais da feature branch, ainda sem aceite final/integração/publicação; o gate de publicação autenticada e as dependências FNR-011/020 permanecem.
 
 ### Consulta local Pluggy (em validação)
 
@@ -97,7 +112,7 @@ O comando consulta a conexão, seleciona uma conta de cartão e lê **somente a 
 
 Configuração versionada contém apenas opções não sensíveis. Detalhes de JSON, locks, portas e evidências no [guia de ambiente](docs/AMBIENTE.md#backend-fnr-003--versões-verificadas-em-14112026). Banco, Docker e credenciais de provedor não são pré-requisitos para estes comandos.
 
-### Provisionamento administrativo local (FNR-008)
+### Provisionamento administrativo local (FNR-008; reset revogatório FNR-010 local)
 
 Os comandos `user-create` e `user-reset-password` usam o processo da API sem iniciar listener HTTP, autenticação JWT ou cliente Pluggy. Execute um comando por vez, sem argumentos adicionais e sem perfil de lançamento:
 
@@ -111,20 +126,20 @@ dotnet run --project backend/Finora.Api --no-launch-profile -- user-create
 dotnet run --project backend/Finora.Api --no-launch-profile -- user-reset-password
 ```
 
-Configure `ConnectionStrings:Finora` em User Secrets somente para `Development` explicitamente escolhido ou por configuração externa protegida nos demais ambientes. Os comandos não aceitam e-mail, senha, connection string ou opções como argumentos; não usam pipe, arquivo ou `.env`. Digite e-mail, senha e confirmação apenas nos prompts: as teclas são interceptadas, sem eco; Enter finaliza o campo, Backspace remove o caractere anterior e Ctrl+C cancela. EOF, stdin/stdout redirecionados, terminal sem leitura protegida e confirmação divergente são recusados sem fallback com eco. Use a migration FNR-007 aplicada pelo processo documentado em [AMBIENTE.md](docs/AMBIENTE.md); os comandos não criam nem alteram o schema.
+Configure `ConnectionStrings:Finora` em User Secrets somente para `Development` explicitamente escolhido ou por configuração externa protegida nos demais ambientes. Os comandos não aceitam e-mail, senha, connection string ou opções como argumentos; não usam pipe, arquivo ou `.env`. Digite e-mail, senha e confirmação apenas nos prompts: as teclas são interceptadas, sem eco; Enter finaliza o campo, Backspace remove o caractere anterior e Ctrl+C cancela. EOF, stdin/stdout redirecionados, terminal sem leitura protegida e confirmação divergente são recusados sem fallback com eco. A criação usa o schema FNR-007; o reset revogatório local da FNR-010 também exige a migration existente `20261118173427_AddAuthenticationSessions`. Ambos os comandos não criam/aplicam migrations nem alteram o schema no startup; o processo explícito está no [guia de ambiente](docs/AMBIENTE.md).
 
 Códigos de saída administrativos:
 
 | Código | Significado |
 |---|---|
-| `0` | Titular criado (`created`), já existente sem alteração (`already_exists`) ou senha redefinida (`password_reset`). |
-| `1` | Falha operacional, incluindo banco/schema indisponível ou resultado de persistência não confirmado. |
+| `0` | Titular criado (`created`), já existente sem alteração (`already_exists`) ou reset confirmado (`password_reset session_revocation=confirmed`). |
+| `1` | Falha operacional, incluindo banco/schema indisponível ou commit não confirmado/incerto; não informa se o commit ocorreu. |
 | `2` | Argumentos/configuração/entrada inválidos, política de senha não atendida, confirmação divergente ou terminal interativo indisponível. |
 | `3` | Nenhum titular encontrado para redefinição. |
 | `4` | Conflito, como outro titular, múltiplos usuários ou concorrência. |
-| `130` | Cancelamento com Ctrl+C antes da confirmação da persistência. |
+| `130` | Cancelamento com Ctrl+C antes da tentativa de commit; nenhuma alteração é publicada. Cancelamento/falha durante ou após a tentativa é código `1`, sem alegar rollback. |
 
-O reset não envia e-mail, não desbloqueia a conta e não revoga JWT/sessões existentes. Seu resultado inclui `session_revocation=not_implemented`; FNR-010 continua sendo gate obrigatório antes da publicação autenticada, e a FNR-008 isolada não representa atendimento integral do RF14. A verificação manual em TTY real da tarefa 4.4 foi concluída; evidências combinadas e limitações estão registradas no [guia de ambiente](docs/AMBIENTE.md). O roteiro usa somente o Compose PostgreSQL descartável local.
+O aviso antigo `session_revocation=not_implemented` e a afirmação de que o reset não revogava sessões pertencem à evidência histórica da FNR-008; não descrevem a implementação local posterior da FNR-010. Neste escopo local, reset de senha e revogação de todas as sessões ainda não revogadas — inclusive expiradas — compartilham a mesma transação; sessões já revogadas mantêm o timestamp. O comando não envia e-mail, não desbloqueia a conta nem cria JWT/sessão. Somente um commit confirmado produz o texto de sucesso acima. Em falha anterior à tentativa, não há alteração; em cancelamento/falha de commit ou confirmação perdida, o código `1` não permite inferir rollback nem confirmar o resultado remoto. O código `130` é reservado ao cancelamento antes da tentativa de commit. A FNR-010 permanece em implementação local, sem aceite final/integração/publicação; a entrega FNR-008 isolada não atende RF14 e os gates FNR-011/020 e de publicação continuam obrigatórios. A verificação manual TTY histórica e evidências atuais, com limites, estão no [guia de ambiente](docs/AMBIENTE.md); testes PostgreSQL usam somente o Compose descartável local.
 
 ## Funcionalidades planejadas
 
