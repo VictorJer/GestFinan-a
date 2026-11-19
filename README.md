@@ -26,7 +26,7 @@ Desenvolver uma aplicação web que consulte dados de cartão de crédito por me
 | Conexão no painel do provedor | Cartão e transações visualizados pelo autor |
 | Consulta local pelo backend .NET (FNR-004) | Concluída no escopo limitado, com prova real de uma página; não comprova importação completa |
 | Contrato e normalização Pluggy (FNR-005) | Em validação; análise limitada documentada; regra positiva de compra e competência bloqueadas por evidência insuficiente |
-| Login JWT e sessões persistentes (FNR-009) | Validada localmente na feature branch: 225 testes sem PostgreSQL e 64 no PostgreSQL descartável aprovados. Aceite final, integração e publicação pendentes; revogação completa depende de FNR-010. |
+| Login JWT e sessões persistentes (FNR-009) | Implementação aceita pelo titular e [PR #20](https://github.com/VictorJer/GestFinan-a/pull/20) integrado; 225 testes sem PostgreSQL e 64 no PostgreSQL descartável aprovados localmente. Revogação completa FNR-010, FNR-011/020 e publicação permanecem pendentes; publicação autenticada bloqueada até FNR-010 e demais gates. |
 | Aplicação integrada e publicação definitiva | Pendentes |
 
 A visualização no painel da Pluggy é evidência preliminar de acesso aos dados. A leitura local pela API foi demonstrada em FNR-004; FNR-005 observou campos e agregados em três coletas autorizadas de uma página cada, mas não valida histórico completo, regra positiva de compra, competência por instituição ou comportamento de sincronização.

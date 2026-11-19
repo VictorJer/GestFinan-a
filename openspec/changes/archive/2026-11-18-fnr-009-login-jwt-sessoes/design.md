@@ -2,7 +2,7 @@
 
 ## Context
 
-Motivação e escopo: [proposal.md](proposal.md). Contrato: [authenticated-sessions](specs/authenticated-sessions/spec.md). Referências canônicas: [PRD RF14](../../../docs/PRD.md), [TDD §5/§10/§14, DT-23–30/38–39/48–49](../../../docs/TDD.md) e [BACKLOG FNR-009](../../../docs/BACKLOG.md).
+Motivação e escopo: [proposal.md](proposal.md). Contrato: [authenticated-sessions](specs/authenticated-sessions/spec.md). Referências canônicas: [PRD RF14](../../../../docs/PRD.md), [TDD §5/§10/§14, DT-23–30/38–39/48–49](../../../../docs/TDD.md) e [BACKLOG FNR-009](../../../../docs/BACKLOG.md).
 
 Estado observado na preparação, antes da implementação (18/11/2026):
 - `backend/Finora.Api/Program.cs` separa comandos antes de montar HTTP; o ramo HTTP registra Controllers/OpenAPI e expõe somente health.
