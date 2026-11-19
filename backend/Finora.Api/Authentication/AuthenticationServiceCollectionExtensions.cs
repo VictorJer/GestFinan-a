@@ -29,7 +29,8 @@ public static class AuthenticationServiceCollectionExtensions
         {
             options.RegisterServicesFromAssembly(typeof(LoginCommand).Assembly);
             // Não registrar handlers CLI/Pluggy no HTTP só por compartilharem o assembly da Application.
-            options.TypeEvaluator = type => type == typeof(LoginHandler);
+            options.TypeEvaluator = type => type == typeof(LoginHandler)
+                || (available && type == typeof(LogoutHandler));
         });
         services.Configure<ApiBehaviorOptions>(options => options.InvalidModelStateResponseFactory = action =>
             new BadRequestObjectResult(AuthenticationHttp.Problem(action.HttpContext, 400))

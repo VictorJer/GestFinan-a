@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Globalization;
+using System.Security.Claims;
 using Finora.Application.Authentication;
 using Finora.Infrastructure.Identity;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -60,6 +62,47 @@ public static class JwtTokenValidation
         {
             return null;
         }
+    }
+
+    // A action de logout aceita somente a identidade já autenticada e recusa claims ausentes/duplicadas.
+    public static AuthenticationSessionReference? ReadSessionClaims(ClaimsPrincipal principal, TimeProvider clock)
+    {
+        var subject = ReadSingleClaim(principal, "sub");
+        var sessionId = ReadSingleClaim(principal, "jti");
+        var issuedValue = ReadSingleClaim(principal, "iat");
+        var expirationValue = ReadSingleClaim(principal, "exp");
+        if (!Guid.TryParseExact(subject, "D", out var userId) || userId == Guid.Empty
+            || !string.Equals(userId.ToString("D"), subject, StringComparison.Ordinal)
+            || !AuthSession.IsValidId(sessionId)
+            || !long.TryParse(issuedValue, NumberStyles.None, CultureInfo.InvariantCulture, out var issued)
+            || !long.TryParse(expirationValue, NumberStyles.None, CultureInfo.InvariantCulture, out var expiration))
+        {
+            return null;
+        }
+
+        try
+        {
+            var createdAtUtc = DateTimeOffset.FromUnixTimeSeconds(issued);
+            var expiresAtUtc = DateTimeOffset.FromUnixTimeSeconds(expiration);
+            if (expiresAtUtc - createdAtUtc != TimeSpan.FromSeconds(1800)
+                || createdAtUtc > clock.GetUtcNow() || expiresAtUtc <= clock.GetUtcNow())
+            {
+                return null;
+            }
+
+            return new AuthenticationSessionReference(userId, sessionId!, createdAtUtc, expiresAtUtc);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return null;
+        }
+    }
+
+    // Claims obrigatórias precisam aparecer uma única vez para impedir seleção ambígua de identidade/sessão.
+    private static string? ReadSingleClaim(ClaimsPrincipal principal, string claimType)
+    {
+        var claims = principal.FindAll(claimType).ToArray();
+        return claims.Length == 1 ? claims[0].Value : null;
     }
 
     // Rejeita objetos ambíguos, incluindo cabeçalhos repetidos, sem refletir o token nas mensagens.

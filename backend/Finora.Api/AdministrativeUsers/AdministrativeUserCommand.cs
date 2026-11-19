@@ -265,7 +265,7 @@ internal static class AdministrativeUserCommand
         ("user-create", AdministrativeUserWorkflowState.AlreadyExists) =>
             new(0, "User admin: operation=create status=already_exists"),
         ("user-reset-password", AdministrativeUserWorkflowState.PasswordReset) =>
-            new(0, "User admin: operation=reset_password status=password_reset session_revocation=not_implemented"),
+            new(0, "User admin: operation=reset_password status=password_reset session_revocation=confirmed"),
         (_, AdministrativeUserWorkflowState.NotFound) => new(3, "User admin: failure=not_found"),
         (_, AdministrativeUserWorkflowState.InvalidArguments) => new(2, InvalidArgumentsMessage),
         (_, AdministrativeUserWorkflowState.InvalidConfiguration) => new(2, InvalidConfigurationMessage),

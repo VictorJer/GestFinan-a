@@ -14,13 +14,15 @@ internal sealed class AdministrativeUserAccessService : IAdministrativeUserAcces
 
     private readonly FinoraDbContext _context;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly TimeProvider _clock;
     private readonly TimeSpan _databaseOperationTimeout;
 
     // O mesmo contexto scoped mantém as consultas do validador Identity sem tracking.
     public AdministrativeUserAccessService(
         FinoraDbContext context,
-        UserManager<ApplicationUser> userManager)
-        : this(context, userManager, DefaultDatabaseOperationTimeout)
+        UserManager<ApplicationUser> userManager,
+        TimeProvider clock)
+        : this(context, userManager, clock, DefaultDatabaseOperationTimeout)
     {
     }
 
@@ -28,10 +30,12 @@ internal sealed class AdministrativeUserAccessService : IAdministrativeUserAcces
     internal AdministrativeUserAccessService(
         FinoraDbContext context,
         UserManager<ApplicationUser> userManager,
+        TimeProvider clock,
         TimeSpan databaseOperationTimeout)
     {
         _context = context;
         _userManager = userManager;
+        _clock = clock;
         if (databaseOperationTimeout <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(databaseOperationTimeout));
@@ -193,6 +197,7 @@ internal sealed class AdministrativeUserAccessService : IAdministrativeUserAcces
                 IsolationLevel.ReadCommitted,
                 operationToken);
             await AcquireAdministrativeLockAsync(operationToken);
+            var revocationTimestampUtc = _clock.GetUtcNow();
 
             // A segunda leitura ocorre após o lock para observar criação/reset concorrente já confirmado.
             var users = await ReadUsersAsync(operationToken);
@@ -260,6 +265,13 @@ internal sealed class AdministrativeUserAccessService : IAdministrativeUserAcces
                 await transaction.RollbackAsync(operationToken);
                 return MapIdentityFailure(identityResult);
             }
+
+            // Revoga na mesma transação credencial/stamp; o helper preserva registros já revogados e linhas futuras.
+            await AuthenticationSessionRevocation.RevokeAllAsync(
+                _context,
+                user.Id,
+                revocationTimestampUtc,
+                operationToken);
 
             // Depois que o commit começa, resultado incerto é falha operacional, nunca confirmação de cancelamento.
             operationToken.ThrowIfCancellationRequested();

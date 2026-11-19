@@ -19,7 +19,8 @@ public static class FinoraIdentityServiceCollectionExtensions
             FinoraDbContextConfiguration.Configure(options, connectionString, provider);
             // Mantém os interceptores explícitos de falha usados pelas provas transacionais existentes.
             var interceptors = provider.GetServices<ISaveChangesInterceptor>().Cast<IInterceptor>()
-                .Concat(provider.GetServices<IDbTransactionInterceptor>());
+                .Concat(provider.GetServices<IDbTransactionInterceptor>())
+                .Concat(provider.GetServices<IDbCommandInterceptor>());
             options.AddInterceptors(interceptors);
         });
         return services.AddIdentityCore<ApplicationUser>(ConfigureIdentityOptions)

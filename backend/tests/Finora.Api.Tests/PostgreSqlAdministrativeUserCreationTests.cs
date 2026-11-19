@@ -327,6 +327,7 @@ public sealed class PostgreSqlAdministrativeUserCreationTests
             services.AddScoped<IAdministrativeUserAccess>(serviceProvider => new AdministrativeUserAccessService(
                 serviceProvider.GetRequiredService<FinoraDbContext>(),
                 serviceProvider.GetRequiredService<UserManager<ApplicationUser>>(),
+                serviceProvider.GetRequiredService<TimeProvider>(),
                 timeout));
         }
 

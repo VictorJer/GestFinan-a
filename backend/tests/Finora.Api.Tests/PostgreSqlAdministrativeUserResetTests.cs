@@ -4,6 +4,7 @@ using Finora.Domain.FinancialData;
 using Finora.Domain.Transactions;
 using Finora.Infrastructure.Identity;
 using Finora.Infrastructure.Persistence;
+using System.Data.Common;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -32,17 +33,26 @@ public sealed class PostgreSqlAdministrativeUserResetTests
     private const string ConcurrentPasswordOne = "Concurrent!One123";
     private const string ConcurrentPasswordTwo = "Concurrent!Two456";
     private const long AdministrativeLockKey = 0x46494E4F5241L;
+    private static readonly DateTimeOffset RevocationClockTime = new(2026, 11, 19, 12, 0, 0, TimeSpan.Zero);
 
     private DisposablePostgresMigrationFixture? _fixture;
     private ServiceProvider? _serviceProvider;
 
-    // Aplica o schema aprovado explicitamente e registra Identity mais o provider efêmero do comando administrativo.
+    // Aplica explicitamente o schema com AuthSessions e compõe Identity mais o provider efêmero do reset.
     [TestInitialize]
     public async Task InitializeAsync()
     {
         _fixture = DisposablePostgresMigrationFixture.CreateValidated();
         await _fixture.ResetToEmptySchemaAsync();
-        await _fixture.Context.Database.MigrateAsync(PostgreSqlPersistenceTests.CoreMigrationId);
+        await _fixture.Context.Database.MigrateAsync(PostgreSqlAuthenticationSessionTests.MigrationId);
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                PostgreSqlPersistenceTests.SmokeMigrationId,
+                PostgreSqlPersistenceTests.CoreMigrationId,
+                PostgreSqlAuthenticationSessionTests.MigrationId
+            },
+            (await _fixture.Context.Database.GetAppliedMigrationsAsync()).ToArray());
 
         var connectionString = DisposablePostgresTestConfiguration.ReadRequired().ConnectionString;
         var services = new ServiceCollection();
@@ -83,6 +93,45 @@ public sealed class PostgreSqlAdministrativeUserResetTests
         }
 
         Assert.AreEqual(AdministrativeUserOperationState.PasswordReset, result.State);
+        await AssertResetCredentialAsync(originalSecurityStamp);
+        await AssertFinancialGraphUnchangedAsync();
+        Assert.AreEqual(0, await _fixture!.Context.Set<AuthSession>().AsNoTracking().CountAsync());
+    }
+
+    // Revoga sessões ativas e expiradas do único titular permitido, preserva timestamps e respeita criação futura.
+    [TestMethod]
+    public async Task ResetRevokesAllUnrevokedSessionsAndPreservesExistingRevocationsAndCreationConstraint()
+    {
+        var originalSecurityStamp = await SeedUserAndFinancialGraphAsync();
+        var clock = new AuthenticationTestClock(RevocationClockTime);
+        await using var provider = BuildServiceProvider(clock: clock);
+        var active = AuthSession.Create(AuthSession.GenerateId(), UserId,
+            RevocationClockTime.AddDays(-2), RevocationClockTime.AddDays(1));
+        var expired = AuthSession.Create(AuthSession.GenerateId(), UserId,
+            RevocationClockTime.AddDays(-5), RevocationClockTime.AddDays(-1));
+        var futureCreated = AuthSession.Create(AuthSession.GenerateId(), UserId,
+            RevocationClockTime.AddMinutes(2), RevocationClockTime.AddDays(1));
+        var previouslyRevoked = AuthSession.Create(AuthSession.GenerateId(), UserId,
+            RevocationClockTime.AddDays(-10), RevocationClockTime.AddDays(1));
+        var previousRevocationTime = RevocationClockTime.AddDays(-3);
+
+        _fixture!.Context.Set<AuthSession>().AddRange(active, expired, futureCreated, previouslyRevoked);
+        await _fixture.Context.SaveChangesAsync();
+        await _fixture.Context.Set<AuthSession>()
+            .Where(session => session.Id == previouslyRevoked.Id)
+            .ExecuteUpdateAsync(update => update.SetProperty(session => session.RevokedAtUtc, previousRevocationTime));
+
+        var result = await ResetAsync(Email, UserId, NewPassword, provider);
+
+        Assert.AreEqual(AdministrativeUserOperationState.PasswordReset, result.State);
+        var persisted = await _fixture.Context.Set<AuthSession>().AsNoTracking().ToDictionaryAsync(session => session.Id);
+        Assert.AreEqual(RevocationClockTime, persisted[active.Id].RevokedAtUtc);
+        Assert.AreEqual(RevocationClockTime, persisted[expired.Id].RevokedAtUtc);
+        Assert.AreEqual(futureCreated.CreatedAtUtc, persisted[futureCreated.Id].RevokedAtUtc);
+        Assert.AreEqual(previousRevocationTime, persisted[previouslyRevoked.Id].RevokedAtUtc);
+        Assert.IsTrue(persisted.Values.All(session => session.RevokedAtUtc is null
+            || session.RevokedAtUtc.Value.Offset == TimeSpan.Zero
+            && session.RevokedAtUtc.Value >= session.CreatedAtUtc));
         await AssertResetCredentialAsync(originalSecurityStamp);
         await AssertFinancialGraphUnchangedAsync();
     }
@@ -272,18 +321,123 @@ public sealed class PostgreSqlAdministrativeUserResetTests
     public async Task FailureAfterIdentitySaveRollsBackAndAllowsAnExplicitResetRetry()
     {
         await CreateIdentityUserAsync(Email, OldPassword, UserId);
+        var session = await CreateResetSessionAsync();
         var interceptor = new FailAfterFirstSaveChangesInterceptor();
         await using var provider = BuildServiceProvider(interceptor);
 
         var failed = await ResetAsync(Email, UserId, NewPassword, provider);
         var afterFailure = await ReadCredentialSnapshotAsync(Email, OldPassword, NewPassword);
+        var sessionAfterFailure = await ReadSessionRevocationAsync(session.Id);
         var retry = await ResetAsync(Email, UserId, NewPassword, provider);
 
         Assert.AreEqual(AdministrativeUserOperationState.OperationalFailure, failed.State);
         Assert.IsTrue(interceptor.WasTriggered);
         Assert.IsTrue(afterFailure.PasswordMatches[0]);
         Assert.IsFalse(afterFailure.PasswordMatches[1]);
+        Assert.IsNull(sessionAfterFailure);
         Assert.AreEqual(AdministrativeUserOperationState.PasswordReset, retry.State);
+        Assert.IsNotNull(await ReadSessionRevocationAsync(session.Id));
+    }
+
+    // A exceção depois do UPDATE SQL confirmado pelo provider desfaz em conjunto sessão, senha e security stamp.
+    [TestMethod]
+    public async Task FailureAfterSessionRevocationUpdateRollsBackIdentityAndAllowsExplicitRetry()
+    {
+        await CreateIdentityUserAsync(Email, OldPassword, UserId);
+        var session = await CreateResetSessionAsync();
+        var before = await ReadCredentialSnapshotAsync(Email, OldPassword, NewPassword);
+        var interceptor = new FailAfterSessionRevocationCommandInterceptor();
+        await using var provider = BuildServiceProvider(commandInterceptor: interceptor);
+
+        var failed = await ResetAsync(Email, UserId, NewPassword, provider);
+        var afterFailure = await ReadCredentialSnapshotAsync(Email, OldPassword, NewPassword);
+
+        Assert.AreEqual(AdministrativeUserOperationState.OperationalFailure, failed.State);
+        Assert.AreEqual(1, interceptor.Calls);
+        Assert.IsTrue(afterFailure.PasswordMatches[0]);
+        Assert.IsFalse(afterFailure.PasswordMatches[1]);
+        Assert.AreEqual(before.PasswordHash, afterFailure.PasswordHash);
+        Assert.AreEqual(before.SecurityStamp, afterFailure.SecurityStamp);
+        Assert.IsNull(await ReadSessionRevocationAsync(session.Id));
+
+        interceptor.Armed = false;
+        var retry = await ResetAsync(Email, UserId, NewPassword, provider);
+        Assert.AreEqual(AdministrativeUserOperationState.PasswordReset, retry.State);
+        Assert.IsNotNull(await ReadSessionRevocationAsync(session.Id));
+    }
+
+    // A ausência do schema revogatório fecha o reset e não executa migration ou fallback de senha.
+    [TestMethod]
+    public async Task MissingAuthenticationSessionsTableRollsBackResetWithoutCreatingSchema()
+    {
+        await CreateIdentityUserAsync(Email, OldPassword, UserId);
+        var before = await ReadCredentialSnapshotAsync(Email, OldPassword, NewPassword);
+        await _fixture!.Context.Database.ExecuteSqlRawAsync("DROP TABLE \"AuthSessions\"");
+
+        var failed = await ResetAsync(Email, UserId, NewPassword);
+        var afterFailure = await ReadCredentialSnapshotAsync(Email, OldPassword, NewPassword);
+        var tableExists = await _fixture.Context.Database.SqlQueryRaw<bool>(
+            "SELECT to_regclass('public.\"AuthSessions\"') IS NOT NULL AS \"Value\"").SingleAsync();
+
+        Assert.AreEqual(AdministrativeUserOperationState.OperationalFailure, failed.State);
+        Assert.IsTrue(afterFailure.PasswordMatches[0]);
+        Assert.IsFalse(afterFailure.PasswordMatches[1]);
+        Assert.AreEqual(before.PasswordHash, afterFailure.PasswordHash);
+        Assert.AreEqual(before.SecurityStamp, afterFailure.SecurityStamp);
+        Assert.IsFalse(tableExists);
+    }
+
+    // Cancelar depois de SaveChanges Identity propaga cancelamento do operador e reverte escrita e sessão.
+    [TestMethod]
+    public async Task CallerCancellationAfterIdentityWriteRollsBackAndReleasesMutationLock()
+    {
+        await CreateIdentityUserAsync(Email, OldPassword, UserId);
+        var session = await CreateResetSessionAsync();
+        var before = await ReadCredentialSnapshotAsync(Email, OldPassword, NewPassword);
+        using var cancellation = new CancellationTokenSource();
+        var interceptor = new CancelAfterFirstIdentitySaveInterceptor(cancellation);
+        await using var provider = BuildServiceProvider(interceptor);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => ResetAsync(
+            Email, UserId, NewPassword, provider, cancellation.Token));
+
+        var afterFailure = await ReadCredentialSnapshotAsync(Email, OldPassword, NewPassword);
+        Assert.IsTrue(afterFailure.PasswordMatches[0]);
+        Assert.IsFalse(afterFailure.PasswordMatches[1]);
+        Assert.AreEqual(before.PasswordHash, afterFailure.PasswordHash);
+        Assert.AreEqual(before.SecurityStamp, afterFailure.SecurityStamp);
+        Assert.IsNull(await ReadSessionRevocationAsync(session.Id));
+
+        var retry = await ResetAsync(Email, UserId, NewPassword, provider);
+        Assert.AreEqual(AdministrativeUserOperationState.PasswordReset, retry.State);
+        Assert.IsNotNull(await ReadSessionRevocationAsync(session.Id));
+    }
+
+    // O timeout interno que vence após a escrita Identity retorna falha operacional e permite retry explícito.
+    [TestMethod]
+    public async Task OperationTimeoutAfterIdentityWriteRollsBackAndReleasesMutationLock()
+    {
+        await CreateIdentityUserAsync(Email, OldPassword, UserId);
+        var session = await CreateResetSessionAsync();
+        var before = await ReadCredentialSnapshotAsync(Email, OldPassword, NewPassword);
+        var interceptor = new DelayAfterFirstIdentitySaveInterceptor(TimeSpan.FromSeconds(3));
+        await using var provider = BuildServiceProvider(
+            saveChangesInterceptor: interceptor,
+            databaseOperationTimeout: TimeSpan.FromSeconds(1));
+
+        var failed = await ResetAsync(Email, UserId, NewPassword, provider);
+
+        var afterFailure = await ReadCredentialSnapshotAsync(Email, OldPassword, NewPassword);
+        Assert.AreEqual(AdministrativeUserOperationState.OperationalFailure, failed.State);
+        Assert.IsTrue(afterFailure.PasswordMatches[0]);
+        Assert.IsFalse(afterFailure.PasswordMatches[1]);
+        Assert.AreEqual(before.PasswordHash, afterFailure.PasswordHash);
+        Assert.AreEqual(before.SecurityStamp, afterFailure.SecurityStamp);
+        Assert.IsNull(await ReadSessionRevocationAsync(session.Id));
+
+        var retry = await ResetAsync(Email, UserId, NewPassword, provider);
+        Assert.AreEqual(AdministrativeUserOperationState.PasswordReset, retry.State);
+        Assert.IsNotNull(await ReadSessionRevocationAsync(session.Id));
     }
 
     // Uma falha injetada após o commit real retorna falha operacional e não afirma que a senha anterior foi restaurada.
@@ -291,6 +445,8 @@ public sealed class PostgreSqlAdministrativeUserResetTests
     public async Task CommitAcknowledgementFailureReturnsOperationalFailureWithoutClaimingRollback()
     {
         await CreateIdentityUserAsync(Email, OldPassword, UserId);
+        var session = await CreateResetSessionAsync();
+        var secondSession = await CreateResetSessionAsync();
         await using var provider = BuildServiceProvider(transactionInterceptor: new FailAfterCommitInterceptor());
 
         var result = await ResetAsync(Email, UserId, NewPassword, provider);
@@ -299,6 +455,35 @@ public sealed class PostgreSqlAdministrativeUserResetTests
         Assert.AreEqual(AdministrativeUserOperationState.OperationalFailure, result.State);
         Assert.IsFalse(credentials.PasswordMatches[0]);
         Assert.IsTrue(credentials.PasswordMatches[1]);
+        Assert.IsNotNull(await ReadSessionRevocationAsync(session.Id));
+        Assert.IsNotNull(await ReadSessionRevocationAsync(secondSession.Id));
+    }
+
+    // Cancelamento observado depois do commit físico é resultado incerto para o operador, embora os dados persistam juntos.
+    [TestMethod]
+    public async Task CallerCancellationAfterPhysicalCommitReturnsOperationalFailureWithPasswordAndRevocationPersisted()
+    {
+        await CreateIdentityUserAsync(Email, OldPassword, UserId);
+        var session = await CreateResetSessionAsync();
+        var secondSession = await CreateResetSessionAsync();
+        using var cancellation = new CancellationTokenSource();
+        var interceptor = new CancelAfterPhysicalCommitInterceptor(cancellation);
+        await using var provider = BuildServiceProvider(transactionInterceptor: interceptor);
+
+        var result = await ResetAsync(Email, UserId, NewPassword, provider, cancellation.Token);
+        var credentials = await ReadCredentialSnapshotAsync(Email, OldPassword, NewPassword);
+        var revocation = await ReadSessionRevocationAsync(session.Id);
+        var secondRevocation = await ReadSessionRevocationAsync(secondSession.Id);
+
+        Assert.AreEqual(AdministrativeUserOperationState.OperationalFailure, result.State);
+        Assert.IsTrue(cancellation.IsCancellationRequested);
+        Assert.AreEqual(1, interceptor.Calls);
+        Assert.IsFalse(credentials.PasswordMatches[0]);
+        Assert.IsTrue(credentials.PasswordMatches[1]);
+        Assert.IsNotNull(revocation);
+        Assert.AreEqual(TimeSpan.Zero, revocation!.Value.Offset);
+        Assert.IsNotNull(secondRevocation);
+        Assert.AreEqual(TimeSpan.Zero, secondRevocation!.Value.Offset);
     }
 
     // Cria a conta pela API do Identity e semeia somente dados financeiros sintéticos associados ao mesmo titular.
@@ -425,6 +610,23 @@ public sealed class PostgreSqlAdministrativeUserResetTests
         return await access.ResetPasswordAsync(email, expectedUserId, password, cancellationToken);
     }
 
+    // Semeia uma sessão válida do titular para observar rollback/commit sem token ou dependência de HTTP.
+    private async Task<AuthSession> CreateResetSessionAsync()
+    {
+        var now = RevocationClockTime.AddDays(-1);
+        var session = AuthSession.Create(AuthSession.GenerateId(), UserId, now, now.AddDays(30));
+        _fixture!.Context.Set<AuthSession>().Add(session);
+        await _fixture.Context.SaveChangesAsync();
+        return session;
+    }
+
+    // Consulta a revogação em um statement SQL novo, sem confiar no estado rastreado pelo contexto de fixture.
+    private async Task<DateTimeOffset?> ReadSessionRevocationAsync(string sessionId) =>
+        await _fixture!.Context.Set<AuthSession>().AsNoTracking()
+            .Where(session => session.Id == sessionId)
+            .Select(session => session.RevokedAtUtc)
+            .SingleAsync();
+
     // Fotografa hash/stamps e valida várias senhas por Identity sem expor credenciais em mensagens de teste.
     private async Task<CredentialSnapshot> ReadCredentialSnapshotAsync(string email, params string[] passwords)
     {
@@ -537,7 +739,9 @@ public sealed class PostgreSqlAdministrativeUserResetTests
     private ServiceProvider BuildServiceProvider(
         ISaveChangesInterceptor? saveChangesInterceptor = null,
         IDbTransactionInterceptor? transactionInterceptor = null,
-        TimeSpan? databaseOperationTimeout = null)
+        IDbCommandInterceptor? commandInterceptor = null,
+        TimeSpan? databaseOperationTimeout = null,
+        TimeProvider? clock = null)
     {
         var connectionString = DisposablePostgresTestConfiguration.ReadRequired().ConnectionString;
         var services = new ServiceCollection();
@@ -552,6 +756,16 @@ public sealed class PostgreSqlAdministrativeUserResetTests
             services.AddSingleton(transactionInterceptor);
         }
 
+        if (commandInterceptor is not null)
+        {
+            services.AddSingleton(commandInterceptor);
+        }
+
+        if (clock is not null)
+        {
+            services.AddSingleton<TimeProvider>(clock);
+        }
+
         services.AddAdministrativeUserIdentity(connectionString);
         if (databaseOperationTimeout is { } timeout)
         {
@@ -559,6 +773,7 @@ public sealed class PostgreSqlAdministrativeUserResetTests
             services.AddScoped<IAdministrativeUserAccess>(serviceProvider => new AdministrativeUserAccessService(
                 serviceProvider.GetRequiredService<FinoraDbContext>(),
                 serviceProvider.GetRequiredService<UserManager<ApplicationUser>>(),
+                serviceProvider.GetRequiredService<TimeProvider>(),
                 timeout));
         }
 
@@ -659,6 +874,67 @@ public sealed class PostgreSqlAdministrativeUserResetTests
         }
     }
 
+    // Cancela uma vez após o store já ter persistido o usuário dentro da transação aberta.
+    private sealed class CancelAfterFirstIdentitySaveInterceptor(CancellationTokenSource cancellation)
+        : SaveChangesInterceptor
+    {
+        private int _triggered;
+
+        public override ValueTask<int> SavedChangesAsync(
+            SaveChangesCompletedEventData eventData,
+            int result,
+            CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Exchange(ref _triggered, 1) == 0)
+            {
+                cancellation.Cancel();
+            }
+
+            return ValueTask.FromResult(result);
+        }
+    }
+
+    // Aguarda depois da gravação Identity e respeita o timeout vinculado, simulando lentidão pós-escrita.
+    private sealed class DelayAfterFirstIdentitySaveInterceptor(TimeSpan delay) : SaveChangesInterceptor
+    {
+        private int _delayed;
+
+        public override async ValueTask<int> SavedChangesAsync(
+            SaveChangesCompletedEventData eventData,
+            int result,
+            CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Exchange(ref _delayed, 1) == 0)
+            {
+                await Task.Delay(delay, cancellationToken);
+            }
+
+            return result;
+        }
+    }
+
+    // Lança somente após o comando UPDATE AuthSessions ter sido executado pelo provider PostgreSQL.
+    private sealed class FailAfterSessionRevocationCommandInterceptor : DbCommandInterceptor
+    {
+        public bool Armed { get; set; } = true;
+        public int Calls { get; private set; }
+
+        public override ValueTask<int> NonQueryExecutedAsync(
+            DbCommand command,
+            CommandExecutedEventData eventData,
+            int result,
+            CancellationToken cancellationToken = default)
+        {
+            if (Armed && command.CommandText.Contains("UPDATE \"AuthSessions\"", StringComparison.Ordinal))
+            {
+                Calls++;
+                return ValueTask.FromException<int>(new InvalidOperationException("falha sintética após UPDATE de sessão"));
+            }
+
+            return ValueTask.FromResult(result);
+        }
+    }
+
     // Lança depois do commit físico, simulando perda da confirmação sem alegar que a transação sofreu rollback.
     private sealed class FailAfterCommitInterceptor : DbTransactionInterceptor
     {
@@ -667,5 +943,22 @@ public sealed class PostgreSqlAdministrativeUserResetTests
             TransactionEndEventData eventData,
             CancellationToken cancellationToken = default) =>
             Task.FromException(new InvalidOperationException("falha sintética após commit real"));
+    }
+
+    // Cancela o token do operador somente após confirmação física do provider e deixa a camada reportar estado incerto.
+    private sealed class CancelAfterPhysicalCommitInterceptor(CancellationTokenSource cancellation)
+        : DbTransactionInterceptor
+    {
+        public int Calls { get; private set; }
+
+        public override Task TransactionCommittedAsync(
+            DbTransaction transaction,
+            TransactionEndEventData eventData,
+            CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            cancellation.Cancel();
+            return Task.FromException(new OperationCanceledException(cancellationToken));
+        }
     }
 }

@@ -237,30 +237,56 @@ public sealed class PostgreSqlLoginTests
         await held.CommitAsync();
         Assert.AreEqual(AdministrativeUserOperationState.PasswordReset, (await reset).State);
         Assert.AreEqual(LoginState.InvalidCredentials, (await login).State);
+        Assert.AreEqual(0, await fixture.Context.Set<AuthSession>().CountAsync());
         using var fresh = await fixture.LoginAsync(password: "New!Password456");
         Assert.AreEqual(HttpStatusCode.OK, fresh.StatusCode);
+        Assert.AreEqual(1, await fixture.Context.Set<AuthSession>().CountAsync());
     }
 
-    // A ordem inversa permite o login anterior; a sessão permanece até a revogação transacional da FNR-010 ser entregue.
+    // O token do login só retorna após o reset que aguardava sua transação já ter revogado a sessão confirmada.
     [TestMethod]
-    public async Task LoginQueuedBeforeResetCommitsSessionWithoutClaimingRevocation()
+    public async Task LoginQueuedBeforeResetReturnsLateTokenThatResetHasAlreadyRevoked()
     {
-        await using var fixture = await PostgreSqlAuthenticationFixture.CreateAsync();
+        var commitGate = new GateAfterLoginCommitInterceptor();
+        await using var fixture = await PostgreSqlAuthenticationFixture.CreateAsync(services =>
+            services.AddSingleton<IDbTransactionInterceptor>(commitGate));
         var id = await fixture.SeedUserAsync();
         await using var administrative = fixture.AdministrativeProvider();
         using var resetScope = administrative.CreateScope();
         await using var connection = new NpgsqlConnection(fixture.ConnectionString);
         await using var held = await fixture.HoldIdentityLockAsync(connection);
+        commitGate.Armed = true;
         var login = fixture.LoginAsync();
-        await fixture.WaitForAdvisoryWaitersAsync(1);
-        var reset = resetScope.ServiceProvider.GetRequiredService<IAdministrativeUserAccess>()
-            .ResetPasswordAsync("owner@example.invalid", id, "New!Password456", CancellationToken.None);
-        await fixture.WaitForAdvisoryWaitersAsync(2);
-        await held.CommitAsync();
-        using var response = await login;
+        Task<AdministrativeUserOperationResult>? reset = null;
+        try
+        {
+            await fixture.WaitForAdvisoryWaitersAsync(1);
+            reset = resetScope.ServiceProvider.GetRequiredService<IAdministrativeUserAccess>()
+                .ResetPasswordAsync("owner@example.invalid", id, "New!Password456", CancellationToken.None);
+            await fixture.WaitForAdvisoryWaitersAsync(2);
+            await held.CommitAsync();
+
+            // O commit físico libera o lock; o interceptor segura a resposta para o reset revogar antes da emissão do token.
+            await commitGate.CommitObserved.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.AreEqual(AdministrativeUserOperationState.PasswordReset,
+                (await reset.WaitAsync(TimeSpan.FromSeconds(10))).State);
+            fixture.Context.ChangeTracker.Clear();
+            var sessionBeforeLoginResponse = await fixture.Context.Set<AuthSession>().AsNoTracking().SingleAsync();
+            Assert.IsNotNull(sessionBeforeLoginResponse.RevokedAtUtc);
+        }
+        finally
+        {
+            commitGate.Release();
+        }
+
+        using var response = await login.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
-        Assert.AreEqual(AdministrativeUserOperationState.PasswordReset, (await reset).State);
         Assert.AreEqual(1, await fixture.Context.Set<AuthSession>().CountAsync());
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var lateToken = body.RootElement.GetProperty("accessToken").GetString();
+        using var protectedResponse = await PostgreSqlAuthenticationFixture.ProtectedAsync(fixture.Client, lateToken);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, protectedResponse.StatusCode);
+        Assert.AreEqual(1, commitGate.Calls);
     }
 
     // Ativa falha somente depois do provisionamento; SavedChanges prova rollback após escrita SQL real.
@@ -289,6 +315,30 @@ public sealed class PostgreSqlLoginTests
             if (!Armed) { return Task.CompletedTask; }
             Calls++;
             return Task.FromException(new NpgsqlException("commit-exception-sentinel"));
+        }
+    }
+
+    // Pausa somente a publicação da resposta depois do commit SQL, deixando a operação concorrente revogar o estado.
+    private sealed class GateAfterLoginCommitInterceptor : DbTransactionInterceptor
+    {
+        private readonly TaskCompletionSource _commitObserved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        internal bool Armed { get; set; }
+        internal int Calls { get; private set; }
+        internal TaskCompletionSource CommitObserved => _commitObserved;
+
+        internal void Release() => _release.TrySetResult();
+
+        public override async Task TransactionCommittedAsync(
+            DbTransaction transaction,
+            TransactionEndEventData eventData,
+            CancellationToken cancellationToken = default)
+        {
+            if (!Armed) { return; }
+            Calls++;
+            _commitObserved.TrySetResult();
+            await _release.Task.WaitAsync(cancellationToken);
         }
     }
 

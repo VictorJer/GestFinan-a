@@ -18,6 +18,12 @@ public interface IAuthenticationSessionReader
     Task<bool> IsActiveAsync(AuthenticationSessionReference session, CancellationToken cancellationToken);
 }
 
+/// <summary>Revoga a sessão identificada pela autenticação validada, sem receber um token JWT.</summary>
+public interface IAuthenticationSessionRevoker
+{
+    Task<LogoutResult> RevokeAsync(AuthenticationSessionReference session, CancellationToken cancellationToken);
+}
+
 /// <summary>Identifica a sessão sem transportar token completo ou dados pessoais adicionais.</summary>
 public sealed record AuthenticationSessionReference(
     Guid UserId, string SessionId, DateTimeOffset CreatedAtUtc, DateTimeOffset ExpiresAtUtc)

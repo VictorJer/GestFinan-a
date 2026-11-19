@@ -15,6 +15,7 @@ public static class SessionAuthenticationServiceCollectionExtensions
         services.AddSingleton<SyntheticCredential>();
         services.AddScoped<IAuthenticationLogin, IdentityLoginService>();
         services.AddScoped<IAuthenticationSessionReader, AuthenticationSessionReader>();
+        services.AddScoped<IAuthenticationSessionRevoker, IdentityAuthenticationSessionRevoker>();
         return services;
     }
 }
