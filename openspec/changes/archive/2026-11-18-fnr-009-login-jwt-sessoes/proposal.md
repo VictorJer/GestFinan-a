@@ -2,7 +2,7 @@
 
 ## Why
 
-A FNR-008 disponibilizou o titular administrativo, mas a API ainda não autentica requisições nem persiste sessões. A FNR-009 estabelece o login e a validação de acesso necessários às próximas entregas, conforme [BACKLOG FNR-009](../../../docs/BACKLOG.md), [PRD RF14](../../../docs/PRD.md) e [TDD §5, DT-23–30/39](../../../docs/TDD.md).
+A FNR-008 disponibilizou o titular administrativo, mas a API ainda não autentica requisições nem persiste sessões. A FNR-009 estabelece o login e a validação de acesso necessários às próximas entregas, conforme [BACKLOG FNR-009](../../../../docs/BACKLOG.md), [PRD RF14](../../../../docs/PRD.md) e [TDD §5, DT-23–30/39](../../../../docs/TDD.md).
 
 ## What Changes
 

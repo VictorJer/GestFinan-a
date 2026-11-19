@@ -8,7 +8,7 @@
 
 Fechamento local da tarefa 6.2: validação OpenSpec estrita repetida com sucesso; diff/whitespace aprovados e **67/67 destinos locais de links** conferidos após as atualizações documentais. Índice Git permaneceu vazio e `docker compose -f compose.test.yaml ps -q` não retornou containers. Build final repetido após ajustes exclusivamente de comentários/documentação passou sem avisos/erros. Escopo apresentado para aceite humano com 19/19 tarefas locais; aceite da implementação e revisão do BACKLOG 0.19 ainda pendentes, sem autorização de commits, PR, merge, publicação, sync ou arquivo.
 
-Revisão local dos **8 requisitos/23 cenários** da [delta spec](../openspec/changes/fnr-009-login-jwt-sessoes/specs/authenticated-sessions/spec.md), sem declarar aceite humano:
+Revisão local dos **8 requisitos/23 cenários** da [delta spec](../openspec/changes/archive/2026-11-18-fnr-009-login-jwt-sessoes/specs/authenticated-sessions/spec.md), sem declarar aceite humano naquela etapa:
 
 | Requisito / cenários conferidos | Evidência local |
 |---|---|
