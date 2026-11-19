@@ -9,12 +9,12 @@ namespace Finora.Api.Controllers;
 
 // O Controller transporta o caso de uso; a confirmação transacional pertence à Infrastructure.
 [ApiController]
-[AllowAnonymous]
 [Route("api/auth")]
-public sealed class AuthenticationController(ISender sender) : ControllerBase
+public sealed class AuthenticationController(ISender sender, TimeProvider clock) : ControllerBase
 {
     // Não aplica a política de criação ao login nem transforma a senha, inclusive espaços externos.
     [HttpPost("login")]
+    [AllowAnonymous]
     [EndpointSummary("Autentica o titular e confirma uma nova sessão")]
     [ProducesResponseType<LoginResponse>(200)]
     [ProducesResponseType<ProblemDetails>(400)]
@@ -31,6 +31,37 @@ public sealed class AuthenticationController(ISender sender) : ControllerBase
             return Ok(new LoginResponse(token.AccessToken, token.TokenType, token.ExpiresIn, token.ExpiresAtUtc));
         }
         var status = result.State == LoginState.Unavailable ? 503 : 401;
+        return new ObjectResult(AuthenticationHttp.Problem(HttpContext, status))
+        { StatusCode = status, ContentTypes = { "application/problem+json" } };
+    }
+
+    // A referência vem exclusivamente do principal validado; query/body não podem escolher o alvo.
+    [HttpPost("logout")]
+    [Authorize]
+    [EndpointSummary("Revoga a sessão autenticada atual")]
+    [ProducesResponseType(204)]
+    [ProducesResponseType<ProblemDetails>(401)]
+    [ProducesResponseType<ProblemDetails>(503)]
+    [ProducesResponseType<ProblemDetails>(500)]
+    public async Task<IActionResult> Logout(CancellationToken cancellationToken)
+    {
+        var reference = JwtTokenValidation.ReadSessionClaims(User, clock);
+        if (reference is null) { return AuthenticationFailure(401, challenge: true); }
+
+        var result = await sender.Send(new LogoutCommand(reference), cancellationToken);
+        return result.State switch
+        {
+            LogoutState.Confirmed => NoContent(),
+            LogoutState.InvalidSession => AuthenticationFailure(401, challenge: true),
+            LogoutState.Unavailable => AuthenticationFailure(503, challenge: false),
+            _ => AuthenticationFailure(500, challenge: false)
+        };
+    }
+
+    // Mantém logout sem detalhes do provider e diferencia token inválido de indisponibilidade operacional.
+    private IActionResult AuthenticationFailure(int status, bool challenge)
+    {
+        if (challenge) { Response.Headers.WWWAuthenticate = "Bearer"; }
         return new ObjectResult(AuthenticationHttp.Problem(HttpContext, status))
         { StatusCode = status, ContentTypes = { "application/problem+json" } };
     }

@@ -100,10 +100,14 @@ internal sealed class PostgreSqlAuthenticationFixture : IAsyncDisposable
     }
 
     // O provider administrativo é separado do HTTP, preservando o provider efêmero do reset e o protocolo comum.
-    internal ServiceProvider AdministrativeProvider()
+    internal ServiceProvider AdministrativeProvider(TimeProvider? clock = null)
     {
         var services = new ServiceCollection();
         services.AddLogging();
+        if (clock is not null)
+        {
+            services.AddSingleton<TimeProvider>(clock);
+        }
         services.AddAdministrativeUserIdentity(ConnectionString);
         return services.BuildServiceProvider(validateScopes: true);
     }

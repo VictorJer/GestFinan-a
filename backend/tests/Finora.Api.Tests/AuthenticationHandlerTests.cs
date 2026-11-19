@@ -40,6 +40,53 @@ public sealed class AuthenticationHandlerTests
             handler.Handle(new LoginCommand("email", "password"), cancellation.Token));
     }
 
+    // O handler de logout encaminha exatamente a referência autenticada e o token de cancelamento.
+    [TestMethod]
+    public async Task LogoutHandlerDelegatesSessionResultAndCancellation()
+    {
+        var expected = new LogoutResult(LogoutState.Confirmed);
+        var session = new AuthenticationSessionReference(Guid.NewGuid(), "session-sentinel",
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(30));
+        var revoker = new FakeRevoker(expected);
+        await using var provider = CreateLogoutProvider(revoker);
+        using var scope = provider.CreateScope();
+        using var cancellation = new CancellationTokenSource();
+
+        var result = await scope.ServiceProvider.GetRequiredService<ISender>()
+            .Send(new LogoutCommand(session), cancellation.Token);
+
+        Assert.AreSame(expected, result);
+        Assert.AreSame(session, revoker.Session);
+        Assert.AreEqual(cancellation.Token, revoker.Cancellation);
+    }
+
+    // Identificadores técnicos não transitam por ToString nem por serialização pública do command.
+    [TestMethod]
+    public void LogoutContractRedactsSessionReference()
+    {
+        var session = new AuthenticationSessionReference(Guid.NewGuid(), "session-private-sentinel",
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(30));
+        var command = new LogoutCommand(session);
+        var text = string.Join('|', command.ToString(), session.ToString(),
+            JsonSerializer.Serialize(command), new LogoutResult(LogoutState.Confirmed).ToString());
+
+        Assert.IsFalse(text.Contains("session-private-sentinel", StringComparison.Ordinal));
+        Assert.IsFalse(text.Contains(session.UserId.ToString(), StringComparison.Ordinal));
+    }
+
+    // Cancelamento é preservado como cancelamento, sem ser convertido em estado de logout.
+    [TestMethod]
+    public async Task LogoutHandlerPropagatesCancellation()
+    {
+        var handler = new LogoutHandler(new FakeRevoker(new LogoutResult(LogoutState.Unavailable)));
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
+            handler.Handle(new LogoutCommand(new AuthenticationSessionReference(Guid.NewGuid(), "session",
+                DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(30))), cancellation.Token));
+    }
+
     // Contratos redigem texto incidental e o request não oferece propriedades públicas serializáveis.
     [TestMethod]
     public void SensitiveRepresentationsAreRedactedAndFailuresContainNoToken()
@@ -68,6 +115,15 @@ public sealed class AuthenticationHandlerTests
         return services.BuildServiceProvider(validateScopes: true);
     }
 
+    // Descobre o handler no assembly Application sem registrar serviços de infraestrutura.
+    private static ServiceProvider CreateLogoutProvider(IAuthenticationSessionRevoker revoker)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(revoker);
+        services.AddMediatR(configuration => configuration.RegisterServicesFromAssembly(typeof(LogoutCommand).Assembly));
+        return services.BuildServiceProvider(validateScopes: true);
+    }
+
     // Registra somente entradas sintéticas para provar delegação e cancelamento.
     private sealed class FakeLogin(LoginResult result) : IAuthenticationLogin
     {
@@ -80,6 +136,23 @@ public sealed class AuthenticationHandlerTests
             cancellationToken.ThrowIfCancellationRequested();
             Email = email;
             Password = password;
+            Cancellation = cancellationToken;
+            return Task.FromResult(result);
+        }
+    }
+
+    // Captura apenas os argumentos da fronteira para provar delegação sem simular persistência real.
+    private sealed class FakeRevoker(LogoutResult result) : IAuthenticationSessionRevoker
+    {
+        public AuthenticationSessionReference? Session { get; private set; }
+        public CancellationToken Cancellation { get; private set; }
+
+        public Task<LogoutResult> RevokeAsync(
+            AuthenticationSessionReference session,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Session = session;
             Cancellation = cancellationToken;
             return Task.FromResult(result);
         }

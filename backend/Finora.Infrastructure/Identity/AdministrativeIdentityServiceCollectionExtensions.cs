@@ -1,6 +1,7 @@
 using Finora.Application.AdministrativeUsers;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Finora.Infrastructure.Identity;
 
@@ -17,6 +18,7 @@ public static class AdministrativeIdentityServiceCollectionExtensions
 
         // O acesso administrativo é scoped ao mesmo contexto/Identity usado pela pré-consulta.
         services.AddScoped<IAdministrativeUserAccess, AdministrativeUserAccessService>();
+        services.TryAddSingleton<TimeProvider>(TimeProvider.System);
         return services.AddFinoraIdentity(connectionString);
     }
 }

@@ -45,6 +45,7 @@ internal sealed class AuthenticationApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<TimeProvider>();
             services.AddSingleton(_clock);
             services.AddSingleton<AuthenticationProbeCounter>();
+            services.AddSingleton<AuthenticationProbeBarrier>();
             services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.Trace).AddProvider(Logs));
             _configure?.Invoke(services);
         });
@@ -81,15 +82,47 @@ public sealed class AuthenticationProbeCounter
 [Authorize]
 [ApiExplorerSettings(IgnoreApi = true)]
 [Route("_tests/authentication-probe")]
-public sealed class AuthenticationProbeController(AuthenticationProbeCounter counter) : ControllerBase
+public sealed class AuthenticationProbeController(
+    AuthenticationProbeCounter counter,
+    AuthenticationProbeBarrier barrier) : ControllerBase
 {
-    // O retorno mínimo comprova a identidade vinda do token/sessão, sem dados financeiros ou senha.
+    // A barreira permite suspender somente a ação de teste depois da autenticação já concluída.
     [HttpGet]
-    public IActionResult Get()
+    public async Task<IActionResult> Get(CancellationToken cancellationToken)
     {
         counter.Increment();
+        await barrier.WaitAsync(cancellationToken);
         return Ok(new { subject = User.FindFirstValue("sub") });
     }
+}
+
+// Suspende uma chamada autenticada no Controller de teste para demonstrar que revogação não cancela trabalho em curso.
+public sealed class AuthenticationProbeBarrier
+{
+    private TaskCompletionSource? _entered;
+    private TaskCompletionSource? _release;
+    private int _armed;
+
+    // Cria uma barreira one-shot sem inserir espera/sleep nos fluxos normais das demais provas.
+    internal Task Arm()
+    {
+        _entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Volatile.Write(ref _armed, 1);
+        return _entered.Task;
+    }
+
+    // Sinaliza entrada no Controller apenas depois de Authorization ter aceitado a sessão persistida.
+    internal async Task WaitAsync(CancellationToken cancellationToken)
+    {
+        if (Volatile.Read(ref _armed) == 0) { return; }
+        _entered!.TrySetResult();
+        await _release!.Task.WaitAsync(cancellationToken);
+        Volatile.Write(ref _armed, 0);
+    }
+
+    // Desbloqueia também em finally para que uma asserção falha não deixe a fábrica HTTP presa.
+    internal void Release() => _release?.TrySetResult();
 }
 
 // Controla fronteiras temporais em testes sem sleeps de 30 minutos ou alteração do relógio da máquina.

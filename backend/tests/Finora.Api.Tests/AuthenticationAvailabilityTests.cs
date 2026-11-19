@@ -16,19 +16,23 @@ namespace Finora.Api.Tests;
 [DoNotParallelize]
 public sealed class AuthenticationAvailabilityTests
 {
-    // A rota de prova pertence somente ao assembly de testes; o host normal continua sem cadastro/logout/reset/refresh.
+    // A rota de prova pertence somente ao assembly de testes; somente login e logout são expostos em auth.
     [TestMethod]
-    public async Task NormalApiSurfaceContainsOnlyHealthAndLogin()
+    public async Task NormalApiSurfaceContainsHealthLoginAndProtectedLogout()
     {
         await using var factory = new ApiFactory("Development");
         using var client = factory.CreateClient();
         using var document = JsonDocument.Parse(await client.GetStringAsync("/openapi/v1.json"));
-        CollectionAssert.AreEquivalent(new[] { "/health", "/api/auth/login" },
+        CollectionAssert.AreEquivalent(new[] { "/health", "/api/auth/login", "/api/auth/logout" },
             document.RootElement.GetProperty("paths").EnumerateObject().Select(property => property.Name).ToArray());
         Assert.IsFalse(typeof(Program).Assembly.GetTypes().Any(type => type.Name == nameof(AuthenticationProbeController)));
         using var probe = await client.GetAsync("/_tests/authentication-probe");
         Assert.AreEqual(HttpStatusCode.NotFound, probe.StatusCode);
-        foreach (var path in new[] { "/api/auth/register", "/api/auth/logout", "/api/auth/reset-password", "/api/auth/refresh" })
+        using var logout = await client.PostAsync("/api/auth/logout", content: null);
+        Assert.AreEqual(HttpStatusCode.ServiceUnavailable, logout.StatusCode);
+        Assert.IsFalse(logout.Headers.Contains("WWW-Authenticate"));
+        Assert.IsTrue(logout.Headers.CacheControl?.NoStore);
+        foreach (var path in new[] { "/api/auth/register", "/api/auth/reset-password", "/api/auth/refresh" })
         {
             using var response = await client.PostAsJsonAsync(path, new { });
             Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
@@ -67,6 +71,9 @@ public sealed class AuthenticationAvailabilityTests
         Assert.IsTrue(login.Headers.CacheControl?.NoStore);
         using var protectedResponse = await client.GetAsync("/_tests/authentication-probe");
         await AssertProblemAsync(protectedResponse, HttpStatusCode.ServiceUnavailable);
+        using var logoutResponse = await client.PostAsync("/api/auth/logout", content: null);
+        await AssertProblemAsync(logoutResponse, HttpStatusCode.ServiceUnavailable);
+        Assert.IsTrue(logoutResponse.Headers.CacheControl?.NoStore);
         Assert.AreEqual(0, factory.Services.GetRequiredService<AuthenticationProbeCounter>().Calls);
         using var scope = factory.Services.CreateScope();
         Assert.IsNull(scope.ServiceProvider.GetService<FinoraDbContext>());

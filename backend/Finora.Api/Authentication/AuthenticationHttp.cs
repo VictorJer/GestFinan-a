@@ -15,10 +15,15 @@ internal static class AuthenticationHttp
         context.GetEndpoint()?.Metadata.GetOrderedMetadata<IAuthorizeData>().Count > 0
         && context.GetEndpoint()?.Metadata.GetMetadata<IAllowAnonymous>() is null;
 
-    // Limita o tratamento de corpo/no-store à operação de login, sem alterar rotas de diagnóstico ou comandos.
+    // Limita o tratamento de corpo/no-store a login/logout, sem alterar rotas de diagnóstico ou comandos.
     internal static bool IsLogin(HttpContext context) =>
         HttpMethods.IsPost(context.Request.Method)
         && string.Equals(context.Request.Path.Value?.TrimEnd('/'), "/api/auth/login", StringComparison.OrdinalIgnoreCase);
+
+    // Logout recebe no-store inclusive em challenges/falhas da autenticação, antes da action.
+    internal static bool IsLogout(HttpContext context) =>
+        HttpMethods.IsPost(context.Request.Method)
+        && string.Equals(context.Request.Path.Value?.TrimEnd('/'), "/api/auth/logout", StringComparison.OrdinalIgnoreCase);
 
     // Somente títulos/códigos fixos saem da borda, sem ModelState, valores recebidos ou detalhes do Identity.
     internal static ProblemDetails Problem(HttpContext context, int status)
@@ -55,7 +60,7 @@ internal sealed class AuthenticationBoundary(RequestDelegate next)
     {
         var login = AuthenticationHttp.IsLogin(context);
         if (!login && !AuthenticationHttp.IsProtected(context)) { await next(context); return; }
-        if (login) { context.Response.Headers.CacheControl = "no-store"; }
+        if (login || AuthenticationHttp.IsLogout(context)) { context.Response.Headers.CacheControl = "no-store"; }
         var original = context.Request.Body;
         byte[]? buffer = null;
         try

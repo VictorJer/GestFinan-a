@@ -208,9 +208,9 @@ public sealed class AdministrativeUserWorkflowTests
         AssertOutputDoesNotContainSecrets(output, error, console, email, password);
     }
 
-    // O reset publica aviso fixo de revogação pendente junto do sucesso, sem alegar logout global.
+    // O reset confirma revogação somente depois de o caso de uso retornar PasswordReset após commit.
     [TestMethod]
-    public async Task RunAsyncResetWritesPendingRevocationWarningToStandardOutput()
+    public async Task RunAsyncResetWritesExactConfirmedRevocationOnlyToStandardOutput()
     {
         const string password = "reset-password-private-sentinel-9!";
         var probe = new WorkflowProbe
@@ -231,8 +231,9 @@ public sealed class AdministrativeUserWorkflowTests
         var exitCode = await RunWithFakeHostAsync("user-reset-password", probe, console, output, error);
 
         Assert.AreEqual(0, exitCode);
-        Assert.IsTrue(output.ToString().Contains(
-            "User admin: operation=reset_password status=password_reset session_revocation=not_implemented",
+        Assert.IsTrue(string.Equals(
+            "User admin: operation=reset_password status=password_reset session_revocation=confirmed" + Environment.NewLine,
+            output.ToString(),
             StringComparison.Ordinal));
         Assert.AreEqual(string.Empty, error.ToString());
         AssertOutputDoesNotContainSecrets(
@@ -241,6 +242,40 @@ public sealed class AdministrativeUserWorkflowTests
             console,
             "reset-email-private-sentinel@example.com",
             password);
+    }
+
+    // Falha operacional, inclusive resultado incerto de commit, vai apenas a stderr sem sentinelas nem confirmação.
+    [TestMethod]
+    public async Task RunAsyncResetOperationalFailureDoesNotConfirmSessionRevocation()
+    {
+        const string password = "reset-password-private-sentinel-9!";
+        const string email = "reset-email-private-sentinel@example.com";
+        const string token = "reset-jwt-private-sentinel";
+        const string hash = "reset-hash-private-sentinel";
+        const string exception = "reset-exception-private-sentinel";
+        var probe = new WorkflowProbe
+        {
+            PreflightResult = new AdministrativeUserPreflightResult(
+                AdministrativeUserPreflightState.Ready,
+                Guid.NewGuid()),
+            OperationResult = new AdministrativeUserOperationResult(AdministrativeUserOperationState.OperationalFailure)
+        };
+        var console = new ScriptedAdministrativeUserConsole(
+            TypeLine(email)
+                .Concat(TypeLine(password))
+                .Concat(TypeLine(password)),
+            probe.Events);
+        var output = new StringWriter();
+        var error = new StringWriter();
+
+        var exitCode = await RunWithFakeHostAsync("user-reset-password", probe, console, output, error);
+
+        Assert.AreEqual(1, exitCode);
+        Assert.AreEqual(string.Empty, output.ToString());
+        Assert.AreEqual("User admin: failure=operational" + Environment.NewLine, error.ToString());
+        Assert.IsFalse(error.ToString().Contains("session_revocation=confirmed", StringComparison.Ordinal));
+        AssertOutputDoesNotContainSecrets(output, error, console,
+            email, email.ToUpperInvariant(), password, token, "Bearer " + token, hash, exception);
     }
 
     // Uma criação repetida usa stdout com estado distinto e não pede senha, inclusive no contrato do entry point.
@@ -298,6 +333,44 @@ public sealed class AdministrativeUserWorkflowTests
             AdministrativeUserWorkflowState.AlreadyExists);
         Assert.AreEqual(1, resetAlreadyExists.ExitCode);
         Assert.IsTrue(string.Equals("User admin: failure=operational", resetAlreadyExists.Message, StringComparison.Ordinal));
+    }
+
+    // Para reset, cancelamento anterior à tentativa mantém 130; falha/commit incerto permanece operacional código 1.
+    [TestMethod]
+    public void ResetCancellationAndUncertainCommitKeepDistinctExitCodes()
+    {
+        var cancelled = AdministrativeUserCommand.MapWorkflowResult(
+            "user-reset-password",
+            AdministrativeUserWorkflowState.Cancelled);
+        var uncertainCommit = AdministrativeUserCommand.MapWorkflowResult(
+            "user-reset-password",
+            AdministrativeUserWorkflowState.OperationalFailure);
+
+        Assert.AreEqual(130, cancelled.ExitCode);
+        Assert.AreEqual("User admin: failure=cancelled", cancelled.Message);
+        Assert.AreEqual(1, uncertainCommit.ExitCode);
+        Assert.AreEqual("User admin: failure=operational", uncertainCommit.Message);
+
+        var resetFailureCases = new (AdministrativeUserWorkflowState State, int ExitCode)[]
+        {
+            (AdministrativeUserWorkflowState.OperationalFailure, 1),
+            (AdministrativeUserWorkflowState.InvalidArguments, 2),
+            (AdministrativeUserWorkflowState.InvalidConfiguration, 2),
+            (AdministrativeUserWorkflowState.InvalidEmail, 2),
+            (AdministrativeUserWorkflowState.PasswordPolicyViolation, 2),
+            (AdministrativeUserWorkflowState.PasswordMismatch, 2),
+            (AdministrativeUserWorkflowState.EndOfInput, 2),
+            (AdministrativeUserWorkflowState.TerminalUnavailable, 2),
+            (AdministrativeUserWorkflowState.NotFound, 3),
+            (AdministrativeUserWorkflowState.Conflict, 4),
+            (AdministrativeUserWorkflowState.Cancelled, 130)
+        };
+        foreach (var failure in resetFailureCases)
+        {
+            var mapped = AdministrativeUserCommand.MapWorkflowResult("user-reset-password", failure.State);
+            Assert.AreEqual(failure.ExitCode, mapped.ExitCode);
+            Assert.IsFalse(mapped.Message.Contains("session_revocation=confirmed", StringComparison.Ordinal));
+        }
     }
 
     // Exceções de construção e persistência com sentinelas viram somente falha operacional fixa em stderr.
