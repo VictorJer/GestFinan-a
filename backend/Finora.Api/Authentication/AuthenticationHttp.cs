@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Finora.Api.Errors;
 using System.Security.Cryptography;
 
 namespace Finora.Api.Authentication;
@@ -10,10 +11,12 @@ internal static class AuthenticationHttp
     internal static readonly object UnavailableKey = new();
     internal const int MaximumBodyBytes = 16 * 1024;
 
-    // A proteção é explícita por endpoint; health e documentação não autenticam headers incidentais.
-    internal static bool IsProtected(HttpContext context) =>
-        context.GetEndpoint()?.Metadata.GetOrderedMetadata<IAuthorizeData>().Count > 0
-        && context.GetEndpoint()?.Metadata.GetMetadata<IAllowAnonymous>() is null;
+    // A política fallback protege qualquer endpoint mapeado que não declare AllowAnonymous.
+    internal static bool IsProtected(HttpContext context)
+    {
+        var endpoint = context.GetEndpoint();
+        return endpoint is not null && endpoint.Metadata.GetMetadata<IAllowAnonymous>() is null;
+    }
 
     // Limita o tratamento de corpo/no-store a login/logout, sem alterar rotas de diagnóstico ou comandos.
     internal static bool IsLogin(HttpContext context) =>
@@ -36,19 +39,14 @@ internal static class AuthenticationHttp
             503 => ("AUTH_UNAVAILABLE", "Autenticação indisponível."),
             _ => ("AUTH_UNEXPECTED_FAILURE", "Falha ao processar autenticação.")
         };
-        return new ProblemDetails
-        {
-            Status = status, Title = title,
-            Extensions = { ["code"] = code, ["traceId"] = context.TraceIdentifier }
-        };
+        return ApiProblemDetails.Create(context, status, code, title);
     }
 
     // A escrita mantém o mesmo contrato inclusive para erros anteriores à execução do Controller.
     internal static Task WriteProblemAsync(HttpContext context, int status)
     {
-        context.Response.StatusCode = status;
-        return context.Response.WriteAsJsonAsync(Problem(context, status),
-            options: null, contentType: "application/problem+json", cancellationToken: context.RequestAborted);
+        var problem = Problem(context, status);
+        return ApiProblemDetails.WriteAsync(context, status, problem.Extensions["code"]?.ToString(), problem.Title);
     }
 }
 
@@ -108,8 +106,13 @@ internal sealed class AuthenticationBoundary(RequestDelegate next)
         }
         catch (Exception) when (!context.Response.HasStarted)
         {
-            // Falha inesperada não imprime exceção bruta, e-mail, senha ou conexão, mesmo em Development.
-            await AuthenticationHttp.WriteProblemAsync(context, 500);
+            // Login/logout preservam o código AUTH legado; falhas de outros endpoints seguem ao handler comum.
+            if (login || AuthenticationHttp.IsLogout(context))
+            {
+                await AuthenticationHttp.WriteProblemAsync(context, 500);
+                return;
+            }
+            throw;
         }
         finally
         {

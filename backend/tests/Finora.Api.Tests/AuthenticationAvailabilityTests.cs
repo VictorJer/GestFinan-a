@@ -39,6 +39,23 @@ public sealed class AuthenticationAvailabilityTests
         }
     }
 
+    // A política fallback protege rotas HTTP sem atributo explícito e mantém os endpoints anônimos existentes.
+    [TestMethod]
+    public async Task FallbackRequiresBearerWithoutExecutingProbeAndKeepsHealthAndOpenApiAnonymous()
+    {
+        await using var factory = new AuthenticationApiFactory(Configuration());
+        using var client = factory.CreateClient();
+
+        using var probe = await client.GetAsync("/_tests/fallback-authentication-probe");
+        await PostgreSqlBearerTests.AssertChallengeAsync(probe);
+        Assert.AreEqual(0, factory.Services.GetRequiredService<AuthenticationProbeCounter>().Calls);
+
+        using var health = await client.GetAsync("/health");
+        Assert.AreEqual(HttpStatusCode.OK, health.StatusCode);
+        using var openApi = await client.GetAsync("/openapi/v1.json");
+        Assert.AreEqual(HttpStatusCode.OK, openApi.StatusCode);
+    }
+
     // A unidade JWT/banco precisa estar completa; headers Bearer incidentais não afetam liveness/documentação.
     [TestMethod]
     [DataRow("missing")]
@@ -63,7 +80,7 @@ public sealed class AuthenticationAvailabilityTests
         foreach (var path in new[] { "/health", "/openapi/v1.json", "/swagger/index.html" })
         {
             using var response = await client.GetAsync(path);
-            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, $"Diagnostic path was challenged: {path}");
             if (path == "/health") { Assert.AreEqual("{\"status\":\"ok\"}", await response.Content.ReadAsStringAsync()); }
         }
         using var login = await client.PostAsJsonAsync("/api/auth/login", new { email = "email-sentinel@example.invalid", password = "password-sentinel" });
@@ -136,12 +153,14 @@ public sealed class AuthenticationAvailabilityTests
         var body = await response.Content.ReadAsStringAsync();
         using var problem = JsonDocument.Parse(body);
         Assert.AreEqual((int)status, problem.RootElement.GetProperty("status").GetInt32());
+        var authContract = response.RequestMessage?.RequestUri?.AbsolutePath.StartsWith("/api/auth/", StringComparison.Ordinal) == true;
         var expectedCode = status switch
         {
-            HttpStatusCode.BadRequest => "AUTH_INVALID_INPUT",
+            HttpStatusCode.BadRequest => authContract ? "AUTH_INVALID_INPUT" : "REQUEST_INVALID_INPUT",
             HttpStatusCode.RequestEntityTooLarge => "AUTH_BODY_TOO_LARGE",
             HttpStatusCode.Unauthorized => "AUTH_INVALID_CREDENTIALS",
             HttpStatusCode.ServiceUnavailable => "AUTH_UNAVAILABLE",
+            HttpStatusCode.InternalServerError => authContract ? "AUTH_UNEXPECTED_FAILURE" : "INTERNAL_ERROR",
             _ => "AUTH_UNEXPECTED_FAILURE"
         };
         Assert.AreEqual(expectedCode, problem.RootElement.GetProperty("code").GetString());

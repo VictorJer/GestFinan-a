@@ -1,4 +1,5 @@
 using Finora.Api.Contracts;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Finora.Api.Controllers;
@@ -10,6 +11,7 @@ public sealed class HealthController : ControllerBase
 {
     // Responde apenas pela capacidade de atender HTTP, mesmo sem banco ou provedor configurado.
     [HttpGet]
+    [AllowAnonymous]
     [EndpointSummary("Verifica se a API atende requisições")]
     [EndpointDescription("Liveness do processo; não verifica banco de dados nem provedor financeiro.")]
     [Produces("application/json")]

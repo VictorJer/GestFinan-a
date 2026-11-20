@@ -1,5 +1,8 @@
 using Finora.Api;
 using Finora.Api.Authentication;
+using Finora.Api.Cors;
+using Finora.Api.Errors;
+using Finora.Api.RateLimiting;
 using Finora.Application.Pluggy;
 using Finora.Infrastructure.Pluggy;
 using MediatR;
@@ -55,6 +58,8 @@ if (args.Length > 0 && !PluggyReadCommand.IsApiTestHostInvocation(args))
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddFinoraHttpAuthentication(builder.Configuration);
+builder.Services.AddFinoraCors(builder.Configuration);
+builder.Services.AddFinoraRateLimiting(builder.Configuration);
 // Providers de infraestrutura podem registrar SQL/PII em falhas; autenticação usa somente saídas fixas próprias.
 builder.Logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.None);
 builder.Logging.AddFilter("Npgsql", LogLevel.None);
@@ -70,18 +75,43 @@ var app = builder.Build();
 
 // A fronteira sanitizada precede autenticação/autorização; diagnóstico anônimo não dispara consulta de sessão.
 app.UseRouting();
+// CORS precisa envolver as respostas da fronteira HTTP e encerrar preflight antes da autenticação.
+app.UseCors(FinoraCors.PolicyName);
+// A fronteira externa sanitiza exceções não tratadas antes da escrita de respostas de status.
+app.UseMiddleware<ApiExceptionBoundary>();
+// O limitador do login deve rejeitar antes de AuthenticationBoundary ler ou validar o corpo.
+app.UseMiddleware<LoginRequestRateLimitBoundary>();
+// Converte respostas de erro sem corpo (incluindo 404 do roteamento) no envelope comum da API.
+app.UseStatusCodePages(async statusContext =>
+{
+    var path = statusContext.HttpContext.Request.Path;
+    // Documentação desabilitada mantém o 404 vazio já observado por clientes fora de Development.
+    if (path.StartsWithSegments("/swagger") || path.StartsWithSegments("/openapi")) { return; }
+    await ApiProblemDetails.WriteAsync(statusContext.HttpContext, statusContext.HttpContext.Response.StatusCode);
+});
 app.UseMiddleware<AuthenticationBoundary>();
+
+// Swagger UI é middleware sem metadados de endpoint; em Development, servi-lo antes da autorização o mantém anônimo.
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwaggerUI(options => options.SwaggerEndpoint("/openapi/v1.json", "Finora v1"));
+}
+
 app.UseAuthentication();
 app.UseAuthorization();
+// Só titulares que passaram pela validação de sessão consomem a partição local de rotas protegidas.
+app.UseMiddleware<AuthenticatedRequestRateLimitBoundary>();
 
 // Documento e assets da interface existem exclusivamente no ambiente de desenvolvimento.
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
-    app.UseSwaggerUI(options => options.SwaggerEndpoint("/openapi/v1.json", "Finora v1"));
+    // O documento é diagnóstico público somente em Development e não herda a política fallback.
+    app.MapOpenApi().AllowAnonymous();
 }
 
 app.MapControllers();
+// Catch-all anônimo cobre também caminhos com extensão, sem transformar rota inexistente em challenge 401/503.
+app.Map("/{**path}", () => Results.NotFound()).AllowAnonymous();
 app.Run();
 return 0;
 

@@ -1,5 +1,83 @@
 # Ambiente de desenvolvimento
 
+## FNR-011 — contrato HTTP de erros e propriedade
+
+### Matriz para testes de API
+
+Esta tabela é a matriz-alvo da FNR-011, aprovada em seus artefatos; não substitui evidência tarefa a tarefa. A allowlist CORS, os casos de preflight/falha/health/configuração inválida, o limitador real de login e a política real de rotas protegidas foram implementados e testados. O teste CORS de 429 desta seção é sintético e isola somente os cabeçalhos; o 429 real também foi validado separadamente nos testes PostgreSQL de login e de rotas protegidas.
+
+### Configuração CORS local e por ambiente
+
+`Cors:AllowedOrigins` aceita uma lista de origens absolutas HTTP(S), sem caminho, credenciais, query, fragmento, wildcard ou duplicata. `appsettings.json` mantém a lista vazia; sem configuração, CORS não concede acesso, mas requisições HTTP sem `Origin` continuam seguindo autenticação/autorização normalmente. Métodos permitidos: `GET`, `POST`, `PATCH`; cabeçalhos: `Authorization` e `Content-Type`. CORS não permite credenciais/cookies.
+
+Exemplo com domínio reservado, somente como modelo de configuração (não é URL real de publicação):
+
+```json
+{
+  "Cors": {
+    "AllowedOrigins": ["https://app.example.test"]
+  }
+}
+```
+
+No ambiente, a mesma primeira entrada pode ser fornecida por `Cors__AllowedOrigins__0=https://app.example.test`; defina a allowlist separadamente em cada ambiente somente após aprovar a origem real. Não configure `*`, não copie domínios pessoais e não use `X-Forwarded-For` como origem CORS.
+
+### Limitação local de requisições
+
+Os defaults aprovados e implementados são 10 logins/minuto por IP observado na conexão e 120 chamadas protegidas/minuto por titular (`sub` da sessão validada), ambos por instância. As janelas são fixas, sem fila; parâmetros devem ser inteiros positivos. Excesso devolve 429 com Problem Details `RATE_LIMITED`; no login também aplica `Cache-Control: no-store` antes de ler/validar o corpo. A rejeição do login não avalia senha, cria token ou altera o lockout do Identity. Rotas protegidas são limitadas depois da autenticação/autorização, e a ação não executa no excedente. Health, preflight e CLI não participam.
+
+Exemplo somente ilustrativo com limites aprovados:
+
+```json
+{
+  "RateLimiting": {
+    "Login": { "PermitLimit": 10, "WindowSeconds": 60 },
+    "Protected": { "PermitLimit": 120, "WindowSeconds": 60 }
+  }
+}
+```
+
+Variáveis de ambiente equivalentes incluem `RateLimiting__Login__PermitLimit`, `RateLimiting__Login__WindowSeconds`, `RateLimiting__Protected__PermitLimit` e `RateLimiting__Protected__WindowSeconds`. O estado é somente em memória local: limites não são agregados entre processos/hosts. O servidor usa `Connection.RemoteIpAddress` e não lê `X-Forwarded-For`; como Forwarded Headers/proxies confiáveis não estão configurados nesta entrega, vários usuários atrás do mesmo proxy podem compartilhar a partição observada. Se um deploy futuro precisar aceitar cabeçalhos de encaminhamento, deverá configurar explicitamente KnownProxies/KnownNetworks e posicionar Forwarded Headers antes dos limitadores; não aceitar cabeçalho arbitrário.
+
+O lockout persistido do Identity permanece independente: cinco falhas avaliadas ativam cinco minutos de bloqueio. A validação PostgreSQL confirmou que o login excedente com credenciais válidas retorna 429 sem criar sessão/token nem alterar o estado de lockout já persistido. O comando CLI `user-create unexpected-argument` foi executado com variáveis de banco/JWT ausentes, sem listener; manteve saída fixa e código 2, pois a composição CLI ocorre antes do pipeline HTTP.
+
+| Status | Contrato esperado | Regra de teste |
+|---|---|---|
+| 400 | `REQUEST_INVALID_INPUT`; login mantém `AUTH_INVALID_INPUT` | Validar DTO/corpo sem devolver valores, nomes de campo ou coleção `errors` do ModelState. |
+| 413 | Login mantém `AUTH_BODY_TOO_LARGE` | Preservar o limite do corpo de autenticação e não refletir conteúdo recebido. |
+| 401 | `AUTH_INVALID_CREDENTIALS` e `WWW-Authenticate: Bearer` quando for challenge | Credencial/sessão inválida; login/logout preservam códigos próprios e `Cache-Control: no-store`. |
+| 403 | `PERMISSION_REQUIRED`, sem challenge | Permissão conhecida é verificada sem consultar/revelar se o recurso existe. |
+| 404 | `RESOURCE_NOT_FOUND` | ID inexistente e ID de outro titular têm status/código/título iguais; consultas e listagens incluem o titular autenticado. |
+| 409 | `RESOURCE_CONFLICT` | Somente um resultado tipado de negócio pode representar conflito; não classificar pela mensagem de exceção. |
+| 429 | `RATE_LIMITED` | Limite excedido não executa a ação; login também usa `no-store` e não avalia credenciais. |
+| 500 | `INTERNAL_ERROR` | Falha inesperada; corpo e logs não recebem exceção, stack trace, senha, token, SQL ou mensagem de provider. |
+| 503 | `DEPENDENCY_UNAVAILABLE`; autenticação mantém `AUTH_UNAVAILABLE` | Somente indisponibilidade tipada/conhecida; não equivale a credencial inválida nem implica rollback. |
+
+O login mantém os códigos existentes `AUTH_INVALID_INPUT`, `AUTH_BODY_TOO_LARGE`, `AUTH_INVALID_CREDENTIALS`, `AUTH_UNAVAILABLE` e `AUTH_UNEXPECTED_FAILURE`; logout mantém sucesso 204 sem corpo e os códigos de autenticação aplicáveis às falhas. Login e logout mantêm `no-store`, inclusive em falha. Challenge Bearer só acompanha 401; 403/503 não enviam `WWW-Authenticate`. O 429 do login foi implementado antes da avaliação das credenciais e usa `no-store`; ele não altera o lockout persistido. Uma resposta iniciada não pode ser substituída: cancelamento do cliente aborta o processamento e falha após início só registra categoria fixa/traceId antes de abortar. FNR-015/016/017 ainda precisam testar estas regras nos endpoints e repositórios reais; os probes abaixo são sintéticos e não introduzem rota de negócio em produção.
+
+### Provas e comandos locais
+
+- `ProblemDetailsContractTests` exercita validação MVC, challenge, forbid, 404 de roteamento e conflito, verificando status, código/título, traceId, content type e ausência de reflexão.
+- `CorsContractTests` verifica preflight anônimo, origem allowlisted/negada, lista vazia, métodos/cabeçalhos limitados, chamadas com/sem Origin, health e cabeçalhos CORS em 401/429/500. O 429 dessa prova é sintético e demonstra somente a passagem dos cabeçalhos CORS.
+- `LoginRateLimitTests` verifica limite padrão 10, janela fixa sem fila, rejeição antes de ler corpo, `no-store`, resposta sem token, validação positiva da configuração e ignorância de `X-Forwarded-For`. `PostgreSqlLoginTests.LoginRateLimitRejectsBeforeCredentialEvaluationWithoutChangingLockout` compara lockout/sessões antes e após o 429 com credenciais válidas excedentes.
+- `PostgreSqlProtectedRateLimitTests` valida partições por titular e instância, ausência de execução da action, precedência de 401/503, CORS em 429 real, health e preflight sem consumir o limite protegido.
+- `OwnershipProbeTests` compara recurso alheio/inexistente, filtro de titular e 403 sem lookup; probes pertencem somente ao assembly de testes.
+- `ApiExceptionBoundaryTests` cobre 500/503, cancelamento e resposta iniciada; `PostgreSqlAuthenticationPrivacyTests`/`PostgreSqlAuthenticationRevocationTests` verificam privacidade, `no-store` e challenge nos fluxos existentes.
+- Build `dotnet build backend/tests/Finora.Api.Tests/Finora.Api.Tests.csproj --no-restore`: **0 avisos/0 erros**. Os filtros HTTP de Problem Details, disponibilidade, privacidade, Bearer/sessão e propriedade passaram **23/23** no PostgreSQL descartável; as provas de exceção sem PostgreSQL passaram **11/11**; exceção, privacidade e revogação passaram **25/25** no PostgreSQL descartável.
+- Testes que usam PostgreSQL só devem rodar com `FINORA_TEST_CONNECTION_STRING` dedicada, database `finora_integration_test` e host loopback, pelo Compose efêmero descrito neste guia; não use banco local persistente, User Secrets, Neon ou conexão de runtime. Os containers/network temporários foram removidos sem volumes ao fim das execuções registradas.
+- `CorsContractTests`: **12/12** aprovados sem PostgreSQL; configuração inválida e ausência de URL real mantêm a política fechada. Nenhuma resposta usa origem curinga/eco arbitrário ou credenciais CORS.
+- `LoginRateLimitTests`: **9/9** sem PostgreSQL, incluindo validação dos limites de login e protegidos; `PostgreSqlLoginTests`: **14/14** com PostgreSQL descartável, incluindo estado de lockout inalterado no 429. `PostgreSqlProtectedRateLimitTests`: **1/1** com PostgreSQL descartável, cobrindo partições por titular/instância, ação não executada e precedência de 401/503. Os testes PostgreSQL usaram somente o Compose efêmero `finora-fnr006-test` em loopback/tmpfs, encerrado sem volumes; nenhuma connection string pessoal/Neon foi consultada.
+
+### FNR-011 — validação integrada local (tarefa 6.1)
+
+Restore bloqueado `dotnet restore backend/Finora.slnx --locked-mode` e build `dotnet build backend/Finora.slnx --no-restore` passaram; o build terminou com **0 avisos e 0 erros**. A suíte sem PostgreSQL passou **254/254**, sem falhas/ignorados, usando filtro que exclui as classes `PostgreSql`, `OwnershipProbeTests` e `ProblemDetailsContractTests`, pois as duas últimas também dependem da fixture PostgreSQL apesar do nome. A suíte PostgreSQL passou separadamente **97/97**, sem falhas/ignorados, usando somente o Compose descartável `finora-fnr006-test`, database `finora_integration_test`, usuário de teste e porta loopback; a conexão dedicada foi montada em memória e validada pela fixture. Uma execução inicial com filtro apenas `FullyQualifiedName!~PostgreSql` incluiu indevidamente as duas classes dependentes de PostgreSQL; seus resultados não foram somados nem usados como validação final.
+
+A regressão integrada incluiu health, OpenAPI/Swagger por ambiente, login/logout/revogação, erros sanitizados, CORS, limites, identidade/propriedade e ausência de rota financeira/cadastro público. `ExplorationIsolationTests` passou **11/11** após a correção da rota de documentação fora de Development; `/swagger` e `/openapi` mantêm 404 vazio fora do ambiente autorizado. Nenhum provedor real, banco pessoal/Neon ou migration de destino foi usado; o Compose temporário foi encerrado sem volumes e variáveis transitórias restauradas. Os resultados são checks locais, não checks GitHub nem aceite humano.
+
+### Revisão e aceite FNR-011 (tarefa 6.3)
+
+Em 19/11/2026, após apresentação do estado local, evidências e limitações, o titular aceitou explicitamente no harness a implementação FNR-011 e aprovou as revisões documentais TDD 0.17 e BACKLOG 0.41. O aceite/aprovação são externos ao GitHub, não constituem review formal ou check remoto e naquele momento não autorizavam encaminhamento; autorização posterior específica cobre commits locais, push e abertura do PR contra `main`, sem merge, sync, arquivamento ou publicação. A mudança soma 17/17 tarefas executadas localmente e aceitas; seu encaminhamento Git e qualquer publicação permanecem pendentes de autorização e dos gates aplicáveis.
+
 ## FNR-010 — pré-requisito do schema de sessões para testes de reset
 
 Os testes PostgreSQL que executam redefinição administrativa usam a barreira `DisposablePostgresTestConfiguration` e `DisposablePostgresMigrationFixture`, mas agora precisam aplicar explicitamente até `20261118173427_AddAuthenticationSessions` antes de compor Identity. A migration é existente; não há migration nova nem aplicação automática no host de produção. Banco sem `AuthSessions` não é um schema compatível para o reset revogatório e não deve receber fallback que altere senha sem revogar sessões.
