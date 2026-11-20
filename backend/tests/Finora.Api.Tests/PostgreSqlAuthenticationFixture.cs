@@ -19,6 +19,7 @@ namespace Finora.Api.Tests;
 internal sealed class PostgreSqlAuthenticationFixture : IAsyncDisposable
 {
     private readonly DisposablePostgresMigrationFixture _database;
+    private readonly Dictionary<string, string?> _apiConfiguration;
     internal AuthenticationApiFactory Factory { get; }
     internal HttpClient Client { get; }
     internal AuthenticationTestClock Clock { get; }
@@ -28,10 +29,11 @@ internal sealed class PostgreSqlAuthenticationFixture : IAsyncDisposable
 
     // A chave é criada por fixture, nunca lida de um segredo operacional ou persistida no banco.
     private PostgreSqlAuthenticationFixture(DisposablePostgresMigrationFixture database, string connection,
-        Action<IServiceCollection>? configure)
+        Action<IServiceCollection>? configure, Dictionary<string, string?>? apiConfiguration)
     {
         _database = database;
         ConnectionString = connection;
+        _apiConfiguration = apiConfiguration ?? new Dictionary<string, string?>();
         Key = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
         Clock = new AuthenticationTestClock(DateTimeOffset.FromUnixTimeSeconds(DateTimeOffset.UtcNow.ToUnixTimeSeconds()));
         Factory = NewFactory(configure: configure);
@@ -39,18 +41,28 @@ internal sealed class PostgreSqlAuthenticationFixture : IAsyncDisposable
     }
 
     // Schema é aplicado explicitamente pela fixture, sem auto-migration na aplicação.
-    internal static async Task<PostgreSqlAuthenticationFixture> CreateAsync(Action<IServiceCollection>? configure = null)
+    internal static async Task<PostgreSqlAuthenticationFixture> CreateAsync(Action<IServiceCollection>? configure = null,
+        Dictionary<string, string?>? apiConfiguration = null)
     {
         var settings = DisposablePostgresTestConfiguration.ReadRequired();
         var database = DisposablePostgresMigrationFixture.CreateValidated();
         await database.ResetToEmptySchemaAsync();
         await database.Context.Database.MigrateAsync(PostgreSqlAuthenticationSessionTests.MigrationId);
-        return new PostgreSqlAuthenticationFixture(database, settings.ConnectionString, configure);
+        return new PostgreSqlAuthenticationFixture(database, settings.ConnectionString, configure, apiConfiguration);
     }
 
     // Hosts adicionais preservam a mesma base e relógio para testar reinício/rotação sem dados fictícios de sessão.
-    internal AuthenticationApiFactory NewFactory(string? key = null, Action<IServiceCollection>? configure = null) =>
-        new(AuthenticationAvailabilityTests.Configuration(ConnectionString, key ?? Key), Clock, configure);
+    internal AuthenticationApiFactory NewFactory(string? key = null, Action<IServiceCollection>? configure = null,
+        Dictionary<string, string?>? apiConfiguration = null)
+    {
+        var configuration = AuthenticationAvailabilityTests.Configuration(ConnectionString, key ?? Key);
+        foreach (var entry in _apiConfiguration) { configuration[entry.Key] = entry.Value; }
+        if (apiConfiguration is not null)
+        {
+            foreach (var entry in apiConfiguration) { configuration[entry.Key] = entry.Value; }
+        }
+        return new AuthenticationApiFactory(configuration, Clock, configure);
+    }
 
     // Toda conta é provisionada com UserManager real; dados de fixtures são exclusivamente sintéticos.
     internal async Task<Guid> SeedUserAsync(string email = "owner@example.invalid", string password = " Password!123 ", bool lockoutEnabled = true)
@@ -87,7 +99,7 @@ internal sealed class PostgreSqlAuthenticationFixture : IAsyncDisposable
     internal static async Task<HttpResponseMessage> ProtectedAsync(HttpClient client, string? token = null,
         CancellationToken cancellationToken = default)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/_tests/authentication-probe");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/_tests/fallback-authentication-probe");
         if (token is not null) { request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token); }
         return await client.SendAsync(request, cancellationToken);
     }

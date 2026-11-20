@@ -1,8 +1,12 @@
 using System.Collections.Concurrent;
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
+using Finora.Api.Authentication;
+using Finora.Application.Authentication;
 using Finora.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
@@ -42,10 +46,13 @@ internal sealed class AuthenticationApiFactory : WebApplicationFactory<Program>
         builder.ConfigureServices(services =>
         {
             services.AddControllers().AddApplicationPart(typeof(AuthenticationProbeController).Assembly);
+            services.AddAuthorization(options => options.AddPolicy("test-forbidden",
+                policy => policy.RequireClaim("permission", "not-granted")));
             services.RemoveAll<TimeProvider>();
             services.AddSingleton(_clock);
             services.AddSingleton<AuthenticationProbeCounter>();
             services.AddSingleton<AuthenticationProbeBarrier>();
+            services.AddSingleton<OwnershipProbeStore>();
             services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.Trace).AddProvider(Logs));
             _configure?.Invoke(services);
         });
@@ -94,6 +101,185 @@ public sealed class AuthenticationProbeController(
         await barrier.WaitAsync(cancellationToken);
         return Ok(new { subject = User.FindFirstValue("sub") });
     }
+}
+
+// Prova a política fallback em um endpoint de teste sem [Authorize], fora do assembly de produção.
+[ApiController]
+[ApiExplorerSettings(IgnoreApi = true)]
+[Route("_tests/fallback-authentication-probe")]
+public sealed class FallbackAuthenticationProbeController(
+    AuthenticationProbeCounter counter,
+    AuthenticationProbeBarrier barrier) : ControllerBase
+{
+    // A action mede o bypass do fallback e compartilha a barreira de concorrência das provas de sessão.
+    [HttpGet]
+    public async Task<IActionResult> Get(CancellationToken cancellationToken)
+    {
+        counter.Increment();
+        await barrier.WaitAsync(cancellationToken);
+        return Ok(new { subject = User.FindFirstValue("sub") });
+    }
+}
+
+// Mantém recursos sintéticos por titular para provar o predicado de propriedade sem criar API financeira real.
+public sealed class OwnershipProbeStore
+{
+    private readonly object _gate = new();
+    private (Guid Id, Guid OwnerId)[] _resources = [];
+    private int _lookups;
+
+    public int Lookups => Volatile.Read(ref _lookups);
+
+    // A fixture fornece titulares diferentes e recursos associados, sem depender de dados externos.
+    public void Seed(Guid ownerId, Guid otherOwnerId, Guid ownerResourceId, Guid otherResourceId)
+    {
+        lock (_gate)
+        {
+            _resources = [(ownerResourceId, ownerId), (otherResourceId, otherOwnerId)];
+            Volatile.Write(ref _lookups, 0);
+        }
+    }
+
+    // A consulta individual sempre combina o identificador solicitado com o titular autenticado.
+    public Guid? FindOwned(Guid resourceId, Guid ownerId)
+    {
+        Interlocked.Increment(ref _lookups);
+        lock (_gate)
+        {
+            return _resources.Where(resource => resource.Id == resourceId && resource.OwnerId == ownerId)
+                .Select(resource => (Guid?)resource.Id).SingleOrDefault();
+        }
+    }
+
+    // A listagem aceita somente o titular confiável; nenhum filtro de cliente participa do predicado.
+    public Guid[] ListOwned(Guid ownerId)
+    {
+        Interlocked.Increment(ref _lookups);
+        lock (_gate)
+        {
+            return _resources.Where(resource => resource.OwnerId == ownerId).Select(resource => resource.Id).ToArray();
+        }
+    }
+}
+
+// Demonstra no host de testes a identidade validada, o 404 indistinguível e o 403 sem consulta de recurso.
+[ApiController]
+[ApiExplorerSettings(IgnoreApi = true)]
+[Route("_tests/ownership-probe")]
+public sealed class OwnershipProbeController(OwnershipProbeStore store, TimeProvider clock) : ControllerBase
+{
+    // O owner vem do principal e da sessão validada; a rota fornece somente o ID do recurso.
+    [HttpGet("{resourceId:guid}")]
+    public IActionResult Get(Guid resourceId)
+    {
+        var session = JwtTokenValidation.ReadSessionClaims(User, clock);
+        if (session is null) { return ProblemResponse(401, "AUTH_INVALID_CREDENTIALS", "Autenticação inválida."); }
+        var resource = store.FindOwned(resourceId, session.UserId);
+        return resource is null
+            ? ProblemResponse(404, "RESOURCE_NOT_FOUND", "Recurso não encontrado.")
+            : Ok(new { id = resource.Value });
+    }
+
+    // Mesmo que o cliente envie outro ownerId, a listagem consulta exclusivamente o titular do principal.
+    [HttpGet]
+    public IActionResult List([FromQuery] Guid? ownerId)
+    {
+        var session = JwtTokenValidation.ReadSessionClaims(User, clock);
+        if (session is null) { return ProblemResponse(401, "AUTH_INVALID_CREDENTIALS", "Autenticação inválida."); }
+        return Ok(new { ids = store.ListOwned(session.UserId) });
+    }
+
+    // Permissão conhecida é avaliada sem consultar o ID, portanto 403 não confirma a existência do recurso.
+    [HttpGet("restricted/{resourceId:guid}")]
+    public IActionResult Restricted(Guid resourceId)
+    {
+        _ = resourceId;
+        return User.HasClaim("permission", "read:restricted")
+            ? Ok(new { permitted = true })
+            : ProblemResponse(403, "PERMISSION_REQUIRED", "Permissão insuficiente.");
+    }
+
+    // Os probes usam um envelope fixo e traceId local, sem incluir titular ou identificador solicitado.
+    private ObjectResult ProblemResponse(int status, string code, string title) => new(new ProblemDetails
+    {
+        Status = status,
+        Title = title,
+        Extensions = { ["code"] = code, ["traceId"] = HttpContext.TraceIdentifier }
+    })
+    { StatusCode = status, ContentTypes = { "application/problem+json" } };
+}
+
+// Fornece respostas vazias e validação MVC exclusivamente para exercitar o contrato HTTP centralizado.
+[ApiController]
+[ApiExplorerSettings(IgnoreApi = true)]
+[Route("_tests/problem-probe")]
+public sealed class ProblemContractProbeController : ControllerBase
+{
+    // O model binder deve rejeitar o corpo sem refletir o valor sintético recebido.
+    [HttpPost("validation")]
+    public IActionResult Validate(ProblemValidationRequest request) => Ok(new { accepted = true });
+
+    // Status sem corpo permite verificar a escrita comum de Problem Details pelo middleware.
+    [HttpGet("conflict")]
+    public IActionResult ConflictResult() => StatusCode(StatusCodes.Status409Conflict);
+}
+
+// Esta política só existe no host de testes e força forbid sem alterar políticas de produção.
+[ApiController]
+[Authorize(Policy = "test-forbidden")]
+[ApiExplorerSettings(IgnoreApi = true)]
+[Route("_tests/forbidden-probe")]
+public sealed class ForbiddenProblemProbeController : ControllerBase
+{
+    // A action só executa quando a policy de teste for satisfeita pelo principal.
+    [HttpGet]
+    public IActionResult Get() => Ok(new { permitted = true });
+}
+
+// Injeta falhas somente no host de testes para validar sanitização e limites de escrita do middleware global.
+[ApiController]
+[AllowAnonymous]
+[ApiExplorerSettings(IgnoreApi = true)]
+[Route("_tests/exception-probe")]
+public sealed class ExceptionProbeController : ControllerBase
+{
+    // Mensagens sintéticas adversariais verificam que corpo e logs não recebem dados sensíveis externos.
+    [HttpGet("unexpected")]
+    public IActionResult Unexpected() => throw new InvalidOperationException(
+        "password-sentinel token-sentinel SQL-sentinel provider-sentinel");
+
+    // Somente a exceção operacional tipada permite distinguir dependência indisponível de falha inesperada.
+    [HttpGet("unavailable")]
+    public IActionResult Unavailable() => throw new AuthenticationUnavailableException();
+
+    // O status sintético verifica cabeçalhos CORS em 429 sem alegar que o rate limiter já esteja conectado.
+    [HttpGet("rate-limited")]
+    public IActionResult RateLimited() => StatusCode(StatusCodes.Status429TooManyRequests);
+
+    // A espera termina apenas com o cancelamento real do cliente e não produz uma resposta de erro inventada.
+    [HttpGet("cancel")]
+    public async Task<IActionResult> Cancel(CancellationToken cancellationToken)
+    {
+        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        return Ok();
+    }
+
+    // A escrita é descarregada antes da falha para comprovar que o middleware não reescreve resposta iniciada.
+    [HttpGet("started")]
+    public async Task<IActionResult> Started()
+    {
+        Response.ContentType = "text/plain";
+        await Response.WriteAsync("partial-response");
+        await Response.Body.FlushAsync();
+        throw new InvalidOperationException("password-sentinel token-sentinel SQL-sentinel provider-sentinel");
+    }
+}
+
+// Um campo obrigatório provoca a fábrica MVC sem incluir erros de validação no corpo público.
+public sealed class ProblemValidationRequest
+{
+    [Required]
+    public string? Value { get; init; }
 }
 
 // Suspende uma chamada autenticada no Controller de teste para demonstrar que revogação não cancela trabalho em curso.

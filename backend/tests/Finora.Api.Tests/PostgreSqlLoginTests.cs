@@ -21,6 +21,37 @@ namespace Finora.Api.Tests;
 [DoNotParallelize]
 public sealed class PostgreSqlLoginTests
 {
+    // A 429 após o lockout não avalia a senha correta nem muda o estado persistido da conta.
+    [TestMethod]
+    public async Task LoginRateLimitRejectsBeforeCredentialEvaluationWithoutChangingLockout()
+    {
+        await using var fixture = await PostgreSqlAuthenticationFixture.CreateAsync();
+        var id = await fixture.SeedUserAsync();
+        for (var attempt = 0; attempt < 10; attempt++)
+        {
+            using var rejectedCredentials = await fixture.LoginAsync(password: "wrong-sentinel");
+            Assert.AreEqual(HttpStatusCode.Unauthorized, rejectedCredentials.StatusCode);
+            Assert.IsTrue(rejectedCredentials.Headers.CacheControl?.NoStore);
+        }
+
+        var beforeLimit = await fixture.ReadUserAsync(id);
+        // Identity zera a contagem ao ativar o lockout; a barreira a preservar é o prazo já persistido.
+        Assert.AreEqual(0, beforeLimit.AccessFailedCount);
+        Assert.IsNotNull(beforeLimit.LockoutEnd);
+
+        using var validCredentials = await fixture.LoginAsync();
+        Assert.AreEqual(HttpStatusCode.TooManyRequests, validCredentials.StatusCode);
+        Assert.IsTrue(validCredentials.Headers.CacheControl?.NoStore);
+        using var problem = JsonDocument.Parse(await validCredentials.Content.ReadAsStringAsync());
+        Assert.AreEqual("RATE_LIMITED", problem.RootElement.GetProperty("code").GetString());
+        Assert.IsFalse(problem.RootElement.TryGetProperty("accessToken", out _));
+
+        var afterLimit = await fixture.ReadUserAsync(id);
+        Assert.AreEqual(beforeLimit.AccessFailedCount, afterLimit.AccessFailedCount);
+        Assert.AreEqual(beforeLimit.LockoutEnd, afterLimit.LockoutEnd);
+        Assert.AreEqual(0, await fixture.Context.Set<AuthSession>().CountAsync());
+    }
+
     // Conta desconhecida, senha errada e bloqueio usam o mesmo contrato; estado ambíguo não seleciona um titular.
     [TestMethod]
     public async Task UnknownAccountAndWrongPasswordAreGenericButMultipleUsersAreUnavailable()

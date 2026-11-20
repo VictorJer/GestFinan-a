@@ -1,9 +1,12 @@
 using System.Text.Encodings.Web;
 using Finora.Application.Authentication;
+using Finora.Api.Errors;
 using Finora.Infrastructure.Identity;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -33,10 +36,19 @@ public static class AuthenticationServiceCollectionExtensions
                 || (available && type == typeof(LogoutHandler));
         });
         services.Configure<ApiBehaviorOptions>(options => options.InvalidModelStateResponseFactory = action =>
-            new BadRequestObjectResult(AuthenticationHttp.Problem(action.HttpContext, 400))
-            { ContentTypes = { "application/problem+json" } });
+        {
+            var problem = AuthenticationHttp.IsLogin(action.HttpContext)
+                ? AuthenticationHttp.Problem(action.HttpContext, 400)
+                : ApiProblemDetails.Create(action.HttpContext, 400);
+            return new BadRequestObjectResult(problem) { ContentTypes = { "application/problem+json" } };
+        });
+        services.AddSingleton<ProblemDetailsFactory, ApiProblemDetailsFactory>();
         var authentication = services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme);
-        services.AddAuthorization();
+        // Exige identidade por padrão; as rotas públicas precisam declarar a exceção explicitamente.
+        services.AddAuthorization(options => options.FallbackPolicy = new AuthorizationPolicyBuilder()
+            .RequireAuthenticatedUser()
+            .Build());
+        services.AddSingleton<IAuthorizationMiddlewareResultHandler, AuthorizationProblemResultHandler>();
         if (!available)
         {
             services.AddScoped<IAuthenticationLogin, UnavailableLogin>();
