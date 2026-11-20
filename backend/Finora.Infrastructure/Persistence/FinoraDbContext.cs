@@ -59,6 +59,13 @@ public sealed class FinoraDbContext(DbContextOptions<FinoraDbContext> options)
             entry.Entity.ValidateForPersistence();
         }
 
+        // O registro de identidade tem sua própria validação para bloquear dados opacos inválidos antes do provider.
+        foreach (var entry in ChangeTracker.Entries<FinancialConnectionItemIdentity>()
+                     .Where(entry => entry.State is EntityState.Added or EntityState.Modified))
+        {
+            entry.Entity.ValidateForPersistence();
+        }
+
         foreach (var entry in ChangeTracker.Entries<CardAccount>()
                      .Where(entry => entry.State is EntityState.Added or EntityState.Modified))
         {

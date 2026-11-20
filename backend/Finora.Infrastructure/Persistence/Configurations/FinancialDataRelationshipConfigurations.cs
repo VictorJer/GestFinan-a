@@ -69,6 +69,34 @@ public sealed class FinancialConnectionConfiguration : IEntityTypeConfiguration<
     }
 }
 
+// Registra cada ID externo no máximo uma vez e permite apenas uma identidade ativa por conexão.
+public sealed class FinancialConnectionItemIdentityConfiguration
+    : IEntityTypeConfiguration<FinancialConnectionItemIdentity>
+{
+    public void Configure(EntityTypeBuilder<FinancialConnectionItemIdentity> builder)
+    {
+        builder.HasKey(identity => new { identity.Provider, identity.ExternalItemId });
+        builder.HasOne<FinancialConnection>()
+            .WithMany()
+            .HasForeignKey(identity => new { identity.ConnectionId, identity.UserId })
+            .HasPrincipalKey(connection => new { connection.Id, connection.UserId })
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.Property(identity => identity.Provider)
+            .HasMaxLength(32)
+            .UseCollation("C")
+            .IsRequired();
+        FinancialDataCheckConstraintSql.ConfigureExternalIdentity(builder.Property(identity => identity.ExternalItemId));
+        builder.Property(identity => identity.RetiredAtUtc).HasColumnType("timestamp with time zone");
+        builder.HasIndex(identity => identity.ConnectionId)
+            .IsUnique()
+            .HasFilter("\"RetiredAtUtc\" IS NULL");
+        builder.HasIndex(identity => new { identity.ConnectionId, identity.UserId });
+        builder.ToTable(table => table.HasCheckConstraint(
+            "CK_FinancialConnectionItemIdentity_ExternalItemId_MaxUtf8Bytes",
+            FinancialDataCheckConstraintSql.ExternalIdMaximumUtf8Bytes(nameof(FinancialConnectionItemIdentity.ExternalItemId))));
+    }
+}
+
 // Cartão só pode apontar para conexão cujo titular coincide com o UserId persistido no próprio cartão.
 public sealed class CardAccountConfiguration : IEntityTypeConfiguration<CardAccount>
 {

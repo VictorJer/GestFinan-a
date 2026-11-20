@@ -71,6 +71,23 @@ public sealed class FinancialConnection
         return connection;
     }
 
+    /// <summary>Atualiza tentativa e último sucesso somente após confirmar uma promoção completa.</summary>
+    public void MarkImportSuccessful(DateTimeOffset completedAtUtc)
+    {
+        EnsureUtc(completedAtUtc, nameof(completedAtUtc));
+        LastAttemptAtUtc = completedAtUtc;
+        LastSuccessfulImportAtUtc = completedAtUtc;
+        ValidateForPersistence();
+    }
+
+    /// <summary>Troca o item externo somente após a camada de persistência comprovar continuidade.</summary>
+    public void ReplaceExternalItemId(string externalItemId)
+    {
+        FinancialValueRules.EnsureOpaqueExternalId(externalItemId, nameof(externalItemId));
+        ExternalItemId = externalItemId;
+        ValidateForPersistence();
+    }
+
     /// <summary>Revalida identidade, código do provedor, ID externo e instantes antes de cada gravação EF.</summary>
     public void ValidateForPersistence()
     {

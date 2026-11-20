@@ -33,9 +33,11 @@ internal sealed class PluggyApiClient : IDisposable
     }
 
     // Impede chamadas quando faltam opções obrigatórias e nunca inclui os valores no resultado.
-    internal async Task<PluggyAuthenticationResult> AuthenticateAsync(CancellationToken cancellationToken)
+    internal async Task<PluggyAuthenticationResult> AuthenticateAsync(
+        CancellationToken cancellationToken,
+        bool requireConfiguredItem = true)
     {
-        var missing = options.GetMissingRequiredKeys();
+        var missing = options.GetMissingRequiredKeys(requireConfiguredItem);
         if (missing.Count > 0)
         {
             return new PluggyAuthenticationResult(false, MissingConfiguration: missing);
@@ -197,7 +199,7 @@ internal sealed class PluggyApiClient : IDisposable
         return GetJsonAsync<PluggyAnalysisTransactionsPage>(path, cancellationToken);
     }
 
-    // Aceita somente accountId/dateFrom/after esperados e transporta a query original sem reserializá-la.
+    // Valida a conta e filtros conhecidos, permitindo que next omita dateFrom sem reconstruir a query opaca.
     internal static bool TryBuildAnalysisPath(
         string accountId,
         DateOnly dateFrom,
@@ -258,7 +260,7 @@ internal sealed class PluggyApiClient : IDisposable
         }
 
         if (!HasSingle(values, "accountId", accountId)
-            || !HasSingle(values, "dateFrom", date)
+            || (values.ContainsKey("dateFrom") && !HasSingle(values, "dateFrom", date))
             || !values.TryGetValue("after", out var cursors)
             || cursors.Count != 1
             || string.IsNullOrWhiteSpace(cursors[0]))
@@ -326,7 +328,8 @@ internal sealed record PluggyAccountResponse(
     string? Id,
     string? Type,
     string? Subtype,
-    string? ItemId);
+    string? ItemId,
+    string? CurrencyCode);
 
 // O DTO da transação retém somente IDs opacos para validar pertencimento e contar registros.
 internal sealed record PluggyTransactionsPage(
