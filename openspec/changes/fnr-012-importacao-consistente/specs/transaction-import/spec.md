@@ -18,15 +18,20 @@ A importação SHALL operar somente para uma conexão existente pertencente ao t
 - **THEN** todas as páginas do intervalo solicitado são processadas e os movimentos futuros recebidos são preservados com sua situação própria, sem prometer doze meses de histórico observado
 
 ### Requirement: Paginação íntegra e continuação segura
-A importação SHALL percorrer as páginas até a indicação válida de término, preservando conta e filtros; SHALL rejeitar continuação insegura ou repetida, registro de conta alheia, resposta inválida e limite de coleta atingido. Uma página vazia ou a indicação de fim não SHALL comprovar cobertura bancária integral.
+A importação SHALL anexar `next` exatamente como recebido ao endpoint fixo, sem acrescentar filtros ou reconstruir `after`, até o término válido. SHALL preservar a conta e os filtros conforme o contrato da origem, sem exigir `dateFrom` literal em `next`. SHALL rejeitar origem/caminho inseguros, conta ou filtro explicitamente conflitante, continuação repetida, conta alheia, resposta inválida ou limite excedido. Página vazia ou fim da paginação não comprovam cobertura bancária integral.
 
 #### Scenario: Várias páginas válidas
 - **WHEN** a origem fornece duas ou mais páginas válidas para o mesmo cartão e filtros e encerra a continuação
 - **THEN** os registros de todas as páginas são considerados para publicação, sem limitar a coleta à primeira
 
+#### Scenario: Continuação sem `dateFrom` literal
+- **GIVEN** a primeira página foi solicitada com `dateFrom` fixo
+- **WHEN** `next` é uma query relativa válida para o mesmo endpoint e conta, sem `dateFrom` explícito e sem filtro conflitante
+- **THEN** o cliente a segue sem alterar `next`, conforme a garantia documental de preservação dos filtros; o teste sintético não comprova o comportamento real da origem
+
 #### Scenario: Falha na segunda página ou cursor inválido
-- **WHEN** uma página posterior falha, muda a conta ou filtros, repete o cursor ou aponta para destino não autorizado
-- **THEN** a coleta falha ou é marcada incompleta, não publica o intervalo como completo e não segue o destino inseguro
+- **WHEN** uma página posterior falha, declara outra conta ou filtro explicitamente conflitante, repete o cursor ou aponta para destino não autorizado
+- **THEN** a coleta falha ou é marcada incompleta, não publica o intervalo como completo, não renova o último sucesso e não segue o destino inseguro
 
 ### Requirement: Publicação consistente do conjunto coletado
 A importação SHALL validar o conjunto antes de torná-lo visível como resultado bem-sucedido e SHALL aplicar suas alterações de forma atômica. Falha de coleta, persistência ou cancelamento antes da confirmação SHALL preservar o conjunto anterior e o horário do último sucesso.
@@ -66,6 +71,16 @@ A importação SHALL exigir prova de continuidade entre identidades de conexão/
 #### Scenario: Mesmo final de cartão sem prova de continuidade
 - **WHEN** duas contas compartilham nome ou últimos dígitos, mas não há vínculo confiável entre as identidades externas
 - **THEN** a importação não as funde nem publica uma reconciliação presumida
+
+#### Scenario: Reconexão solicitada por chamador interno confiável
+- **GIVEN** um chamador interno confiável solicita reconectar a conexão existente a um novo item e a leitura completa do novo item retorna exatamente o conjunto não vazio de IDs externos de cartões já persistidos
+- **WHEN** a promoção confirma o mesmo titular/provedor e que o item candidato não pertence a outra conexão/titular nem consta como identidade aposentada
+- **THEN** a troca do item ativo, o registro do item anterior como aposentado e a reconciliação de cartões/movimentos ocorrem atomicamente, preservando UUIDs e anotações; nenhum endpoint HTTP aceita o item candidato
+
+#### Scenario: Repetição de item aposentado
+- **GIVEN** o item anterior de uma conexão já foi registrado como identidade aposentada
+- **WHEN** uma reconexão posterior tenta reativar esse mesmo ID externo
+- **THEN** a promoção é recusada sem alterar conexão, histórico, movimentos, anotações ou último sucesso
 
 ### Requirement: Interpretação conservadora e campos fiéis à origem
 A importação SHALL preservar IDs, valor decimal individual representável, moeda, data original, tipo, status, operação e metadados opcionais permitidos. SHALL aplicar somente as regras conservadoras de natureza, situação e data existentes; campos essenciais inválidos SHALL causar falha do conjunto, sem preencher ausências com zero ou derivar compra, competência ou soma.
