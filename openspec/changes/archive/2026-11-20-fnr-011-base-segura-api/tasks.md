@@ -39,3 +39,9 @@
 
 - Após validação e aceite, organizar commits locais autorizados com o subagente committer, abrir PR e integrar somente mediante autorização e gates aplicáveis; não tratar artefatos planejados como implementação aprovada.
 - Sincronizar specs e arquivar a mudança quando houver validação, aceite e evidência de integração; não antecipar FNR-013/015/020 nem publicação autenticada.
+
+## Encerramento pós-integração — 20/11/2026
+
+- O GitHub reporta o [PR #24](https://github.com/VictorJer/GestFinan-a/pull/24) como integrado em 20/11/2026 às 02:23:01 UTC, por `VictorJer`, merge commit `b1d2bfc1ba72295ac46c26eae90f715bf9a64186`, head `ef3380692e488eabe6e1e46a8346cd191dfd1c86`. A árvore de `origin/main` corresponde ao HEAD da branch de entrega. A consulta retornou `reviews: []` e `statusCheckRollup: []`; main sem proteção/rulesets configurados. Isso não é review formal nem check aprovado.
+- Por escolha explícita do titular, as delta specs foram sincronizadas localmente: criada `openspec/specs/api-access-boundary/spec.md` com 6 requisitos/17 cenários; `authenticated-sessions` recebeu a atualização de Login e o cenário 429, preservando os outros 11 requisitos/33 cenários existentes.
+- `openspec validate --specs --strict` passou para 9/9 specs; `git diff --check` não encontrou erros. Build/testes de backend não foram repetidos no encerramento documental; as evidências técnicas anteriores permanecem registradas em `docs/AMBIENTE.md`. Os registros pós-merge/sync/arquivo são locais e permanecem sem commit/PR de encerramento nesta etapa; sem publicação ou migration.
