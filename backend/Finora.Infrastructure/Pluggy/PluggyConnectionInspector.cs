@@ -141,7 +141,7 @@ internal sealed class PluggyConnectionInspector(PluggyApiClient client)
     }
 
     // Só aceita o estado documentado como atualizado com execução bem-sucedida; o resto falha fechado.
-    private static PluggyItemValidation ValidateItem(PluggyItemResponse item, DateTimeOffset utcNow)
+    internal static PluggyItemValidation ValidateItem(PluggyItemResponse item, DateTimeOffset utcNow)
     {
         var hasError = item.Error is { ValueKind: not JsonValueKind.Null and not JsonValueKind.Undefined };
         if (hasError

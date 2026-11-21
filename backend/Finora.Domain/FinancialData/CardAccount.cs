@@ -71,6 +71,14 @@ public sealed class CardAccount
         return account;
     }
 
+    /// <summary>Atualiza somente moeda de origem para a mesma identidade contextual do cartão.</summary>
+    public void UpdateSourceCurrency(string currencyCode)
+    {
+        var validated = Create(Id, UserId, ConnectionId, ExternalId, currencyCode, Name, LastFour,
+            AvailableCreditLimit, TotalCreditLimit);
+        CurrencyCode = validated.CurrencyCode;
+    }
+
     /// <summary>Revalida identidade, ID opaco, moeda e limites monetários antes de cada gravação EF.</summary>
     public void ValidateForPersistence()
     {

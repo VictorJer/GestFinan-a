@@ -13,12 +13,12 @@ public sealed record PluggyOptions(string? ClientId, string? ClientSecret, strin
         configuration["Pluggy:AccountId"]);
 
     // Retorna nomes de chaves ausentes, nunca os valores configurados ou parcialmente mascarados.
-    public IReadOnlyList<string> GetMissingRequiredKeys()
+    public IReadOnlyList<string> GetMissingRequiredKeys(bool requireItemId = true)
     {
         var missing = new List<string>();
         if (string.IsNullOrWhiteSpace(ClientId)) missing.Add("Pluggy:ClientId");
         if (string.IsNullOrWhiteSpace(ClientSecret)) missing.Add("Pluggy:ClientSecret");
-        if (string.IsNullOrWhiteSpace(ItemId)) missing.Add("Pluggy:ItemId");
+        if (requireItemId && string.IsNullOrWhiteSpace(ItemId)) missing.Add("Pluggy:ItemId");
         return missing;
     }
 }

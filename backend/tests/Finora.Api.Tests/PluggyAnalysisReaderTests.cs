@@ -195,7 +195,6 @@ public sealed class PluggyAnalysisReaderTests
     [TestMethod]
     [DataRow("https://evil.example/v2/transactions?accountId=card-test&dateFrom=2025-11-15&after=x")]
     [DataRow("/v2/transactions?accountId=card-test&dateFrom=2025-11-15&after=x")]
-    [DataRow("?accountId=card-test&after=x")]
     [DataRow("?dateFrom=2025-11-15&after=x")]
     [DataRow("?accountId=other-card&dateFrom=2025-11-15&after=x")]
     [DataRow("?accountId=card-test&dateFrom=2025-11-14&after=x")]
@@ -206,6 +205,44 @@ public sealed class PluggyAnalysisReaderTests
     public void RejectsUnsafeOrConflictingContinuationQueries(string next)
     {
         Assert.IsFalse(PluggyApiClient.TryBuildAnalysisPath("card-test", new DateOnly(2025, 11, 15), next, out _));
+    }
+
+    // A garantia documental permite seguir literalmente next sem dateFrom; o fixture não valida o servidor real.
+    [TestMethod]
+    public async Task ContinuationWithoutDateFromIsFollowedLiterally()
+    {
+        const string next = "?accountId=card-test&after=opaque-cursor";
+        using var rig = CreateReader(
+            TransactionsPage(string.Empty, Json(next)),
+            TransactionsPage(string.Empty, "null"));
+
+        var result = await rig.Reader.AnalyzeAsync(CancellationToken.None);
+
+        Assert.AreEqual(PluggyAnalysisOutcome.EmptySample, result.Outcome);
+        Assert.AreEqual(2, result.PagesRead);
+        Assert.AreEqual("/v2/transactions" + next, rig.RequestUris[4].PathAndQuery);
+        Assert.IsTrue(result.PaginationCompleted);
+    }
+
+    // Duas continuações com o mesmo filtro são anexadas sem decodificar after ou incluir dateTo.
+    [TestMethod]
+    public async Task ContinuationsWithDateFromPreserveWindowAcrossThreePages()
+    {
+        const string first = "?accountId=card-test&dateFrom=2025-11-15&after=opaque%2Ffirst";
+        const string second = "?accountId=card-test&dateFrom=2025-11-15&after=opaque%2Fsecond";
+        using var rig = CreateReader(
+            TransactionsPage(string.Empty, Json(first)),
+            TransactionsPage(string.Empty, Json(second)),
+            TransactionsPage(string.Empty, "null"));
+
+        var result = await rig.Reader.AnalyzeAsync(CancellationToken.None);
+
+        Assert.AreEqual(PluggyAnalysisOutcome.EmptySample, result.Outcome);
+        Assert.AreEqual(3, result.PagesRead);
+        Assert.IsTrue(result.PaginationCompleted);
+        Assert.AreEqual(first, rig.RequestUris[4].Query);
+        Assert.AreEqual(second, rig.RequestUris[5].Query);
+        Assert.IsFalse(rig.RequestUris.Skip(3).Any(uri => uri.Query.Contains("dateTo", StringComparison.Ordinal)));
     }
 
     // Um cursor repetido interrompe antes de enviar uma terceira requisição de transações.
@@ -292,6 +329,54 @@ public sealed class PluggyAnalysisReaderTests
         var result = await analysis;
 
         Assert.AreEqual(PluggyAnalysisFailure.RequestTimeout, result.Failure);
+        Assert.IsFalse(result.PaginationCompleted);
+    }
+
+    // Confere o orçamento proposto de 30 segundos em relógio virtual, sem aguardar nem chamar a origem.
+    [TestMethod]
+    public async Task ProposedThirtySecondRequestBudgetStopsBlockedPage()
+    {
+        var clock = new ControllableTimeProvider(Reference);
+        using var rig = CreateReaderWithOptions(
+            requestTimeout: TimeSpan.FromSeconds(30),
+            totalTimeout: TimeSpan.FromSeconds(120),
+            maximumPages: 100,
+            responseDelay: null,
+            failTransactionPage: null,
+            timeProvider: clock,
+            blockTransactionUntilCancelled: true,
+            transactionPages: [TransactionsPage(string.Empty, "null")]);
+
+        var analysis = rig.Reader.AnalyzeAsync(CancellationToken.None);
+        await rig.TransactionRequestStarted.Task;
+        clock.Advance(TimeSpan.FromSeconds(30));
+        var result = await analysis;
+
+        Assert.AreEqual(PluggyAnalysisFailure.RequestTimeout, result.Failure);
+        Assert.IsFalse(result.PaginationCompleted);
+    }
+
+    // O teto agregado de 120 segundos prevalece sobre uma chamada ainda dentro do orçamento.
+    [TestMethod]
+    public async Task ProposedHundredTwentySecondTotalBudgetStopsBlockedPage()
+    {
+        var clock = new ControllableTimeProvider(Reference);
+        using var rig = CreateReaderWithOptions(
+            requestTimeout: TimeSpan.FromSeconds(150),
+            totalTimeout: TimeSpan.FromSeconds(120),
+            maximumPages: 100,
+            responseDelay: null,
+            failTransactionPage: null,
+            timeProvider: clock,
+            blockTransactionUntilCancelled: true,
+            transactionPages: [TransactionsPage(string.Empty, "null")]);
+
+        var analysis = rig.Reader.AnalyzeAsync(CancellationToken.None);
+        await rig.TransactionRequestStarted.Task;
+        clock.Advance(TimeSpan.FromSeconds(120));
+        var result = await analysis;
+
+        Assert.AreEqual(PluggyAnalysisFailure.TotalTimeout, result.Failure);
         Assert.IsFalse(result.PaginationCompleted);
     }
 

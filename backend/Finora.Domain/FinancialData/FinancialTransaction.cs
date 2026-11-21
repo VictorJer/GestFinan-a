@@ -141,6 +141,54 @@ public sealed class FinancialTransaction
         return transaction;
     }
 
+    /// <summary>Atualiza somente fatos e interpretação da origem para a mesma identidade externa e conta.</summary>
+    public void UpdateSourceFacts(
+        TransactionNormalizationResult normalization,
+        string normalizationRuleVersion,
+        DateOnly normalizationReferenceDate)
+    {
+        ArgumentNullException.ThrowIfNull(normalization);
+        ArgumentNullException.ThrowIfNull(normalization.Original);
+        ArgumentNullException.ThrowIfNull(normalization.Date);
+
+        // Valida o snapshot substituto antes de tocar na entidade rastreada, evitando estado parcial em falhas.
+        var replacement = Create(
+            Id,
+            UserId,
+            CardAccountId,
+            normalization,
+            normalizationRuleVersion,
+            normalizationReferenceDate);
+        if (!string.Equals(replacement.ExternalId, ExternalId, StringComparison.Ordinal)
+            || !string.Equals(replacement.ExternalAccountId, ExternalAccountId, StringComparison.Ordinal))
+        {
+            throw new ArgumentException("A atualização precisa preservar a identidade externa contextual.", nameof(normalization));
+        }
+
+        Description = replacement.Description;
+        Amount = replacement.Amount;
+        CurrencyCode = replacement.CurrencyCode;
+        OriginalDate = replacement.OriginalDate;
+        Type = replacement.Type;
+        Status = replacement.Status;
+        OperationType = replacement.OperationType;
+        InstallmentNumber = replacement.InstallmentNumber;
+        TotalInstallments = replacement.TotalInstallments;
+        PurchaseDate = replacement.PurchaseDate;
+        BillId = replacement.BillId;
+        BillPostDate = replacement.BillPostDate;
+        BillForecastDate = replacement.BillForecastDate;
+        PaymentType = replacement.PaymentType;
+        TransactionDate = replacement.TransactionDate;
+        Nature = replacement.Nature;
+        NatureReason = replacement.NatureReason;
+        Situation = replacement.Situation;
+        SituationReason = replacement.SituationReason;
+        DateReason = replacement.DateReason;
+        NormalizationRuleVersion = replacement.NormalizationRuleVersion;
+        NormalizationReferenceDate = replacement.NormalizationReferenceDate;
+    }
+
     /// <summary>Revalida campos essenciais, IDs opacos, valor e motivos antes de cada gravação EF.</summary>
     public void ValidateForPersistence()
     {

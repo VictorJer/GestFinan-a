@@ -159,6 +159,40 @@ namespace Finora.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Finora.Domain.FinancialData.FinancialConnectionItemIdentity", b =>
+                {
+                    b.Property<string>("Provider")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .UseCollation("C");
+
+                    b.Property<string>("ExternalItemId")
+                        .HasColumnType("text")
+                        .UseCollation("C");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("RetiredAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Provider", "ExternalItemId");
+
+                    b.HasIndex("ConnectionId")
+                        .IsUnique()
+                        .HasFilter("\"RetiredAtUtc\" IS NULL");
+
+                    b.HasIndex("ConnectionId", "UserId");
+
+                    b.ToTable("FinancialConnectionItemIdentity", t =>
+                        {
+                            t.HasCheckConstraint("CK_FinancialConnectionItemIdentity_ExternalItemId_MaxUtf8Bytes", "octet_length(convert_to(\"ExternalItemId\", 'UTF8')) <= 1024");
+                        });
+                });
+
             modelBuilder.Entity("Finora.Domain.FinancialData.FinancialTransaction", b =>
                 {
                     b.Property<Guid>("Id")
@@ -563,6 +597,16 @@ namespace Finora.Infrastructure.Persistence.Migrations
                     b.HasOne("Finora.Infrastructure.Identity.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Finora.Domain.FinancialData.FinancialConnectionItemIdentity", b =>
+                {
+                    b.HasOne("Finora.Domain.FinancialData.FinancialConnection", null)
+                        .WithMany()
+                        .HasForeignKey("ConnectionId", "UserId")
+                        .HasPrincipalKey("Id", "UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
