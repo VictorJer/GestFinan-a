@@ -1,5 +1,7 @@
 using Finora.Domain.FinancialData;
 using Finora.Infrastructure.Identity;
+using MassTransit;
+using MassTransit.EntityFrameworkCoreIntegration;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,6 +18,10 @@ public sealed class FinoraDbContext(DbContextOptions<FinoraDbContext> options)
 
         // Aplica constraints financeiras/de sessão depois das entidades e relações básicas do Identity.
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(FinoraDbContext).Assembly);
+
+        // As tabelas de entrega compartilham o mesmo modelo e transação PostgreSQL das SyncRuns aceitas.
+        modelBuilder.AddOutboxMessageEntity();
+        modelBuilder.AddOutboxStateEntity();
     }
 
     // Toda gravação síncrona valida entidades financeiras e sessões antes de entregar valores ao provider.
@@ -85,6 +91,13 @@ public sealed class FinoraDbContext(DbContextOptions<FinoraDbContext> options)
         }
 
         foreach (var entry in ChangeTracker.Entries<SyncRun>()
+                     .Where(entry => entry.State is EntityState.Added or EntityState.Modified))
+        {
+            entry.Entity.ValidateForPersistence();
+        }
+
+        // Lease/fencing compartilham a barreira financeira para impedir gravação de posse estruturalmente inválida.
+        foreach (var entry in ChangeTracker.Entries<SyncRunLease>()
                      .Where(entry => entry.State is EntityState.Added or EntityState.Modified))
         {
             entry.Entity.ValidateForPersistence();

@@ -1,4 +1,5 @@
 using Finora.Application.Pluggy;
+using Finora.Application.FinancialData;
 using Finora.Infrastructure.Persistence;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -49,6 +50,7 @@ public static class PluggyServiceCollectionExtensions
         services.AddScoped<ITransactionImportReader, PluggyTransactionImportReader>();
         services.AddScoped<ITransactionImportConnectionReader, TransactionImportConnectionReader>();
         services.AddScoped<ITransactionImportPromoter, FinancialTransactionImportPromoter>();
+        services.AddScoped<ISyncRunAttemptExecutor, ImportTransactionsHandler>();
         return services;
     }
 }

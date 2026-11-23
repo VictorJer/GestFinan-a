@@ -37,14 +37,18 @@ internal sealed class PluggyTransactionImportReader(
             var authentication = await client.AuthenticateAsync(totalTimeout.Token, requireConfiguredItem: false);
             if (!authentication.Succeeded)
             {
-                return TransactionImportReadResult.Failed(MapFailure(authentication.FailureCategory));
+                return TransactionImportReadResult.Failed(
+                    MapFailure(authentication.FailureCategory),
+                    retryAfterAtUtc: authentication.RetryAfterAtUtc);
             }
 
             // A consulta do item usa a identidade da conexão persistida, nunca o ItemId de configuração diagnóstica.
             var itemResult = await client.GetItemAsync(externalItemId, totalTimeout.Token);
             if (itemResult.Payload is null)
             {
-                return TransactionImportReadResult.Failed(MapFailure(itemResult.FailureCategory));
+                return TransactionImportReadResult.Failed(
+                    MapFailure(itemResult.FailureCategory),
+                    retryAfterAtUtc: itemResult.RetryAfterAtUtc);
             }
 
             var itemValidation = PluggyConnectionInspector.ValidateItem(itemResult.Payload, timeProvider.GetUtcNow());
@@ -57,7 +61,9 @@ internal sealed class PluggyTransactionImportReader(
             if (accounts.FailureCode is not null || accounts.Accounts is null)
             {
                 return TransactionImportReadResult.Failed(accounts.FailureCode
-                    ?? TransactionImportFailureCode.InvalidResponse, accounts.PagesRead);
+                    ?? TransactionImportFailureCode.InvalidResponse,
+                    accounts.PagesRead,
+                    retryAfterAtUtc: accounts.RetryAfterAtUtc);
             }
 
             var transactions = new List<PluggyTransactionData>();
@@ -74,7 +80,8 @@ internal sealed class PluggyTransactionImportReader(
                     return TransactionImportReadResult.Failed(
                         read.FailureCode.Value,
                         accounts.PagesRead + transactionPagesRead + read.PagesRead,
-                        receivedCount + read.ReceivedCount);
+                        receivedCount + read.ReceivedCount,
+                        read.RetryAfterAtUtc);
                 }
 
                 transactionPagesRead += read.PagesRead;
@@ -119,7 +126,8 @@ internal sealed class PluggyTransactionImportReader(
             var page = response.Payload;
             if (page is null)
             {
-                return new AccountsReadResult(null, MapFailure(response.FailureCategory), pageNumber - 1);
+                return new AccountsReadResult(
+                    null, MapFailure(response.FailureCategory), pageNumber - 1, response.RetryAfterAtUtc);
             }
 
             if (page.Page != pageNumber || page.Total < 0 || page.TotalPages < 1 || page.Results is null
@@ -192,7 +200,8 @@ internal sealed class PluggyTransactionImportReader(
                 return new TransactionPagesReadResult(
                     MapFailure(response.FailureCategory ?? PluggyLocalReadFailureCategory.InvalidResponse),
                     pageNumber,
-                    receivedCount);
+                    receivedCount,
+                    response.RetryAfterAtUtc);
             }
 
             pagesRead++;
@@ -309,10 +318,12 @@ internal sealed class PluggyTransactionImportReader(
     private sealed record AccountsReadResult(
         IReadOnlyList<TransactionImportAccount>? Accounts,
         TransactionImportFailureCode? FailureCode,
-        int PagesRead);
+        int PagesRead,
+        DateTimeOffset? RetryAfterAtUtc = null);
 
     private sealed record TransactionPagesReadResult(
         TransactionImportFailureCode? FailureCode,
         int PagesRead,
-        int ReceivedCount);
+        int ReceivedCount,
+        DateTimeOffset? RetryAfterAtUtc = null);
 }

@@ -1,5 +1,7 @@
 namespace Finora.Application.Pluggy;
 
+using Finora.Application.FinancialData;
+
 /// <summary>Projeção mínima da conexão autorizada para uma coleta interna, sem expor credenciais.</summary>
 public sealed record TransactionImportConnection(
     Guid Id,
@@ -49,7 +51,9 @@ public enum TransactionImportFailureCode
     PersistenceFailed,
     StaleSnapshot,
     CommitUncertain,
-    IdentityConflict
+    IdentityConflict,
+    LeaseLost,
+    AttemptDeadlineExceeded
 }
 
 /// <summary>Contrato de leitura externo que recebe apenas a identidade do item e a janela já fixada.</summary>
@@ -58,6 +62,14 @@ public interface ITransactionImportReader
     Task<TransactionImportReadResult> ReadAsync(
         string externalItemId,
         DateOnly dateFrom,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>Invoca o importador existente com a execução aceita, sua janela e o claim da tentativa persistida.</summary>
+public interface ISyncRunAttemptExecutor
+{
+    Task<TransactionImportResult> ExecuteAttemptAsync(
+        SyncRunLeaseGrant execution,
         CancellationToken cancellationToken);
 }
 
@@ -92,6 +104,15 @@ public interface ITransactionImportPromoter
         int? pagesRead,
         int? receivedCount,
         CancellationToken cancellationToken);
+
+    Task<TransactionImportPromotionResult> PromoteAttemptAsync(
+        SyncRunLeaseGrant execution,
+        TransactionImportConnection connection,
+        TransactionImportSnapshot snapshot,
+        DateOnly normalizationReferenceDate,
+        DateTimeOffset finishedAtUtc,
+        CancellationToken cancellationToken);
+
 }
 
 /// <summary>Resultado interno da gravação; mensagens e exceções de persistência não atravessam a fronteira.</summary>
@@ -105,7 +126,8 @@ public sealed record TransactionImportReadResult(
     TransactionImportSnapshot? Snapshot,
     TransactionImportFailureCode? FailureCode,
     int? PagesRead = null,
-    int? ReceivedCount = null)
+    int? ReceivedCount = null,
+    DateTimeOffset? RetryAfterAtUtc = null)
 {
     public bool Succeeded => Snapshot is not null && FailureCode is null;
 
@@ -113,7 +135,9 @@ public sealed record TransactionImportReadResult(
     public static TransactionImportReadResult Failed(
         TransactionImportFailureCode failureCode,
         int? pagesRead = null,
-        int? receivedCount = null) => new(null, failureCode, pagesRead, receivedCount);
+        int? receivedCount = null,
+        DateTimeOffset? retryAfterAtUtc = null) =>
+        new(null, failureCode, pagesRead, receivedCount, retryAfterAtUtc);
 }
 
 /// <summary>Resumo sem IDs, valores, mensagens do provedor ou conteúdo das transações.</summary>
@@ -124,4 +148,7 @@ public sealed record TransactionImportResult(
     int? TransactionCount = null,
     int? PersistedCount = null,
     DateOnly? RequestedDateFrom = null,
-    bool? PaginationCompleted = null);
+    bool? PaginationCompleted = null,
+    int? PagesRead = null,
+    int? ReceivedCount = null,
+    DateTimeOffset? RetryAfterAtUtc = null);

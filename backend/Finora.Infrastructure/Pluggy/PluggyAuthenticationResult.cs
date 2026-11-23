@@ -6,4 +6,5 @@ namespace Finora.Infrastructure.Pluggy;
 public sealed record PluggyAuthenticationResult(
     bool Succeeded,
     PluggyLocalReadFailureCategory? FailureCategory = null,
-    IReadOnlyList<string>? MissingConfiguration = null);
+    IReadOnlyList<string>? MissingConfiguration = null,
+    DateTimeOffset? RetryAfterAtUtc = null);

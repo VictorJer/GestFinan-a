@@ -1,7 +1,11 @@
 using System.Text.Encodings.Web;
 using Finora.Application.Authentication;
+using Finora.Application.FinancialData;
 using Finora.Api.Errors;
 using Finora.Infrastructure.Identity;
+using Finora.Infrastructure.Messaging;
+using Finora.Infrastructure.Pluggy;
+using Finora.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -10,6 +14,7 @@ using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
+using MassTransit;
 using Npgsql;
 
 namespace Finora.Api.Authentication;
@@ -27,13 +32,19 @@ public static class AuthenticationServiceCollectionExtensions
         var settings = JwtSettings.Read(configuration);
         var connection = configuration.GetConnectionString("Finora");
         var available = settings is not null && IsValidConnection(connection);
+        var rabbitMq = available ? SyncRunRabbitMqSettings.Read(configuration) : null;
         services.AddSingleton(new AuthenticationAvailability(available));
+        services.TryAddSingleton(new SyncRunAcceptanceAvailability(false));
         services.AddMediatR(options =>
         {
             options.RegisterServicesFromAssembly(typeof(LoginCommand).Assembly);
             // Não registrar handlers CLI/Pluggy no HTTP só por compartilharem o assembly da Application.
             options.TypeEvaluator = type => type == typeof(LoginHandler)
-                || (available && type == typeof(LogoutHandler));
+                || (available && (type == typeof(LogoutHandler)
+                    || type == typeof(AcceptSyncRunHandler)
+                    || (rabbitMq is not null && type == typeof(ExecuteSyncRunHandler))
+                    || type == typeof(ResolveCurrentSyncConnectionHandler)
+                    || type == typeof(GetSyncRunStatusHandler)));
         });
         services.Configure<ApiBehaviorOptions>(options => options.InvalidModelStateResponseFactory = action =>
         {
@@ -60,6 +71,33 @@ public static class AuthenticationServiceCollectionExtensions
         services.AddSingleton(settings!);
         services.AddSingleton<IAccessTokenIssuer, JwtAccessTokenIssuer>();
         services.AddFinoraSessionPersistence(connection!);
+        // A resolução e aceitação usam o mesmo contexto scoped da autenticação, sem abrir conexão no startup.
+        services.AddFinoraSyncRunAcceptancePersistence();
+        if (rabbitMq is not null)
+        {
+            // Importação e consumer só existem quando a composição autenticada também dispõe de transporte explícito.
+            services.AddPluggyTransactionImport(configuration);
+            services.AddFinoraSyncRunExecutionOutbox(registration => registration.UsingRabbitMq((context, bus) =>
+            {
+                bus.Host(rabbitMq.HostAddress, host =>
+                {
+                    host.Username(rabbitMq.Username);
+                    host.Password(rabbitMq.Password);
+                    host.PublisherConfirmation = true;
+                    if (rabbitMq.UseTls) { host.UseSsl(); }
+                });
+                // A fila classic processa uma única entrega por consumer; limites de ack serão tratados na aplicação.
+                bus.ReceiveEndpoint(SyncRunExecutionTopology.QueueName, endpoint =>
+                {
+                    endpoint.PrefetchCount = SyncRunExecutionTopology.ConsumerPrefetchCount;
+                    endpoint.ConcurrentMessageLimit = SyncRunExecutionTopology.ConsumerConcurrencyLimit;
+                    endpoint.ConfigureConsumer<SyncRunExecutionConsumer>(context);
+                });
+                }));
+            // A recuperação somente reenvia obrigações via outbox; o consumer continua como único executor financeiro.
+            services.AddHostedService<SyncRunExecutionRecoveryService>();
+            services.Replace(ServiceDescriptor.Singleton(new SyncRunAcceptanceAvailability(true)));
+        }
         authentication.AddJwtBearer((Action<JwtBearerOptions>)(options =>
         {
             options.MapInboundClaims = false;

@@ -1,4 +1,5 @@
 using Finora.Application.Pluggy;
+using Finora.Application.FinancialData;
 
 namespace Finora.Api.Tests;
 
@@ -100,6 +101,80 @@ public sealed class TransactionImportHandlerTests
         Assert.IsFalse(result.ToString()!.Contains("private description", StringComparison.Ordinal));
     }
 
+    // A tentativa invocada pelo consumer usa janela e instante de posse persistidos, não o relógio da nova entrega.
+    [TestMethod]
+    public async Task AcceptedExecutionContextIsPassedToTheExistingImportPipeline()
+    {
+        var requestedFrom = new DateOnly(2024, 12, 1);
+        var requestedToExclusive = new DateOnly(2025, 12, 1);
+        var acquiredAtUtc = Reference.AddMinutes(-4);
+        var attemptDeadlineAtUtc = acquiredAtUtc.AddMinutes(10);
+        var snapshot = new TransactionImportSnapshot(
+            [new TransactionImportAccount("account-private", "CREDIT", "CREDIT_CARD", "BRL")],
+            [new PluggyTransactionData("transaction-private", "account-private", "private description", 12.34m,
+                "BRL", "2025-11-01", "DEBIT", "POSTED", "TARIFA")],
+            requestedFrom,
+            true);
+        var connectionReader = new StubConnectionReader(new TransactionImportConnection(
+            ConnectionId, UserId, "pluggy", "item-sensitive-sentinel", null));
+        var sourceReader = new StubImportReader(new TransactionImportReadResult(snapshot, null));
+        var promoter = new StubImportPromoter();
+        var handler = CreateHandler(connectionReader, sourceReader, promoter);
+        var execution = new SyncRunLeaseGrant(
+            ConnectionId,
+            UserId,
+            Guid.Parse("f66ef5c3-90fb-46e2-9cbc-f24b2a0c8b73"),
+            AttemptNumber: 2,
+            FencingToken: 9,
+            AcquiredAtUtc: acquiredAtUtc,
+            ExpiresAtUtc: acquiredAtUtc.AddSeconds(120),
+            RequestedFrom: requestedFrom,
+            RequestedToExclusive: requestedToExclusive,
+            AttemptStartedAtUtc: acquiredAtUtc,
+            AttemptDeadlineAtUtc: attemptDeadlineAtUtc);
+
+        var result = await handler.ExecuteAttemptAsync(execution, CancellationToken.None);
+
+        Assert.IsTrue(result.Succeeded);
+        Assert.AreEqual(requestedFrom, sourceReader.RequestedDateFrom);
+        Assert.AreEqual(acquiredAtUtc, promoter.PromotedStartedAtUtc);
+        Assert.AreEqual(requestedToExclusive.AddDays(-1), promoter.NormalizationReferenceDate);
+        Assert.AreEqual(1, promoter.CallCount);
+        Assert.AreEqual(1, result.PersistedCount);
+    }
+
+    // Cancelamento durante leitura propaga shutdown mesmo se o adapter representar a interrupção como código interno.
+    [TestMethod]
+    public async Task CancelledCollectionDoesNotPromoteOrBecomeBusinessFailure()
+    {
+        var connectionReader = new StubConnectionReader(new TransactionImportConnection(
+            ConnectionId, UserId, "pluggy", "item-sensitive-sentinel", null));
+        var sourceReader = new CancellationReturningImportReader();
+        var promoter = new StubImportPromoter();
+        var handler = CreateHandler(connectionReader, sourceReader, promoter);
+        var execution = new SyncRunLeaseGrant(
+            ConnectionId,
+            UserId,
+            Guid.Parse("cda2c8d5-3314-4598-b7c0-786add1e69cb"),
+            AttemptNumber: 1,
+            FencingToken: 1,
+            AcquiredAtUtc: Reference,
+            ExpiresAtUtc: Reference.AddSeconds(120),
+            RequestedFrom: new DateOnly(2025, 11, 20),
+            RequestedToExclusive: new DateOnly(2026, 11, 21),
+            AttemptStartedAtUtc: Reference,
+            AttemptDeadlineAtUtc: Reference.AddMinutes(10));
+        using var cancellation = new CancellationTokenSource();
+        var attempt = handler.ExecuteAttemptAsync(execution, cancellation.Token);
+        await sourceReader.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        cancellation.Cancel();
+
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => attempt);
+        Assert.AreEqual(0, promoter.CallCount);
+        Assert.AreEqual(0, promoter.FailureCallCount);
+    }
+
     // A API permanece inicializável sem configuração Pluggy porque a composição HTTP não registra o adaptador.
     [TestMethod]
     public async Task ApiStartsWithoutPluggyCredentials()
@@ -153,6 +228,9 @@ public sealed class TransactionImportHandlerTests
         public TransactionImportFailureCode? RecordedFailure { get; private set; }
         public int? RecordedPagesRead { get; private set; }
         public int? RecordedReceivedCount { get; private set; }
+        public DateOnly? NormalizationReferenceDate { get; private set; }
+        public DateTimeOffset? PromotedStartedAtUtc { get; private set; }
+        public SyncRunLeaseGrant? PromotedExecution { get; private set; }
 
         public Task<TransactionImportPromotionResult> PromoteAsync(
             TransactionImportConnection connection,
@@ -163,6 +241,8 @@ public sealed class TransactionImportHandlerTests
             CancellationToken cancellationToken)
         {
             CallCount++;
+            NormalizationReferenceDate = normalizationReferenceDate;
+            PromotedStartedAtUtc = startedAtUtc;
             return Task.FromResult(new TransactionImportPromotionResult(true, null, snapshot.Transactions.Count));
         }
 
@@ -196,6 +276,47 @@ public sealed class TransactionImportHandlerTests
             RecordedPagesRead = pagesRead;
             RecordedReceivedCount = receivedCount;
             return Task.FromResult(new TransactionImportPromotionResult(true, null));
+        }
+
+        // O teste do consumer confirma que o claim original atravessa o importador até o promotor.
+        public Task<TransactionImportPromotionResult> PromoteAttemptAsync(
+            SyncRunLeaseGrant execution,
+            TransactionImportConnection connection,
+            TransactionImportSnapshot snapshot,
+            DateOnly normalizationReferenceDate,
+            DateTimeOffset finishedAtUtc,
+            CancellationToken cancellationToken)
+        {
+            CallCount++;
+            PromotedExecution = execution;
+            NormalizationReferenceDate = normalizationReferenceDate;
+            PromotedStartedAtUtc = execution.AttemptStartedAtUtc;
+            return Task.FromResult(new TransactionImportPromotionResult(true, null, snapshot.Transactions.Count));
+        }
+
+    }
+
+    // Imita o adapter HTTP, que devolve código Cancelled após observar o token em vez de expor exceção externa.
+    private sealed class CancellationReturningImportReader : ITransactionImportReader
+    {
+        internal TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<TransactionImportReadResult> ReadAsync(
+            string externalItemId,
+            DateOnly dateFrom,
+            CancellationToken cancellationToken)
+        {
+            Started.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return TransactionImportReadResult.Failed(TransactionImportFailureCode.Cancelled);
+            }
+
+            return TransactionImportReadResult.Failed(TransactionImportFailureCode.InvalidResponse);
         }
     }
 

@@ -30,7 +30,12 @@ internal sealed class AuthenticationApiFactory : WebApplicationFactory<Program>
         Action<IServiceCollection>? configure = null)
     {
         _configuration = configuration ?? new Dictionary<string, string?>();
-        foreach (var key in new[] { "ConnectionStrings:Finora", "Authentication:Jwt:Issuer", "Authentication:Jwt:Audience", "Authentication:Jwt:SigningKeyBase64" })
+        foreach (var key in new[]
+                 {
+                     "ConnectionStrings:Finora", "Authentication:Jwt:Issuer", "Authentication:Jwt:Audience",
+                     "Authentication:Jwt:SigningKeyBase64", "Messaging:RabbitMq:HostAddress",
+                     "Messaging:RabbitMq:Username", "Messaging:RabbitMq:Password", "Messaging:RabbitMq:UseTls"
+                 })
         {
             _configuration.TryAdd(key, null);
         }

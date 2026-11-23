@@ -1,11 +1,12 @@
 using Finora.Application.Authentication;
+using Finora.Application.FinancialData;
 
 namespace Finora.Api.Errors;
 
 // Converte falhas não tratadas em erros sanitizados e não registra exceção ou dado de entrada.
 internal sealed class ApiExceptionBoundary(RequestDelegate next, ILogger<ApiExceptionBoundary> logger)
 {
-    // Uma dependência só vira 503 quando a aplicação a classifica com o tipo operacional conhecido.
+    // Somente falhas tipadas recebem 503; erros não classificados continuam como falha interna sanitizada.
     public async Task InvokeAsync(HttpContext context)
     {
         try
@@ -18,9 +19,17 @@ internal sealed class ApiExceptionBoundary(RequestDelegate next, ILogger<ApiExce
         }
         catch (Exception exception)
         {
+            var acceptanceIndeterminate = exception is SyncRunAcceptanceIndeterminateException;
             var unavailable = exception is AuthenticationUnavailableException;
-            var status = unavailable ? StatusCodes.Status503ServiceUnavailable : StatusCodes.Status500InternalServerError;
-            var code = unavailable ? "DEPENDENCY_UNAVAILABLE" : "INTERNAL_ERROR";
+            var status = unavailable || acceptanceIndeterminate
+                ? StatusCodes.Status503ServiceUnavailable
+                : StatusCodes.Status500InternalServerError;
+            var code = acceptanceIndeterminate
+                ? "ACCEPTANCE_RESULT_INDETERMINATE"
+                : unavailable ? "DEPENDENCY_UNAVAILABLE" : "INTERNAL_ERROR";
+            var title = acceptanceIndeterminate
+                ? "O resultado da aceitação é indeterminado. Repita a solicitação usando a mesma chave Idempotency-Key."
+                : null;
 
             // Registra apenas categoria fixa e traceId; não passa exception ao logger nem inclui mensagem externa.
             logger.LogError("API request failed with code {ErrorCode}; traceId {TraceId}", code, context.TraceIdentifier);
@@ -30,7 +39,7 @@ internal sealed class ApiExceptionBoundary(RequestDelegate next, ILogger<ApiExce
                 return;
             }
 
-            await ApiProblemDetails.WriteAsync(context, status, code);
+            await ApiProblemDetails.WriteAsync(context, status, code, title);
         }
     }
 }
