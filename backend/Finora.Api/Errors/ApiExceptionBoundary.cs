@@ -1,12 +1,14 @@
 using Finora.Application.Authentication;
 using Finora.Application.FinancialData;
+using System.Data.Common;
+using Microsoft.EntityFrameworkCore;
 
 namespace Finora.Api.Errors;
 
 // Converte falhas não tratadas em erros sanitizados e não registra exceção ou dado de entrada.
 internal sealed class ApiExceptionBoundary(RequestDelegate next, ILogger<ApiExceptionBoundary> logger)
 {
-    // Somente falhas tipadas recebem 503; erros não classificados continuam como falha interna sanitizada.
+    // Falhas de banco/dependência e commit incerto recebem 503; erros não classificados permanecem falha interna.
     public async Task InvokeAsync(HttpContext context)
     {
         try
@@ -20,7 +22,7 @@ internal sealed class ApiExceptionBoundary(RequestDelegate next, ILogger<ApiExce
         catch (Exception exception)
         {
             var acceptanceIndeterminate = exception is SyncRunAcceptanceIndeterminateException;
-            var unavailable = exception is AuthenticationUnavailableException;
+            var unavailable = exception is AuthenticationUnavailableException or DbException or DbUpdateException;
             var status = unavailable || acceptanceIndeterminate
                 ? StatusCodes.Status503ServiceUnavailable
                 : StatusCodes.Status500InternalServerError;

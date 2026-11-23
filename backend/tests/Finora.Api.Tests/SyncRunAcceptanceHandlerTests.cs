@@ -125,6 +125,74 @@ public sealed class SyncRunAcceptanceHandlerTests
         Assert.AreEqual(3, store.CallCount);
     }
 
+    // A intenção de entrada conserva a referência original quando a primeira resposta se perde e há retry ativo/terminal.
+    [TestMethod]
+    public async Task OnEntryRequestReplaysOriginalAfterLostResponseAndTerminalCompletion()
+    {
+        const string key = "sync-entry-replay-0001";
+        var store = new InMemoryAcceptanceStore();
+        var clock = new MutableTimeProvider(InitialTime);
+        var handler = CreateHandler(store, clock);
+        var command = new AcceptSyncRunCommand(UserId, ConnectionId, key, SyncRunRequestMode.OnEntry);
+
+        var originalResponse = await handler.Handle(command, CancellationToken.None);
+        var originalRun = store.Runs.Single();
+        // O teste simula perda da resposta descartando a referência do primeiro retorno antes do replay.
+        store.Replace(WithState(originalRun, SyncRunState.Running));
+        var activeReplay = await handler.Handle(command, CancellationToken.None);
+        store.Replace(WithState(store.Runs.Single(), SyncRunState.Succeeded));
+        var terminalReplay = await handler.Handle(command, CancellationToken.None);
+
+        Assert.AreEqual(SyncRunAcceptanceStatus.Accepted, originalResponse.Status);
+        Assert.AreEqual(SyncRunAcceptanceStatus.Replayed, activeReplay.Status);
+        Assert.AreEqual(SyncRunAcceptanceStatus.Replayed, terminalReplay.Status);
+        Assert.AreEqual(originalRun.Id, activeReplay.SyncRunId);
+        Assert.AreEqual(originalRun.Id, terminalReplay.SyncRunId);
+        Assert.AreEqual(1, store.Runs.Count);
+    }
+
+    // A chave manual mantém exatamente o fingerprint v1 histórico e recebe outro namespace no modo de entrada.
+    [TestMethod]
+    public void ManualFingerprintRemainsVersionOneAndEntryFingerprintIsDistinct()
+    {
+        var canonicalManual = $"sync-execution-request:v1\nconnectionId={ConnectionId:D}";
+        var canonicalEntry = $"sync-execution-on-entry-request:v1\nconnectionId={ConnectionId:D}";
+        var expectedManual = Convert.ToHexString(SHA256.HashData(Encoding.ASCII.GetBytes(canonicalManual)));
+        var expectedEntry = Convert.ToHexString(SHA256.HashData(Encoding.ASCII.GetBytes(canonicalEntry)));
+
+        Assert.AreEqual(expectedManual, SyncRunIdempotency.CreateRequestFingerprint(ConnectionId));
+        Assert.AreEqual(expectedManual, SyncRunIdempotency.CreateRequestFingerprint(ConnectionId, SyncRunRequestMode.Manual));
+        Assert.AreEqual(expectedEntry, SyncRunIdempotency.CreateRequestFingerprint(ConnectionId, SyncRunRequestMode.OnEntry));
+        Assert.AreNotEqual(expectedManual, expectedEntry);
+    }
+
+    // Reutilizar uma chave para trocar o modo é conflito nos dois sentidos e nunca cria uma segunda execução.
+    [TestMethod]
+    public async Task SameKeyCannotChangeBetweenManualAndOnEntryModes()
+    {
+        var modePairs = new[]
+        {
+            (SyncRunRequestMode.Manual, SyncRunRequestMode.OnEntry),
+            (SyncRunRequestMode.OnEntry, SyncRunRequestMode.Manual)
+        };
+
+        foreach (var (firstMode, secondMode) in modePairs)
+        {
+            var store = new InMemoryAcceptanceStore();
+            var handler = CreateHandler(store, new MutableTimeProvider(InitialTime));
+            const string key = "sync-mode-conflict-0001";
+
+            var first = await handler.Handle(
+                new AcceptSyncRunCommand(UserId, ConnectionId, key, firstMode), CancellationToken.None);
+            var conflicting = await handler.Handle(
+                new AcceptSyncRunCommand(UserId, ConnectionId, key, secondMode), CancellationToken.None);
+
+            Assert.AreEqual(SyncRunAcceptanceStatus.Accepted, first.Status);
+            Assert.AreEqual(SyncRunAcceptanceStatus.IdempotencyConflict, conflicting.Status);
+            Assert.AreEqual(1, store.Runs.Count);
+        }
+    }
+
     // A chave global em outro escopo conflita genericamente e não devolve referência ou estado da execução anterior.
     [TestMethod]
     public async Task ReusingKeyForAnotherOwnerOrConnectionDoesNotExposeTheStoredRun()

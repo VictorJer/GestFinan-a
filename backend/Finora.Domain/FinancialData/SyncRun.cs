@@ -212,6 +212,33 @@ public sealed class SyncRun
         return run;
     }
 
+    /// <summary>Recria a candidata no instante serializado pelo lock, alinhando janela e obrigação ao horário aceito.</summary>
+    public SyncRun RecreateAcceptanceAt(DateTimeOffset acceptedAtUtc)
+    {
+        EnsureUtc(acceptedAtUtc, nameof(acceptedAtUtc));
+        if (State != SyncRunState.Pending
+            || StartedAtUtc is not null
+            || FinishedAtUtc is not null
+            || AttemptNumber != 0
+            || ExecutionMessageEnqueuedAtUtc is not null)
+        {
+            throw new InvalidOperationException("Somente uma candidata ainda não executada pode ser retemporizada.");
+        }
+
+        // O intervalo financeiro usa a mesma data UTC do instante capturado após o lock da conexão.
+        var referenceDate = DateOnly.FromDateTime(acceptedAtUtc.UtcDateTime);
+        return Create(
+            Id,
+            UserId,
+            ConnectionId,
+            acceptedAtUtc,
+            referenceDate.AddMonths(-12),
+            referenceDate.AddDays(1),
+            idempotencyKeyHash: IdempotencyKeyHash,
+            requestFingerprint: RequestFingerprint,
+            nextAttemptAtUtc: acceptedAtUtc);
+    }
+
     // A posse inicia uma tentativa somente quando o orçamento e a agenda persistidos permitem trabalho.
     public bool TryBeginAttempt(DateTimeOffset nowUtc)
     {

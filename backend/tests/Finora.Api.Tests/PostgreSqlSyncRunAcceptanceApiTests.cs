@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -37,6 +38,7 @@ public sealed class PostgreSqlSyncRunAcceptanceApiTests
         using var firstResponse = await fixture.PostSyncAsync("http-acceptance-key");
         Assert.AreEqual(HttpStatusCode.Accepted, firstResponse.StatusCode);
         var firstId = await ReadAcceptedIdAsync(firstResponse);
+        Assert.AreEqual(1, fixture.CommitEvidence.CommittedAcceptanceCount);
         Assert.IsTrue(fixture.CommitEvidence.Snapshots.Any(snapshot => snapshot.SyncRuns == 1 && snapshot.OutboxMessages == 1));
 
         var delivered = await fixture.Receipt.Message.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -47,6 +49,307 @@ public sealed class PostgreSqlSyncRunAcceptanceApiTests
         Assert.AreEqual(HttpStatusCode.Accepted, replayResponse.StatusCode);
         Assert.AreEqual(firstId, await ReadAcceptedIdAsync(replayResponse));
         Assert.AreEqual(1, await fixture.Database.Context.Set<SyncRun>().AsNoTracking().CountAsync());
+    }
+
+    // Entrada com importação recente responde not_required sem execução, outbox ou consulta externa.
+    [TestMethod]
+    public async Task OnEntryWithRecentSuccessReturnsNotRequiredWithoutPersistingAcceptance()
+    {
+        await using var fixture = await AcceptanceApiFixture.CreateAsync(
+            connectionCount: 1,
+            lastSuccessfulImportAtUtc: DateTimeOffset.UtcNow.AddHours(-1));
+
+        using var response = await fixture.PostOnEntryAsync("http-entry-recent-key");
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.AreEqual("not_required", body.RootElement.GetProperty("decision").GetString());
+        Assert.IsFalse(body.RootElement.TryGetProperty("syncRunId", out _));
+        Assert.AreEqual(0, await fixture.Database.Context.Set<SyncRun>().AsNoTracking().CountAsync());
+        Assert.AreEqual(0, await fixture.Database.Context.Set<OutboxMessage>().AsNoTracking().CountAsync());
+        Assert.AreEqual(0, fixture.CommitEvidence.CommittedAcceptanceCount);
+    }
+
+    // Entrada antiga aceita após commit; uma intenção nova durante a execução ativa recebe 409 sem duplicar o par.
+    [TestMethod]
+    public async Task OnEntryAcceptsThenReturnsActiveConflictForAnotherKey()
+    {
+        await using var fixture = await AcceptanceApiFixture.CreateAsync(connectionCount: 1);
+
+        using var accepted = await fixture.PostOnEntryAsync("http-entry-accepted-key");
+        Assert.AreEqual(HttpStatusCode.Accepted, accepted.StatusCode);
+        var acceptedId = await ReadAcceptedIdAsync(accepted);
+        Assert.AreEqual(1, fixture.CommitEvidence.CommittedAcceptanceCount);
+        var delivered = await fixture.Receipt.Message.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.AreEqual(acceptedId, delivered.Message.SyncRunId);
+
+        using var active = await fixture.PostOnEntryAsync("http-entry-active-key");
+        Assert.AreEqual(HttpStatusCode.Conflict, active.StatusCode);
+        using var activeBody = JsonDocument.Parse(await active.Content.ReadAsStringAsync());
+        Assert.AreEqual("SYNC_RUN_ALREADY_ACTIVE", activeBody.RootElement.GetProperty("code").GetString());
+        Assert.AreEqual(acceptedId, activeBody.RootElement.GetProperty("syncRunId").GetGuid());
+        Assert.AreEqual(1, await fixture.Database.Context.Set<SyncRun>().AsNoTracking().CountAsync());
+        Assert.AreEqual(1, fixture.CommitEvidence.CommittedAcceptanceCount);
+    }
+
+    // O bloqueio por cooldown publica o prazo e Retry-After sem aceitar nem enfileirar uma nova intenção.
+    [TestMethod]
+    public async Task OnEntryCooldownReturns429AndNextAllowedAtWithoutCreatingRunOrOutbox()
+    {
+        await using var fixture = await AcceptanceApiFixture.CreateAsync(connectionCount: 1);
+        using var first = await fixture.PostSyncAsync("http-cooldown-original-key");
+        Assert.AreEqual(HttpStatusCode.Accepted, first.StatusCode);
+        var originalId = await ReadAcceptedIdAsync(first);
+        var firstCreatedAtUtc = await fixture.Database.Context.Set<SyncRun>().AsNoTracking()
+            .Where(run => run.Id == originalId)
+            .Select(run => run.CreatedAtUtc)
+            .SingleAsync();
+        await MarkRunFailedAsync(
+            fixture.Database.Context,
+            originalId,
+            SyncRunFailureCodes.ProviderUnavailable);
+
+        using var blocked = await fixture.PostOnEntryAsync("http-cooldown-second-key");
+
+        Assert.AreEqual(HttpStatusCode.TooManyRequests, blocked.StatusCode);
+        Assert.IsTrue(blocked.Headers.TryGetValues("Retry-After", out var retryValues));
+        Assert.IsTrue(int.TryParse(retryValues!.Single(), NumberStyles.None, CultureInfo.InvariantCulture, out var retrySeconds));
+        Assert.IsTrue(retrySeconds is >= 0 and <= 300);
+        using var problem = JsonDocument.Parse(await blocked.Content.ReadAsStringAsync());
+        Assert.AreEqual("SYNC_RUN_MINIMUM_INTERVAL_ACTIVE", problem.RootElement.GetProperty("code").GetString());
+        Assert.AreEqual(
+            firstCreatedAtUtc.AddMinutes(5),
+            problem.RootElement.GetProperty("nextAllowedAtUtc").GetDateTimeOffset());
+        Assert.AreEqual(1, await fixture.Database.Context.Set<SyncRun>().AsNoTracking().CountAsync());
+        Assert.AreEqual(1, fixture.CommitEvidence.CommittedAcceptanceCount);
+    }
+
+    // AUTH_REQUIRED retorna orientação sanitizada, sem dizer que o acesso foi renovado ou iniciar outra execução.
+    [TestMethod]
+    public async Task OnEntryAfterAuthorizationFailureRequestsReauthorizationWithoutRepeating()
+    {
+        await using var fixture = await AcceptanceApiFixture.CreateAsync(connectionCount: 1);
+        using var first = await fixture.PostSyncAsync("http-auth-required-original-key");
+        Assert.AreEqual(HttpStatusCode.Accepted, first.StatusCode);
+        var originalId = await ReadAcceptedIdAsync(first);
+        await MarkRunFailedAsync(
+            fixture.Database.Context,
+            originalId,
+            SyncRunFailureCodes.AuthenticationRequired);
+
+        using var response = await fixture.PostOnEntryAsync("http-auth-required-entry-key");
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.AreEqual("reauthorization_required", body.RootElement.GetProperty("decision").GetString());
+        StringAssert.Contains(body.RootElement.GetProperty("guidance").GetString()!, "Renove o acesso");
+        Assert.IsFalse(body.RootElement.TryGetProperty("syncRunId", out _));
+        Assert.AreEqual(1, await fixture.Database.Context.Set<SyncRun>().AsNoTracking().CountAsync());
+        Assert.AreEqual(1, fixture.CommitEvidence.CommittedAcceptanceCount);
+    }
+
+    // Falha ao consultar tabela persistente é indisponibilidade sanitizada, nunca uma aceitação HTTP 202.
+    [TestMethod]
+    public async Task MissingSyncRunTableReturnsUnavailableWithoutAcceptingEntry()
+    {
+        await using var fixture = await AcceptanceApiFixture.CreateAsync(connectionCount: 1);
+        await fixture.Database.Context.Database.ExecuteSqlRawAsync("DROP TABLE \"SyncRun\" CASCADE;");
+
+        using var response = await fixture.PostOnEntryAsync("http-database-unavailable-key");
+
+        Assert.AreEqual(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.AreEqual("DEPENDENCY_UNAVAILABLE", problem.RootElement.GetProperty("code").GetString());
+        Assert.AreEqual(0, await fixture.Database.Context.Set<OutboxMessage>().AsNoTracking().CountAsync());
+        Assert.AreEqual(0, fixture.CommitEvidence.CommittedAcceptanceCount);
+    }
+
+    // Estado sem importação distingue ausência de sucesso e de tentativa sem criar trabalho ou obrigação.
+    [TestMethod]
+    public async Task SyncStateWithoutHistoryReportsUpdateNeededAndUnknownSource()
+    {
+        await using var fixture = await AcceptanceApiFixture.CreateAsync(connectionCount: 1);
+
+        using var response = await fixture.GetSyncStateAsync();
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.IsTrue(body.RootElement.GetProperty("updateNeeded").GetBoolean());
+        Assert.IsFalse(body.RootElement.GetProperty("reauthorizationRequired").GetBoolean());
+        Assert.AreEqual(JsonValueKind.Null, body.RootElement.GetProperty("lastSuccessfulImportAtUtc").ValueKind);
+        Assert.AreEqual(JsonValueKind.Null, body.RootElement.GetProperty("sourceUpdatedAtUtc").ValueKind);
+        Assert.AreEqual(JsonValueKind.Null, body.RootElement.GetProperty("lastAttemptAtUtc").ValueKind);
+        Assert.AreEqual(JsonValueKind.Null, body.RootElement.GetProperty("nextAllowedAtUtc").ValueKind);
+        Assert.AreEqual(JsonValueKind.Null, body.RootElement.GetProperty("latestExecution").ValueKind);
+        Assert.AreEqual(0, await fixture.Database.Context.Set<SyncRun>().AsNoTracking().CountAsync());
+        Assert.AreEqual(0, await fixture.Database.Context.Set<OutboxMessage>().AsNoTracking().CountAsync());
+    }
+
+    // Um sucesso recente evita atualização, e a leitura preserva o horário de origem desconhecido como null.
+    [TestMethod]
+    public async Task SyncStateWithRecentSuccessReportsNoUpdateWithoutInventingSourceTime()
+    {
+        var lastSuccess = DateTimeOffset.UtcNow.AddHours(-1);
+        await using var fixture = await AcceptanceApiFixture.CreateAsync(
+            connectionCount: 1,
+            lastSuccessfulImportAtUtc: lastSuccess);
+        // Compara com o timestamp persistido, respeitando a precisão de microssegundos do PostgreSQL.
+        var persistedLastSuccess = await fixture.Database.Context.Set<FinancialConnection>()
+            .AsNoTracking()
+            .Select(connection => connection.LastSuccessfulImportAtUtc)
+            .SingleAsync();
+
+        using var response = await fixture.GetSyncStateAsync();
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.IsFalse(body.RootElement.GetProperty("updateNeeded").GetBoolean());
+        Assert.AreEqual(persistedLastSuccess, body.RootElement.GetProperty("lastSuccessfulImportAtUtc").GetDateTimeOffset());
+        Assert.AreEqual(JsonValueKind.Null, body.RootElement.GetProperty("sourceUpdatedAtUtc").ValueKind);
+        Assert.AreEqual(JsonValueKind.Null, body.RootElement.GetProperty("latestExecution").ValueKind);
+        Assert.AreEqual(0, await fixture.Database.Context.Set<SyncRun>().AsNoTracking().CountAsync());
+    }
+
+    // Falha AUTH_REQUIRED posterior não avança o último sucesso e a projeção preserva tentativa/cobertura desconhecida.
+    [TestMethod]
+    public async Task SyncStateAfterAuthorizationFailurePreservesSuccessAndExposesSanitizedRun()
+    {
+        var lastSuccess = DateTimeOffset.UtcNow.AddHours(-25);
+        await using var fixture = await AcceptanceApiFixture.CreateAsync(
+            connectionCount: 1,
+            lastSuccessfulImportAtUtc: lastSuccess);
+        // A leitura da projeção deve preservar o fato confirmado no banco, não os ticks excedentes do valor de entrada.
+        var persistedLastSuccess = await fixture.Database.Context.Set<FinancialConnection>()
+            .AsNoTracking()
+            .Select(connection => connection.LastSuccessfulImportAtUtc)
+            .SingleAsync();
+        using var accepted = await fixture.PostSyncAsync("http-state-auth-required-key");
+        Assert.AreEqual(HttpStatusCode.Accepted, accepted.StatusCode);
+        var syncRunId = await ReadAcceptedIdAsync(accepted);
+        var createdAtUtc = await fixture.Database.Context.Set<SyncRun>().AsNoTracking()
+            .Where(run => run.Id == syncRunId)
+            .Select(run => run.CreatedAtUtc)
+            .SingleAsync();
+        await MarkRunFailedAsync(
+            fixture.Database.Context,
+            syncRunId,
+            SyncRunFailureCodes.AuthenticationRequired);
+
+        using var response = await fixture.GetSyncStateAsync();
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.IsTrue(body.RootElement.GetProperty("updateNeeded").GetBoolean());
+        Assert.IsTrue(body.RootElement.GetProperty("reauthorizationRequired").GetBoolean());
+        Assert.AreEqual(persistedLastSuccess, body.RootElement.GetProperty("lastSuccessfulImportAtUtc").GetDateTimeOffset());
+        Assert.AreEqual(JsonValueKind.Null, body.RootElement.GetProperty("sourceUpdatedAtUtc").ValueKind);
+        Assert.AreEqual(createdAtUtc, body.RootElement.GetProperty("lastAttemptAtUtc").GetDateTimeOffset());
+        Assert.AreEqual(createdAtUtc.AddMinutes(5), body.RootElement.GetProperty("nextAllowedAtUtc").GetDateTimeOffset());
+        var execution = body.RootElement.GetProperty("latestExecution");
+        Assert.AreEqual(syncRunId, execution.GetProperty("syncRunId").GetGuid());
+        Assert.AreEqual("Failed", execution.GetProperty("state").GetString());
+        Assert.AreEqual("Unknown", execution.GetProperty("coverageState").GetString());
+        Assert.AreEqual(SyncRunFailureCodes.AuthenticationRequired, execution.GetProperty("failureCode").GetString());
+        foreach (var sensitiveProperty in new[] { "userId", "connectionId", "externalItemId", "idempotencyKeyHash" })
+        {
+            Assert.IsFalse(body.RootElement.ToString().Contains(sensitiveProperty, StringComparison.OrdinalIgnoreCase));
+        }
+        // Valores privados reais não podem sair no DTO nem nos logs, mesmo quando a execução expõe AUTH_REQUIRED.
+        var connection = await fixture.Database.Context.Set<FinancialConnection>().AsNoTracking().SingleAsync();
+        var acceptedRun = await fixture.Database.Context.Set<SyncRun>().AsNoTracking()
+            .SingleAsync(run => run.Id == syncRunId);
+        var sensitiveValues = new[]
+        {
+            connection.UserId.ToString("D"),
+            connection.Id.ToString("D"),
+            connection.ExternalItemId,
+            acceptedRun.IdempotencyKeyHash!,
+            "http-state-auth-required-key"
+        };
+        var responseJson = body.RootElement.ToString();
+        foreach (var sensitiveValue in sensitiveValues)
+        {
+            Assert.IsFalse(responseJson.Contains(sensitiveValue, StringComparison.Ordinal));
+            Assert.IsFalse(fixture.Logs.Contains(sensitiveValue, StringComparison.Ordinal));
+        }
+        Assert.AreEqual(1, await fixture.Database.Context.Set<SyncRun>().AsNoTracking().CountAsync());
+    }
+
+    // Um titular alheio recebe o mesmo 404 genérico, enquanto o dono autentica; a rota também exige Bearer válido.
+    [TestMethod]
+    public async Task SyncStateIsOwnedAndRequiresAuthentication()
+    {
+        await using var fixture = await AcceptanceApiFixture.CreateAsync(
+            connectionCount: 1,
+            lastSuccessfulImportAtUtc: DateTimeOffset.UtcNow.AddHours(-1));
+
+        using var ownerResponse = await fixture.GetSyncStateAsync();
+        Assert.AreEqual(HttpStatusCode.OK, ownerResponse.StatusCode);
+        using var ownerBody = JsonDocument.Parse(await ownerResponse.Content.ReadAsStringAsync());
+        Assert.IsFalse(ownerBody.RootElement.GetProperty("lastSuccessfulImportAtUtc").ValueKind == JsonValueKind.Null);
+
+        using var otherOwnerResponse = await fixture.GetSyncStateAsync(fixture.OtherToken);
+        await AuthenticationAvailabilityTests.AssertProblemAsync(otherOwnerResponse, HttpStatusCode.NotFound);
+        using var otherOwnerProblem = JsonDocument.Parse(await otherOwnerResponse.Content.ReadAsStringAsync());
+        Assert.IsFalse(otherOwnerProblem.RootElement.TryGetProperty("lastSuccessfulImportAtUtc", out _));
+        Assert.IsFalse(otherOwnerProblem.RootElement.TryGetProperty("latestExecution", out _));
+
+        using var anonymousResponse = await fixture.GetSyncStateAsync(authenticated: false);
+        await AuthenticationAvailabilityTests.AssertProblemAsync(anonymousResponse, HttpStatusCode.Unauthorized);
+        Assert.AreEqual(0, await fixture.Database.Context.Set<SyncRun>().AsNoTracking().CountAsync());
+        Assert.AreEqual(0, await fixture.Database.Context.Set<OutboxMessage>().AsNoTracking().CountAsync());
+    }
+
+    // A ausência de conexão própria retorna 404 sanitizado sem criar execução ou obrigação de transporte.
+    [TestMethod]
+    public async Task SyncStateWithoutConnectionReturnsNotFoundWithoutCreatingWork()
+    {
+        await using var fixture = await AcceptanceApiFixture.CreateAsync(connectionCount: 0);
+
+        using var response = await fixture.GetSyncStateAsync();
+
+        await AuthenticationAvailabilityTests.AssertProblemAsync(response, HttpStatusCode.NotFound);
+        Assert.AreEqual(0, await fixture.Database.Context.Set<SyncRun>().AsNoTracking().CountAsync());
+        Assert.AreEqual(0, await fixture.Database.Context.Set<OutboxMessage>().AsNoTracking().CountAsync());
+    }
+
+    // Mais de uma conexão própria é ambígua; a leitura falha fechada sem selecionar ou expor uma delas.
+    [TestMethod]
+    public async Task SyncStateWithAmbiguousConnectionsReturnsSanitizedConflict()
+    {
+        await using var fixture = await AcceptanceApiFixture.CreateAsync(connectionCount: 2);
+
+        using var response = await fixture.GetSyncStateAsync();
+
+        Assert.AreEqual(HttpStatusCode.Conflict, response.StatusCode);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.AreEqual("RESOURCE_CONFLICT", problem.RootElement.GetProperty("code").GetString());
+        foreach (var sensitiveProperty in new[] { "connectionId", "externalItemId", "userId" })
+        {
+            Assert.IsFalse(problem.RootElement.TryGetProperty(sensitiveProperty, out _));
+        }
+        Assert.AreEqual(0, await fixture.Database.Context.Set<SyncRun>().AsNoTracking().CountAsync());
+        Assert.AreEqual(0, await fixture.Database.Context.Set<OutboxMessage>().AsNoTracking().CountAsync());
+    }
+
+    // A consulta de estado e a consulta de execução continuam somente leitura quando o broker não está configurado.
+    [TestMethod]
+    public async Task SyncStateAndExecutionStatusRemainReadableWithoutBrokerAndDoNotCreateWork()
+    {
+        await using var fixture = await AcceptanceApiFixture.CreateAsync(
+            connectionCount: 1,
+            configureInMemoryOutbox: false);
+
+        using var state = await fixture.GetSyncStateAsync();
+        Assert.AreEqual(HttpStatusCode.OK, state.StatusCode);
+        using var missingExecution = await fixture.GetSyncRunAsync(Guid.NewGuid(), fixture.Token);
+        await AuthenticationAvailabilityTests.AssertProblemAsync(missingExecution, HttpStatusCode.NotFound);
+        using var repeatedState = await fixture.GetSyncStateAsync();
+        Assert.AreEqual(HttpStatusCode.OK, repeatedState.StatusCode);
+
+        Assert.AreEqual(0, await fixture.Database.Context.Set<SyncRun>().AsNoTracking().CountAsync());
+        Assert.AreEqual(0, await fixture.Database.Context.Set<OutboxMessage>().AsNoTracking().CountAsync());
+        Assert.AreEqual(0, fixture.CommitEvidence.CommittedAcceptanceCount);
     }
 
     // Falha antes do commit físico é reportada conservadoramente como indeterminada; retry pela chave converge após rollback.
@@ -209,11 +512,19 @@ public sealed class PostgreSqlSyncRunAcceptanceApiTests
         using var missingKeyResponse = await fixture.PostSyncAsync(null);
         await AuthenticationAvailabilityTests.AssertProblemAsync(missingKeyResponse, HttpStatusCode.BadRequest);
 
+        using var missingEntryKeyResponse = await fixture.PostOnEntryAsync(null);
+        await AuthenticationAvailabilityTests.AssertProblemAsync(missingEntryKeyResponse, HttpStatusCode.BadRequest);
+
         using var response = await fixture.PostSyncAsync("transport-not-configured-key");
         Assert.AreEqual(HttpStatusCode.ServiceUnavailable, response.StatusCode);
         Assert.AreEqual("application/problem+json", response.Content.Headers.ContentType?.MediaType);
         using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.AreEqual("DEPENDENCY_UNAVAILABLE", problem.RootElement.GetProperty("code").GetString());
+        Assert.AreEqual(0, await fixture.Database.Context.Set<SyncRun>().AsNoTracking().CountAsync());
+        Assert.AreEqual(0, await fixture.Database.Context.Set<OutboxMessage>().AsNoTracking().CountAsync());
+
+        using var entryResponse = await fixture.PostOnEntryAsync("entry-transport-not-configured-key");
+        Assert.AreEqual(HttpStatusCode.ServiceUnavailable, entryResponse.StatusCode);
         Assert.AreEqual(0, await fixture.Database.Context.Set<SyncRun>().AsNoTracking().CountAsync());
         Assert.AreEqual(0, await fixture.Database.Context.Set<OutboxMessage>().AsNoTracking().CountAsync());
     }
@@ -224,6 +535,20 @@ public sealed class PostgreSqlSyncRunAcceptanceApiTests
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.AreEqual(1, document.RootElement.EnumerateObject().Count());
         return document.RootElement.GetProperty("syncRunId").GetGuid();
+    }
+
+    // Conclui a tentativa sintética para liberar a política de nova intenção sem simular sucesso do provedor.
+    private static async Task MarkRunFailedAsync(FinoraDbContext context, Guid syncRunId, string failureCode)
+    {
+        var run = await context.Set<SyncRun>().SingleAsync(value => value.Id == syncRunId);
+        Assert.IsTrue(run.TryBeginAttempt(run.CreatedAtUtc));
+        Assert.IsTrue(run.TryCompleteAttemptFailure(
+            1,
+            run.CreatedAtUtc.AddSeconds(30),
+            failureCode,
+            pagesRead: 0,
+            receivedCount: 0));
+        await context.SaveChangesAsync();
     }
 
     // O consumer registra a recepção antes de o transport confirmar e remover a mensagem da outbox.
@@ -283,9 +608,13 @@ public sealed class PostgreSqlSyncRunAcceptanceApiTests
         internal string OtherToken => _otherToken;
         internal SyncRunExecutionReceipt Receipt { get; }
         internal AcceptanceCommitEvidenceInterceptor CommitEvidence { get; }
+        internal string Logs => _factory.Logs.Text;
 
         // A fixture aplica apenas o modelo atual em schema descartável e substitui RabbitMQ por transporte in-memory.
-        internal static async Task<AcceptanceApiFixture> CreateAsync(int connectionCount, bool configureInMemoryOutbox = true)
+        internal static async Task<AcceptanceApiFixture> CreateAsync(
+            int connectionCount,
+            bool configureInMemoryOutbox = true,
+            DateTimeOffset? lastSuccessfulImportAtUtc = null)
         {
             var database = DisposablePostgresMigrationFixture.CreateValidated();
             await database.ResetToEmptySchemaAsync();
@@ -328,7 +657,12 @@ public sealed class PostgreSqlSyncRunAcceptanceApiTests
 
                 var connectionIds = Enumerable.Range(0, connectionCount).Select(_ => Guid.NewGuid()).ToArray();
                 database.Context.Set<FinancialConnection>().AddRange(connectionIds.Select((id, index) =>
-                    FinancialConnection.Create(id, user.Id, "pluggy", $"synthetic-api-item-{index}")));
+                    FinancialConnection.Create(
+                        id,
+                        user.Id,
+                        "pluggy",
+                        $"synthetic-api-item-{index}",
+                        lastSuccessfulImportAtUtc: lastSuccessfulImportAtUtc)));
                 await database.Context.SaveChangesAsync();
 
                 using var login = await client.PostAsJsonAsync("/api/auth/login", new
@@ -375,11 +709,32 @@ public sealed class PostgreSqlSyncRunAcceptanceApiTests
             return await _client.SendAsync(request);
         }
 
+        // Entrada e pedido manual usam a mesma chave opaca, mas alcançam rotas e fingerprints de intenção distintos.
+        internal async Task<HttpResponseMessage> PostOnEntryAsync(string? idempotencyKey)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/connections/current/sync/on-entry");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _token);
+            if (idempotencyKey is not null) { request.Headers.Add("Idempotency-Key", idempotencyKey); }
+            return await _client.SendAsync(request);
+        }
+
         // A mesma rota de status pode ser invocada como titular, outro titular ou anônimo sem compartilhar cabeçalhos.
         internal Task<HttpResponseMessage> GetSyncRunAsync(Guid syncRunId, string? token)
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/sync-runs/{syncRunId:D}");
             if (token is not null) { request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token); }
+            return _client.SendAsync(request);
+        }
+
+        // A leitura permite variar o principal nos testes, sem aceitar seletor de conexão na rota.
+        internal Task<HttpResponseMessage> GetSyncStateAsync(string? token = null, bool authenticated = true)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, "/api/connections/current/sync-state");
+            if (authenticated)
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token ?? _token);
+            }
+
             return _client.SendAsync(request);
         }
 
@@ -399,9 +754,11 @@ public sealed class PostgreSqlSyncRunAcceptanceApiTests
         private int _failNextCommit;
         private int _loseNextConfirmation;
         private int _lostConfirmationCount;
+        private int _committedAcceptanceCount;
 
         internal IReadOnlyCollection<CommitSnapshot> Snapshots => _snapshots.ToArray();
         internal int LostConfirmationCount => Volatile.Read(ref _lostConfirmationCount);
+        internal int CommittedAcceptanceCount => Volatile.Read(ref _committedAcceptanceCount);
 
         // Arma uma falha no callback anterior ao commit físico do provider.
         internal void FailNextCommit() => Interlocked.Exchange(ref _failNextCommit, 1);
@@ -433,6 +790,14 @@ public sealed class PostgreSqlSyncRunAcceptanceApiTests
             TransactionEndEventData eventData,
             CancellationToken cancellationToken = default)
         {
+            // Conta apenas commits que ainda exibem o par acompanhado pela transação de aceitação.
+            if (eventData.Context is { } context
+                && context.ChangeTracker.Entries<SyncRun>().Any()
+                && context.ChangeTracker.Entries<OutboxMessage>().Any())
+            {
+                Interlocked.Increment(ref _committedAcceptanceCount);
+            }
+
             if (Interlocked.Exchange(ref _loseNextConfirmation, 0) != 1)
             {
                 return Task.CompletedTask;

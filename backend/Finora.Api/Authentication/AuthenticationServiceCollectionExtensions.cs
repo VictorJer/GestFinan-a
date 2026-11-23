@@ -44,6 +44,7 @@ public static class AuthenticationServiceCollectionExtensions
                     || type == typeof(AcceptSyncRunHandler)
                     || (rabbitMq is not null && type == typeof(ExecuteSyncRunHandler))
                     || type == typeof(ResolveCurrentSyncConnectionHandler)
+                    || type == typeof(GetCurrentConnectionSyncStateHandler)
                     || type == typeof(GetSyncRunStatusHandler)));
         });
         services.Configure<ApiBehaviorOptions>(options => options.InvalidModelStateResponseFactory = action =>
@@ -66,6 +67,9 @@ public static class AuthenticationServiceCollectionExtensions
             authentication.AddScheme<AuthenticationSchemeOptions, UnavailableAuthenticationHandler>(JwtBearerDefaults.AuthenticationScheme, _ => { });
             return services;
         }
+
+        // A política só participa da composição autenticada e valida seus limites antes de aceitar intenções.
+        services.AddFinoraConnectionUpdatePolicyOptions();
 
         // Os serviços de banco são scoped; nenhuma conexão é aberta pela composição.
         services.AddSingleton(settings!);
