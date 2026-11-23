@@ -1,4 +1,5 @@
 using MediatR;
+using Finora.Application.FinancialData;
 
 namespace Finora.Application.Pluggy;
 
@@ -12,7 +13,7 @@ public sealed class ImportTransactionsHandler(
     ITransactionImportReader reader,
     ITransactionImportPromoter promoter,
     TimeProvider timeProvider)
-    : IRequestHandler<ImportTransactionsCommand, TransactionImportResult>
+    : IRequestHandler<ImportTransactionsCommand, TransactionImportResult>, ISyncRunAttemptExecutor
 {
     public async Task<TransactionImportResult> Handle(
         ImportTransactionsCommand request,
@@ -78,5 +79,78 @@ public sealed class ImportTransactionsHandler(
             promotion.PersistedCount,
             read.Snapshot.RequestedDateFrom,
             read.Snapshot.PaginationCompleted);
+    }
+
+    public async Task<TransactionImportResult> ExecuteAttemptAsync(
+        SyncRunLeaseGrant execution,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(execution);
+        if (execution.SyncRunId == Guid.Empty || execution.UserId == Guid.Empty
+            || execution.ConnectionId == Guid.Empty || execution.AttemptNumber < 1
+            || execution.FencingToken < 1
+            || execution.RequestedToExclusive is not { } requestedToExclusive
+            || requestedToExclusive <= execution.RequestedFrom
+            || execution.AttemptDeadlineAtUtc <= execution.AttemptStartedAtUtc)
+        {
+            return new TransactionImportResult(false, TransactionImportFailureCode.InvalidResponse);
+        }
+
+        // O importador recebe a janela persistida e o início da posse, sem recalcular datas pelo relógio atual.
+        var connection = await connections.FindOwnedAsync(
+            execution.ConnectionId, execution.UserId, cancellationToken);
+        if (connection is null || connection.Id != execution.ConnectionId || connection.UserId != execution.UserId)
+        {
+            return new TransactionImportResult(false, TransactionImportFailureCode.ConnectionUnavailable);
+        }
+
+        if (!string.Equals(connection.Provider, "pluggy", StringComparison.Ordinal))
+        {
+            return new TransactionImportResult(false, TransactionImportFailureCode.ProviderUnavailable);
+        }
+
+        var read = await reader.ReadAsync(connection.ExternalItemId, execution.RequestedFrom, cancellationToken);
+        // Shutdown prevalece sobre o código Cancelled devolvido pelo adapter e nunca vira falha de negócio da execução.
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!read.Succeeded || read.Snapshot is null)
+        {
+            var failureCode = read.FailureCode ?? TransactionImportFailureCode.InvalidResponse;
+            return new TransactionImportResult(
+                false,
+                failureCode,
+                PagesRead: read.PagesRead,
+                ReceivedCount: read.ReceivedCount,
+                RetryAfterAtUtc: read.RetryAfterAtUtc);
+        }
+
+        var finishedAtUtc = timeProvider.GetUtcNow();
+        var normalizationReferenceDate = requestedToExclusive.AddDays(-1);
+        var promotion = await promoter.PromoteAttemptAsync(
+            execution,
+            connection,
+            read.Snapshot,
+            normalizationReferenceDate,
+            finishedAtUtc,
+            cancellationToken);
+        if (!promotion.Succeeded)
+        {
+            return new TransactionImportResult(
+                false,
+                promotion.FailureCode ?? TransactionImportFailureCode.PersistenceFailed,
+                PagesRead: read.Snapshot.PagesRead,
+                ReceivedCount: read.Snapshot.ReceivedCount ?? read.Snapshot.Transactions.Count);
+        }
+
+        // O resultado volta ao orquestrador sem expor snapshot, valores ou conteúdo externo.
+        return new TransactionImportResult(
+            true,
+            null,
+            read.Snapshot.Accounts.Count,
+            read.Snapshot.Transactions.Count,
+            promotion.PersistedCount,
+            execution.RequestedFrom,
+            read.Snapshot.PaginationCompleted,
+            read.Snapshot.PagesRead,
+            read.Snapshot.ReceivedCount ?? read.Snapshot.Transactions.Count);
     }
 }

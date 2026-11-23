@@ -70,7 +70,13 @@ internal sealed class PluggyApiClient : IDisposable
         {
             if (!response.IsSuccessStatusCode)
             {
-                return new PluggyAuthenticationResult(false, MapFailure(response.StatusCode));
+                var failureCategory = MapFailure(response.StatusCode);
+                return new PluggyAuthenticationResult(
+                    false,
+                    failureCategory,
+                    RetryAfterAtUtc: failureCategory == PluggyLocalReadFailureCategory.RateLimited
+                        ? ReadRetryAfterAtUtc(response)
+                        : null);
             }
 
             try
@@ -135,7 +141,13 @@ internal sealed class PluggyApiClient : IDisposable
             using var response = await httpClient.SendAsync(request, timeout.Token);
             if (!response.IsSuccessStatusCode)
             {
-                return new PluggyApiResponse<T>(null, MapFailure(response.StatusCode));
+                var failureCategory = MapFailure(response.StatusCode);
+                return new PluggyApiResponse<T>(
+                    null,
+                    failureCategory,
+                    failureCategory == PluggyLocalReadFailureCategory.RateLimited
+                        ? ReadRetryAfterAtUtc(response)
+                        : null);
             }
 
             var payload = await response.Content.ReadFromJsonAsync<T>(timeout.Token);
@@ -295,6 +307,31 @@ internal sealed class PluggyApiClient : IDisposable
         _ => PluggyLocalReadFailureCategory.InvalidResponse
     };
 
+    // Persiste somente o instante calculado do Retry-After, sem expor headers ou payloads externos ao caso de uso.
+    private DateTimeOffset? ReadRetryAfterAtUtc(HttpResponseMessage response)
+    {
+        var retryAfter = response.Headers.RetryAfter;
+        if (retryAfter?.Date is { } absoluteDate)
+        {
+            return absoluteDate.ToUniversalTime();
+        }
+
+        if (retryAfter?.Delta is not { } delay || delay < TimeSpan.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            return timeProvider.GetUtcNow().ToUniversalTime().Add(delay);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            // Um delta fora da faixa DateTimeOffset bloqueia retry automático sem inventar um prazo menor.
+            return DateTimeOffset.MaxValue;
+        }
+    }
+
     // Descarta o token em memória junto ao cliente scoped ao comando.
     public void Dispose()
     {
@@ -310,7 +347,8 @@ internal sealed class PluggyApiClient : IDisposable
 // Modelos mínimos aceitam somente dados necessários à seleção, sem propagar campos financeiros.
 internal sealed record PluggyApiResponse<T>(
     T? Payload,
-    PluggyLocalReadFailureCategory? FailureCategory = null) where T : class;
+    PluggyLocalReadFailureCategory? FailureCategory = null,
+    DateTimeOffset? RetryAfterAtUtc = null) where T : class;
 
 internal sealed record PluggyItemResponse(
     string? Status,

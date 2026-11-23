@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 using Finora.Application.Pluggy;
 using Finora.Infrastructure.Pluggy;
@@ -106,6 +107,34 @@ public sealed class PluggyTransactionImportReaderTests
         api.Dispose();
     }
 
+    // Um Retry-After 429 vira apenas instante UTC interno; o corpo externo e o texto do header não são propagados.
+    [TestMethod]
+    public async Task RateLimitPreservesRetryAfterTimestampWithoutProviderPayload()
+    {
+        var nowUtc = new DateTimeOffset(2026, 11, 23, 12, 0, 0, TimeSpan.Zero);
+        var api = new PluggyApiClient(
+            new HttpClient(new ImportReaderHandler(_ =>
+            {
+                var response = new HttpResponseMessage((HttpStatusCode)429)
+                {
+                    Content = new StringContent("private rate-limit body", Encoding.UTF8, "text/plain")
+                };
+                response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.FromMinutes(20));
+                return response;
+            })) { BaseAddress = PluggyApiClient.BaseAddress },
+            new PluggyOptions("synthetic-client", "synthetic-secret", null, null),
+            timeProvider: new FixedTimeProvider(nowUtc));
+
+        var result = await new PluggyTransactionImportReader(api, TimeProvider.System)
+            .ReadAsync("persisted-item-id", new DateOnly(2025, 11, 20), CancellationToken.None);
+
+        Assert.IsFalse(result.Succeeded);
+        Assert.AreEqual(TransactionImportFailureCode.RateLimited, result.FailureCode);
+        Assert.AreEqual(nowUtc.AddMinutes(20), result.RetryAfterAtUtc);
+        Assert.IsFalse(result.ToString()!.Contains("private rate-limit body", StringComparison.Ordinal));
+        api.Dispose();
+    }
+
     // Handler de teste registra somente o destino e nunca consulta a origem real.
     private sealed class ImportReaderHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
     {
@@ -124,5 +153,11 @@ public sealed class PluggyTransactionImportReaderTests
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             return new HttpResponseMessage(HttpStatusCode.OK);
         }
+    }
+
+    // Relógio fixo torna a conversão de delta Retry-After determinística sem aguardar tempo real.
+    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
     }
 }

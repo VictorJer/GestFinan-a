@@ -1,0 +1,54 @@
+name: finora-mq-p01
+
+services:
+  postgres:
+    # Isola o banco de compatibilidade do serviço de desenvolvimento, sem volume persistente.
+    image: postgres:18
+    environment:
+      POSTGRES_DB: ${POSTGRES_TEST_DB:?Defina o banco local de ensaio}
+      POSTGRES_USER: ${POSTGRES_TEST_USER:?Defina o usuário local de ensaio}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:?Defina a senha local fora do Git}
+    ports:
+      # Usa porta fora da faixa TCP excluída no Windows e mantém publicação no loopback.
+      - "127.0.0.1:${POSTGRES_TEST_PORT:-55461}:5432"
+    tmpfs:
+      - /var/lib/postgresql:rw,size=536870912
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks: [mq-p01]
+
+  rabbitmq:
+    # Usa somente o manifesto oficial linux/amd64 conferido; sem tag flutuante nem pull implícito posterior.
+    image: docker.io/library/rabbitmq:4.3.8-management@sha256:2df9f514f59d7c16f142e8320bbeb61f278fde1430fbad3a7a4f4b0b677f2dc6
+    platform: linux/amd64
+    hostname: finora-mq-p01
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_TEST_USER:?Defina o usuário local de ensaio}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_TEST_PASSWORD:?Defina a senha local fora do Git}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_TEST_VHOST:?Defina o vhost isolado}
+    ports:
+      # AMQP e painel são acessíveis apenas no loopback, sem TLS ou exposição hospedada.
+      - "127.0.0.1:${RABBITMQ_TEST_PORT:-55673}:5672"
+      - "127.0.0.1:${RABBITMQ_MANAGEMENT_TEST_PORT:-55672}:15672"
+    volumes:
+      # Preserva mensagens entre reinícios; não remover enquanto existir obrigação pendente.
+      - mq-p01-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    networks: [mq-p01]
+
+networks:
+  mq-p01:
+    # Rede exclusiva do projeto: portas publicadas só no loopback permitem testes no host.
+
+volumes:
+  # Volume exclusivo do ensaio; limpeza exige checagem prévia da fila e da outbox.
+  mq-p01-data:

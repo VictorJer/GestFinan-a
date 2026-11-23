@@ -312,6 +312,22 @@ namespace Finora.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<DateTimeOffset?>("AttemptDeadlineAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("AttemptLimit")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(3);
+
+                    b.Property<int>("AttemptNumber")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<DateTimeOffset?>("AttemptStartedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("ConnectionId")
                         .HasColumnType("uuid");
 
@@ -322,10 +338,21 @@ namespace Finora.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTimeOffset?>("ExecutionMessageEnqueuedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("FailureCode")
                         .HasColumnType("text");
 
                     b.Property<DateTimeOffset?>("FinishedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("IdempotencyKeyHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .UseCollation("C");
+
+                    b.Property<DateTimeOffset?>("NextAttemptAtUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateOnly?>("ObservedFrom")
@@ -342,6 +369,11 @@ namespace Finora.Infrastructure.Persistence.Migrations
 
                     b.Property<int?>("ReceivedCount")
                         .HasColumnType("integer");
+
+                    b.Property<string>("RequestFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .UseCollation("C");
 
                     b.Property<DateOnly>("RequestedFrom")
                         .HasColumnType("date");
@@ -364,13 +396,81 @@ namespace Finora.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasAlternateKey("Id", "ConnectionId", "UserId")
+                        .HasName("AK_SyncRun_Id_ConnectionId_UserId");
+
+                    b.HasIndex("IdempotencyKeyHash")
+                        .IsUnique()
+                        .HasDatabaseName("UX_SyncRun_IdempotencyKeyHash")
+                        .HasFilter("\"IdempotencyKeyHash\" IS NOT NULL");
+
                     b.HasIndex("ConnectionId", "State");
 
                     b.HasIndex("ConnectionId", "UserId");
 
+                    b.HasIndex("State", "ExecutionMessageEnqueuedAtUtc")
+                        .HasDatabaseName("IX_SyncRun_State_ExecutionMessageEnqueuedAtUtc")
+                        .HasFilter("\"ExecutionMessageEnqueuedAtUtc\" IS NULL");
+
+                    b.HasIndex("State", "NextAttemptAtUtc")
+                        .HasDatabaseName("IX_SyncRun_State_NextAttemptAtUtc")
+                        .HasFilter("\"NextAttemptAtUtc\" IS NOT NULL");
+
                     b.ToTable("SyncRun", t =>
                         {
+                            t.HasCheckConstraint("CK_SyncRun_AttemptBudget", "\"AttemptNumber\" >= 0 AND \"AttemptLimit\" BETWEEN 1 AND 3 AND \"AttemptNumber\" <= \"AttemptLimit\"");
+
+                            t.HasCheckConstraint("CK_SyncRun_AttemptDeadline", "((\"AttemptStartedAtUtc\" IS NULL AND \"AttemptDeadlineAtUtc\" IS NULL) OR (\"AttemptStartedAtUtc\" IS NOT NULL AND \"AttemptDeadlineAtUtc\" IS NOT NULL AND \"AttemptNumber\" > 0 AND \"AttemptDeadlineAtUtc\" > \"AttemptStartedAtUtc\" AND \"AttemptDeadlineAtUtc\" <= \"AttemptStartedAtUtc\" + interval '10 minutes'))");
+
+                            t.HasCheckConstraint("CK_SyncRun_IdempotencyFingerprintPair", "((\"IdempotencyKeyHash\" IS NULL AND \"RequestFingerprint\" IS NULL) OR (\"IdempotencyKeyHash\" ~ '^[0-9A-Fa-f]{64}$' AND \"RequestFingerprint\" ~ '^[0-9A-Fa-f]{64}$'))");
+
                             t.HasCheckConstraint("CK_SyncRun_Ids_NotEmpty", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid AND \"UserId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
+
+                            t.HasCheckConstraint("CK_SyncRun_NextAttemptNotBeforeAcceptance", "\"NextAttemptAtUtc\" IS NULL OR \"NextAttemptAtUtc\" >= \"CreatedAtUtc\"");
+                        });
+                });
+
+            modelBuilder.Entity("Finora.Domain.FinancialData.SyncRunLease", b =>
+                {
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("AcquiredAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("AttemptNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("FencingToken")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("SyncRunId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("ConnectionId")
+                        .HasName("PK_SyncRunLeases");
+
+                    b.HasIndex("ConnectionId", "UserId")
+                        .IsUnique();
+
+                    b.HasIndex("SyncRunId", "AttemptNumber")
+                        .HasDatabaseName("IX_SyncRunLeases_SyncRunId_AttemptNumber");
+
+                    b.HasIndex("SyncRunId", "ConnectionId", "UserId");
+
+                    b.ToTable("SyncRunLease", t =>
+                        {
+                            t.HasCheckConstraint("CK_SyncRunLeases_Attempt_Positive", "\"AttemptNumber\" > 0");
+
+                            t.HasCheckConstraint("CK_SyncRunLeases_Expiration", "\"ExpiresAtUtc\" > \"AcquiredAtUtc\"");
+
+                            t.HasCheckConstraint("CK_SyncRunLeases_Fencing_Positive", "\"FencingToken\" > 0");
                         });
                 });
 
@@ -506,6 +606,170 @@ namespace Finora.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("MassTransit.EntityFrameworkCoreIntegration.InboxState", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime?>("Consumed")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ConsumerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("Delivered")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ExpirationTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("LastSequenceNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("LockId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ReceiveCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("Received")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("RowVersion")
+                        .HasColumnType("bytea");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("InboxState");
+                });
+
+            modelBuilder.Entity("MassTransit.EntityFrameworkCoreIntegration.OutboxMessage", b =>
+                {
+                    b.Property<long>("SequenceNumber")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("SequenceNumber"));
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid?>("ConversationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CorrelationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DestinationAddress")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTime?>("EnqueueTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ExpirationTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FaultAddress")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("Headers")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("InboxConsumerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("InboxMessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("InitiatorId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("MessageType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("OutboxId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Properties")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("RequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ResponseAddress")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTime>("SentTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SourceAddress")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.HasKey("SequenceNumber");
+
+                    b.HasIndex("EnqueueTime");
+
+                    b.HasIndex("ExpirationTime");
+
+                    b.HasIndex("OutboxId", "SequenceNumber")
+                        .IsUnique();
+
+                    b.HasIndex("InboxMessageId", "InboxConsumerId", "SequenceNumber")
+                        .IsUnique();
+
+                    b.ToTable("OutboxMessage");
+                });
+
+            modelBuilder.Entity("MassTransit.EntityFrameworkCoreIntegration.OutboxState", b =>
+                {
+                    b.Property<Guid>("OutboxId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("Created")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("Delivered")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("LastSequenceNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("LockId")
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("bytea");
+
+                    b.HasKey("OutboxId");
+
+                    b.HasIndex("Created");
+
+                    b.ToTable("OutboxState");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserClaim<System.Guid>", b =>
                 {
                     b.Property<int>("Id")
@@ -631,6 +895,23 @@ namespace Finora.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Finora.Domain.FinancialData.SyncRunLease", b =>
+                {
+                    b.HasOne("Finora.Domain.FinancialData.FinancialConnection", null)
+                        .WithOne()
+                        .HasForeignKey("Finora.Domain.FinancialData.SyncRunLease", "ConnectionId", "UserId")
+                        .HasPrincipalKey("Finora.Domain.FinancialData.FinancialConnection", "Id", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Finora.Domain.FinancialData.SyncRun", null)
+                        .WithMany()
+                        .HasForeignKey("SyncRunId", "ConnectionId", "UserId")
+                        .HasPrincipalKey("Id", "ConnectionId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Finora.Domain.FinancialData.TransactionAnnotation", b =>
                 {
                     b.HasOne("Finora.Domain.FinancialData.Category", null)
@@ -654,6 +935,18 @@ namespace Finora.Infrastructure.Persistence.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("MassTransit.EntityFrameworkCoreIntegration.OutboxMessage", b =>
+                {
+                    b.HasOne("MassTransit.EntityFrameworkCoreIntegration.OutboxState", null)
+                        .WithMany()
+                        .HasForeignKey("OutboxId");
+
+                    b.HasOne("MassTransit.EntityFrameworkCoreIntegration.InboxState", null)
+                        .WithMany()
+                        .HasForeignKey("InboxMessageId", "InboxConsumerId")
+                        .HasPrincipalKey("MessageId", "ConsumerId");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserClaim<System.Guid>", b =>

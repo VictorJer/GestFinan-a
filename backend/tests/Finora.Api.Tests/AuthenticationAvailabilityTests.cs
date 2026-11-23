@@ -4,7 +4,9 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Finora.Application.FinancialData;
 using Finora.Infrastructure.Persistence;
+using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -23,8 +25,19 @@ public sealed class AuthenticationAvailabilityTests
         await using var factory = new ApiFactory("Development");
         using var client = factory.CreateClient();
         using var document = JsonDocument.Parse(await client.GetStringAsync("/openapi/v1.json"));
-        CollectionAssert.AreEquivalent(new[] { "/health", "/api/auth/login", "/api/auth/logout" },
+        CollectionAssert.AreEquivalent(new[]
+            { "/health", "/api/auth/login", "/api/auth/logout", "/api/connections/current/sync", "/api/sync-runs/{syncRunId}" },
             document.RootElement.GetProperty("paths").EnumerateObject().Select(property => property.Name).ToArray());
+        var syncParameters = document.RootElement.GetProperty("paths")
+            .GetProperty("/api/connections/current/sync").GetProperty("post").GetProperty("parameters");
+        var idempotencyHeader = syncParameters.EnumerateArray().Single(parameter =>
+            parameter.GetProperty("name").GetString() == "Idempotency-Key");
+        Assert.AreEqual("header", idempotencyHeader.GetProperty("in").GetString());
+        Assert.IsTrue(idempotencyHeader.GetProperty("required").GetBoolean());
+        var syncRunStatus = document.RootElement.GetProperty("paths")
+            .GetProperty("/api/sync-runs/{syncRunId}").GetProperty("get");
+        CollectionAssert.AreEquivalent(new[] { "200", "401", "404" },
+            syncRunStatus.GetProperty("responses").EnumerateObject().Select(property => property.Name).ToArray());
         Assert.IsFalse(typeof(Program).Assembly.GetTypes().Any(type => type.Name == nameof(AuthenticationProbeController)));
         using var probe = await client.GetAsync("/_tests/authentication-probe");
         Assert.AreEqual(HttpStatusCode.NotFound, probe.StatusCode);
@@ -106,8 +119,12 @@ public sealed class AuthenticationAvailabilityTests
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "invalid-token-sentinel");
         using var health = await client.GetAsync("/health");
         Assert.AreEqual(HttpStatusCode.OK, health.StatusCode);
+        // A composição válida registra o caso de uso e seu adapter, mas resolver ambos não abre o banco.
         using var scope = factory.Services.CreateScope();
-        Assert.AreEqual(System.Data.ConnectionState.Closed, scope.ServiceProvider.GetRequiredService<FinoraDbContext>().Database.GetDbConnection().State);
+        var services = scope.ServiceProvider;
+        Assert.IsNotNull(services.GetRequiredService<IRequestHandler<AcceptSyncRunCommand, SyncRunAcceptanceResult>>());
+        Assert.IsNotNull(services.GetRequiredService<ISyncRunAcceptanceStore>());
+        Assert.AreEqual(System.Data.ConnectionState.Closed, services.GetRequiredService<FinoraDbContext>().Database.GetDbConnection().State);
         using var login = await client.PostAsJsonAsync("/api/auth/login", new { email = "email-sentinel@example.invalid", password = "password-sentinel" });
         await AssertProblemAsync(login, HttpStatusCode.ServiceUnavailable);
         Assert.IsFalse(factory.Logs.Text.Contains("sentinel", StringComparison.Ordinal));
@@ -159,6 +176,8 @@ public sealed class AuthenticationAvailabilityTests
             HttpStatusCode.BadRequest => authContract ? "AUTH_INVALID_INPUT" : "REQUEST_INVALID_INPUT",
             HttpStatusCode.RequestEntityTooLarge => "AUTH_BODY_TOO_LARGE",
             HttpStatusCode.Unauthorized => "AUTH_INVALID_CREDENTIALS",
+            HttpStatusCode.NotFound => "RESOURCE_NOT_FOUND",
+            HttpStatusCode.Conflict => "RESOURCE_CONFLICT",
             HttpStatusCode.ServiceUnavailable => "AUTH_UNAVAILABLE",
             HttpStatusCode.InternalServerError => authContract ? "AUTH_UNEXPECTED_FAILURE" : "INTERNAL_ERROR",
             _ => "AUTH_UNEXPECTED_FAILURE"

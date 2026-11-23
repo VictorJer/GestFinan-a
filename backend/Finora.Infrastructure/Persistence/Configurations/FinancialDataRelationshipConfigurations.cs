@@ -269,6 +269,9 @@ public sealed class SyncRunConfiguration : IEntityTypeConfiguration<SyncRun>
             .HasForeignKey(run => new { run.ConnectionId, run.UserId })
             .HasPrincipalKey(connection => new { connection.Id, connection.UserId })
             .OnDelete(DeleteBehavior.Restrict);
+        // A chave alternativa permite que a posse prove por FK a execução e sua conexão/titular exatos.
+        builder.HasAlternateKey(run => new { run.Id, run.ConnectionId, run.UserId })
+            .HasName("AK_SyncRun_Id_ConnectionId_UserId");
         builder.Property(run => run.CreatedAtUtc).HasColumnType("timestamp with time zone");
         builder.Property(run => run.StartedAtUtc).HasColumnType("timestamp with time zone");
         builder.Property(run => run.FinishedAtUtc).HasColumnType("timestamp with time zone");
@@ -276,14 +279,90 @@ public sealed class SyncRunConfiguration : IEntityTypeConfiguration<SyncRun>
         builder.Property(run => run.RequestedToExclusive).HasColumnType("date");
         builder.Property(run => run.ObservedFrom).HasColumnType("date");
         builder.Property(run => run.ObservedTo).HasColumnType("date");
+        builder.Property(run => run.AttemptStartedAtUtc).HasColumnType("timestamp with time zone");
+        builder.Property(run => run.AttemptDeadlineAtUtc).HasColumnType("timestamp with time zone");
+        builder.Property(run => run.NextAttemptAtUtc).HasColumnType("timestamp with time zone");
+        builder.Property(run => run.ExecutionMessageEnqueuedAtUtc).HasColumnType("timestamp with time zone");
+        builder.Property(run => run.AttemptNumber).HasDefaultValue(0);
+        builder.Property(run => run.AttemptLimit).HasDefaultValue(SyncRun.ApprovedAttemptLimit);
         builder.Property(run => run.State).HasConversion<string>().HasColumnType("text");
         builder.Property(run => run.CoverageState).HasConversion<string>().HasColumnType("text");
         builder.Property(run => run.FailureCode).HasColumnType("text");
+        builder.Property(run => run.IdempotencyKeyHash)
+            .HasMaxLength(64)
+            .UseCollation("C");
+        builder.Property(run => run.RequestFingerprint)
+            .HasMaxLength(64)
+            .UseCollation("C");
         builder.HasIndex(run => new { run.ConnectionId, run.State });
+        builder.HasIndex(run => new { run.State, run.NextAttemptAtUtc })
+            .HasDatabaseName("IX_SyncRun_State_NextAttemptAtUtc")
+            .HasFilter("\"NextAttemptAtUtc\" IS NOT NULL");
+        builder.HasIndex(run => new { run.State, run.ExecutionMessageEnqueuedAtUtc })
+            .HasDatabaseName("IX_SyncRun_State_ExecutionMessageEnqueuedAtUtc")
+            .HasFilter("\"ExecutionMessageEnqueuedAtUtc\" IS NULL");
+        builder.HasIndex(run => run.IdempotencyKeyHash)
+            .IsUnique()
+            .HasDatabaseName("UX_SyncRun_IdempotencyKeyHash")
+            .HasFilter("\"IdempotencyKeyHash\" IS NOT NULL");
 
-        builder.ToTable(table => table.HasCheckConstraint(
-            "CK_SyncRun_Ids_NotEmpty",
-            $"\"Id\" <> {FinancialDataCheckConstraintSql.EmptyGuid} AND " +
-            $"\"UserId\" <> {FinancialDataCheckConstraintSql.EmptyGuid}"));
+        // As constraints relacionais também protegem gravações manuais sem aceitar fingerprints parciais.
+        builder.ToTable(table =>
+        {
+            table.HasCheckConstraint(
+                "CK_SyncRun_Ids_NotEmpty",
+                $"\"Id\" <> {FinancialDataCheckConstraintSql.EmptyGuid} AND " +
+                $"\"UserId\" <> {FinancialDataCheckConstraintSql.EmptyGuid}");
+            table.HasCheckConstraint(
+                "CK_SyncRun_IdempotencyFingerprintPair",
+                "((\"IdempotencyKeyHash\" IS NULL AND \"RequestFingerprint\" IS NULL) OR " +
+                "(\"IdempotencyKeyHash\" ~ '^[0-9A-Fa-f]{64}$' AND " +
+                "\"RequestFingerprint\" ~ '^[0-9A-Fa-f]{64}$'))");
+            table.HasCheckConstraint(
+                "CK_SyncRun_AttemptBudget",
+                $"\"AttemptNumber\" >= 0 AND \"AttemptLimit\" BETWEEN 1 AND {SyncRun.ApprovedAttemptLimit} " +
+                "AND \"AttemptNumber\" <= \"AttemptLimit\"");
+            table.HasCheckConstraint(
+                "CK_SyncRun_AttemptDeadline",
+                "((\"AttemptStartedAtUtc\" IS NULL AND \"AttemptDeadlineAtUtc\" IS NULL) OR " +
+                "(\"AttemptStartedAtUtc\" IS NOT NULL AND \"AttemptDeadlineAtUtc\" IS NOT NULL AND " +
+                "\"AttemptNumber\" > 0 AND \"AttemptDeadlineAtUtc\" > \"AttemptStartedAtUtc\" AND " +
+                "\"AttemptDeadlineAtUtc\" <= \"AttemptStartedAtUtc\" + interval '10 minutes'))");
+            table.HasCheckConstraint(
+                "CK_SyncRun_NextAttemptNotBeforeAcceptance",
+                "\"NextAttemptAtUtc\" IS NULL OR \"NextAttemptAtUtc\" >= \"CreatedAtUtc\"");
+        });
+    }
+}
+
+// Uma linha por conexão conserva a geração monotônica e referencia a execução/owner exatos.
+public sealed class SyncRunLeaseConfiguration : IEntityTypeConfiguration<SyncRunLease>
+{
+    public void Configure(EntityTypeBuilder<SyncRunLease> builder)
+    {
+        builder.HasKey(lease => lease.ConnectionId)
+            .HasName("PK_SyncRunLeases");
+        builder.Property(lease => lease.AcquiredAtUtc).HasColumnType("timestamp with time zone");
+        builder.Property(lease => lease.ExpiresAtUtc).HasColumnType("timestamp with time zone");
+        builder.HasOne<FinancialConnection>()
+            .WithOne()
+            .HasForeignKey<SyncRunLease>(lease => new { lease.ConnectionId, lease.UserId })
+            .HasPrincipalKey<FinancialConnection>(connection => new { connection.Id, connection.UserId })
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<SyncRun>()
+            .WithMany()
+            .HasForeignKey(lease => new { lease.SyncRunId, lease.ConnectionId, lease.UserId })
+            .HasPrincipalKey(run => new { run.Id, run.ConnectionId, run.UserId })
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(lease => new { lease.SyncRunId, lease.AttemptNumber })
+            .HasDatabaseName("IX_SyncRunLeases_SyncRunId_AttemptNumber");
+
+        // Constraints também protegem inserções/atualizações que contornem a fábrica de domínio.
+        builder.ToTable(table =>
+        {
+            table.HasCheckConstraint("CK_SyncRunLeases_Attempt_Positive", "\"AttemptNumber\" > 0");
+            table.HasCheckConstraint("CK_SyncRunLeases_Fencing_Positive", "\"FencingToken\" > 0");
+            table.HasCheckConstraint("CK_SyncRunLeases_Expiration", "\"ExpiresAtUtc\" > \"AcquiredAtUtc\"");
+        });
     }
 }

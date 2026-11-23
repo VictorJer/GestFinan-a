@@ -1,5 +1,7 @@
 using Finora.Domain.FinancialData;
 using Finora.Infrastructure.Identity;
+using MassTransit;
+using MassTransit.EntityFrameworkCoreIntegration;
 using Finora.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -204,6 +206,12 @@ public sealed class FinancialDataRelationalModelTests
             nameof(FinancialTransaction.CardAccountId), nameof(FinancialTransaction.TransactionDate), nameof(FinancialTransaction.Id));
         AssertIndex(category, isUnique: true, nameof(Category.ScopeId), nameof(Category.NormalizedName));
         AssertIndex(syncRun, isUnique: false, nameof(SyncRun.ConnectionId), nameof(SyncRun.State));
+        AssertIndex(syncRun, isUnique: true, nameof(SyncRun.IdempotencyKeyHash));
+        var idempotencyIndex = syncRun.GetIndexes().Single(index =>
+            index.IsUnique && index.Properties.Single().Name == nameof(SyncRun.IdempotencyKeyHash));
+        Assert.AreEqual("UX_SyncRun_IdempotencyKeyHash", idempotencyIndex.GetDatabaseName());
+        Assert.AreEqual("\"IdempotencyKeyHash\" IS NOT NULL", idempotencyIndex.GetFilter());
+        Assert.IsTrue(syncRun.FindProperty(nameof(SyncRun.IdempotencyKeyHash))!.IsNullable);
 
         var categoryFilterIndexes = annotation.GetIndexes()
             .Where(index => index.Properties[0].Name == nameof(TransactionAnnotation.CategoryId))
@@ -241,6 +249,80 @@ public sealed class FinancialDataRelationalModelTests
             model.FindEntityType(typeof(FinancialTransaction))!,
             "CK_FinancialTransaction_ExternalAccountId_MaxUtf8Bytes",
             "octet_length(convert_to(\"ExternalAccountId\", 'UTF8')) <= 1024");
+    }
+
+    // O modelo protege gravações relacionais contra hash parcial e mantém o histórico sem chave compatível.
+    [TestMethod]
+    public void SyncRunRequiresIdempotencyHashAndRequestFingerprintAsAValidPair()
+    {
+        using var context = CreateContext();
+        var syncRun = context.GetService<IDesignTimeModel>().Model.FindEntityType(typeof(SyncRun))!;
+
+        AssertCheckConstraint(
+            syncRun,
+            "CK_SyncRun_IdempotencyFingerprintPair",
+            "IdempotencyKeyHash\" IS NULL",
+            "RequestFingerprint\" IS NULL",
+            "{64}");
+    }
+
+    // A PK permite uma posse por conexão e FKs/checks prendem execução, titular, tentativa, expiração e geração.
+    [TestMethod]
+    public void SyncRunLeaseModelEnforcesSingleConnectionOwnershipAndPositiveFencing()
+    {
+        using var context = CreateContext();
+        var model = context.GetService<IDesignTimeModel>().Model;
+        var lease = model.FindEntityType(typeof(SyncRunLease))!;
+        var run = model.FindEntityType(typeof(SyncRun))!;
+
+        AssertKeyProperties(lease, isPrimary: true, nameof(SyncRunLease.ConnectionId));
+        AssertKeyProperties(run, isPrimary: false,
+            nameof(SyncRun.Id), nameof(SyncRun.ConnectionId), nameof(SyncRun.UserId));
+        AssertForeignKey(lease, typeof(FinancialConnection),
+            [nameof(SyncRunLease.ConnectionId), nameof(SyncRunLease.UserId)],
+            [nameof(FinancialConnection.Id), nameof(FinancialConnection.UserId)], required: true);
+        AssertForeignKey(lease, typeof(SyncRun),
+            [nameof(SyncRunLease.SyncRunId), nameof(SyncRunLease.ConnectionId), nameof(SyncRunLease.UserId)],
+            [nameof(SyncRun.Id), nameof(SyncRun.ConnectionId), nameof(SyncRun.UserId)], required: true);
+        AssertIndex(lease, isUnique: false,
+            nameof(SyncRunLease.SyncRunId), nameof(SyncRunLease.AttemptNumber));
+        AssertCheckConstraint(lease, "CK_SyncRunLeases_Attempt_Positive", "\"AttemptNumber\" > 0");
+        AssertCheckConstraint(lease, "CK_SyncRunLeases_Fencing_Positive", "\"FencingToken\" > 0");
+        AssertCheckConstraint(lease, "CK_SyncRunLeases_Expiration", "\"ExpiresAtUtc\" > \"AcquiredAtUtc\"");
+        AssertColumnType(model, typeof(SyncRunLease), nameof(SyncRunLease.AcquiredAtUtc), "timestamp with time zone");
+        AssertColumnType(model, typeof(SyncRunLease), nameof(SyncRunLease.ExpiresAtUtc), "timestamp with time zone");
+
+        AssertIndex(run, isUnique: false, nameof(SyncRun.State), nameof(SyncRun.NextAttemptAtUtc));
+        var retryIndex = run.GetIndexes().Single(index =>
+            index.Properties.Select(property => property.Name)
+                .SequenceEqual([nameof(SyncRun.State), nameof(SyncRun.NextAttemptAtUtc)]));
+        Assert.AreEqual("\"NextAttemptAtUtc\" IS NOT NULL", retryIndex.GetFilter());
+        AssertIndex(run, isUnique: false,
+            nameof(SyncRun.State), nameof(SyncRun.ExecutionMessageEnqueuedAtUtc));
+        var executionMessageIndex = run.GetIndexes().Single(index =>
+            index.Properties.Select(property => property.Name)
+                .SequenceEqual([nameof(SyncRun.State), nameof(SyncRun.ExecutionMessageEnqueuedAtUtc)]));
+        Assert.AreEqual("\"ExecutionMessageEnqueuedAtUtc\" IS NULL", executionMessageIndex.GetFilter());
+        AssertCheckConstraint(run, "CK_SyncRun_AttemptBudget", "\"AttemptNumber\" >= 0", "BETWEEN 1 AND 3");
+        AssertCheckConstraint(run, "CK_SyncRun_AttemptDeadline", "\"AttemptDeadlineAtUtc\" > \"AttemptStartedAtUtc\"", "interval '10 minutes'");
+        AssertCheckConstraint(run, "CK_SyncRun_NextAttemptNotBeforeAcceptance", "\"NextAttemptAtUtc\" >= \"CreatedAtUtc\"");
+        Assert.AreEqual(0, run.FindProperty(nameof(SyncRun.AttemptNumber))!.GetDefaultValue());
+        Assert.AreEqual(SyncRun.ApprovedAttemptLimit, run.FindProperty(nameof(SyncRun.AttemptLimit))!.GetDefaultValue());
+        AssertColumnType(model, typeof(SyncRun), nameof(SyncRun.AttemptStartedAtUtc), "timestamp with time zone");
+        AssertColumnType(model, typeof(SyncRun), nameof(SyncRun.AttemptDeadlineAtUtc), "timestamp with time zone");
+        AssertColumnType(model, typeof(SyncRun), nameof(SyncRun.NextAttemptAtUtc), "timestamp with time zone");
+        AssertColumnType(model, typeof(SyncRun), nameof(SyncRun.ExecutionMessageEnqueuedAtUtc), "timestamp with time zone");
+    }
+
+    // As duas entidades técnicas do MassTransit pertencem ao mesmo modelo PostgreSQL da execução persistida.
+    [TestMethod]
+    public void FinoraContextIncludesTheEntityFrameworkBusOutboxTables()
+    {
+        using var context = CreateContext();
+        var model = context.GetService<IDesignTimeModel>().Model;
+
+        Assert.AreEqual("OutboxMessage", model.FindEntityType(typeof(OutboxMessage))!.GetTableName());
+        Assert.AreEqual("OutboxState", model.FindEntityType(typeof(OutboxState))!.GetTableName());
     }
 
     // Opções Npgsql e Identity iguais às da factory constroem apenas o modelo, sem abrir o database sintético.

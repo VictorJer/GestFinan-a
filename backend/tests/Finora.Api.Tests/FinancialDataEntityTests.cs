@@ -398,6 +398,28 @@ public sealed class FinancialDataEntityTests
         Assert.AreEqual(lastSuccess, connection.LastSuccessfulImportAtUtc);
     }
 
+    // Registros FNR-013 guardam somente fingerprints SHA-256 e exigem o par; execuções históricas podem omitir ambos.
+    [TestMethod]
+    public void SyncRunRequiresBothValidIdempotencyFingerprints()
+    {
+        var keyHash = new string('A', 64);
+        var requestFingerprint = new string('B', 64);
+        var accepted = CreateSyncRun(
+            idempotencyKeyHash: keyHash,
+            requestFingerprint: requestFingerprint);
+        var historical = CreateSyncRun();
+
+        Assert.AreEqual(keyHash, accepted.IdempotencyKeyHash);
+        Assert.AreEqual(requestFingerprint, accepted.RequestFingerprint);
+        Assert.IsNull(historical.IdempotencyKeyHash);
+        Assert.IsNull(historical.RequestFingerprint);
+        Assert.Throws<ArgumentException>(() => CreateSyncRun(idempotencyKeyHash: keyHash));
+        Assert.Throws<ArgumentException>(() => CreateSyncRun(requestFingerprint: requestFingerprint));
+        Assert.Throws<ArgumentException>(() => CreateSyncRun(
+            idempotencyKeyHash: new string('x', 63),
+            requestFingerprint: requestFingerprint));
+    }
+
     // Cada fixture usa dados sintéticos e regras já existentes, sem regras positivas de compra.
     private static TransactionFacts Facts(
         string externalId = "external-transaction",
@@ -447,7 +469,9 @@ public sealed class FinancialDataEntityTests
         DateOnly? observedTo = null,
         SyncRunState state = SyncRunState.Pending,
         SyncCoverageState coverageState = SyncCoverageState.Unknown,
-        string? failureCode = null) => SyncRun.Create(
+        string? failureCode = null,
+        string? idempotencyKeyHash = null,
+        string? requestFingerprint = null) => SyncRun.Create(
             Guid.Parse("7df73e47-8f6e-441e-8900-1f2e71e0a4a6"),
             UserId,
             ConnectionId,
@@ -464,5 +488,7 @@ public sealed class FinancialDataEntityTests
             observedFrom,
             observedTo,
             coverageState,
-            failureCode);
+            failureCode,
+            idempotencyKeyHash,
+            requestFingerprint);
 }
