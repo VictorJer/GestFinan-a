@@ -6,8 +6,10 @@ using System.Net.Sockets;
 using System.Text.Json;
 using Finora.Domain.FinancialData;
 using Finora.Infrastructure.Identity;
+using MassTransit.EntityFrameworkCoreIntegration;
 using Finora.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -98,6 +100,18 @@ public sealed class PostgreSqlSyncRunBrokerUnavailableTests
         Assert.AreEqual("Succeeded", statusDocument.RootElement.GetProperty("state").GetString());
         Assert.IsFalse(statusDocument.RootElement.TryGetProperty("userId", out _));
         Assert.IsFalse(statusDocument.RootElement.TryGetProperty("connectionId", out _));
+
+        // O estado da conexão também permanece consultável enquanto o host tenta alcançar o broker indisponível.
+        using var syncStateRequest = new HttpRequestMessage(HttpMethod.Get, "/api/connections/current/sync-state");
+        syncStateRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var syncStateResponse = await client.SendAsync(syncStateRequest);
+        Assert.AreEqual(HttpStatusCode.OK, syncStateResponse.StatusCode);
+        using var syncStateDocument = JsonDocument.Parse(await syncStateResponse.Content.ReadAsStringAsync());
+        Assert.AreEqual(
+            syncRunId,
+            syncStateDocument.RootElement.GetProperty("latestExecution").GetProperty("syncRunId").GetGuid());
+        Assert.AreEqual(1, await database.Context.Set<SyncRun>().AsNoTracking().CountAsync());
+        Assert.AreEqual(0, await database.Context.Set<OutboxMessage>().AsNoTracking().CountAsync());
 
         // A mesma verificação após tráfego autenticado preserva health como liveness, não como dependência do broker.
         using var healthAfterRequests = await client.GetAsync("/health");

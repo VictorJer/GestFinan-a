@@ -6,7 +6,7 @@
 
 ## Fluxo de trabalho
 
-Seguir **PRD → TDD → SDD com OpenSpec → implementação → validação → commits locais com o subagente committer → Pull Request → revisão e integração na main → publicação aplicável e encerramento**. Trabalhar em feature branch; não implementar nem enviar alterações diretamente à `main`.
+Seguir **PRD → TDD → SDD com OpenSpec → implementação → validação → commits locais com o subagente committer → Pull Request**. Trabalhar em feature branch; não implementar nem enviar alterações diretamente à `main`.
 
 ### 1. Selecionar e delimitar a mudança
 

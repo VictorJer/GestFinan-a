@@ -1,11 +1,11 @@
 # Finora — TDD v0
 
 **Technical Design Document — documento de desenho técnico**  
-**Estado:** v0, revisão documental 0.19 aprovada pelo titular no harness em 20/11/2026. O aceite da implementação FNR-012 também foi confirmado no harness. Essas aprovações são externas ao GitHub e não representam review/check formal nem integração. A revisão 0.18 foi aprovada explicitamente para o desenho de reconexão FNR-012; a revisão 0.19 registra a implementação e validação locais sem reabrir as decisões arquiteturais aprovadas. A revisão 0.17 foi aprovada pelo titular no harness em 19/11/2026 para registrar o estado factual da implementação local FNR-011. A revisão 0.16, que especifica a fronteira segura, foi aprovada antes do código dependente; a atualização 0.17 não reabre as decisões 0.16 nem transfere a aprovação FNR-010/TDD 0.15. O PR #24 foi integrado no GitHub em 20/11/2026; as delta specs foram sincronizadas e a mudança arquivada localmente.\
+**Estado:** v0. Revisão documental 0.21 pendente de revisão/aceite pelo titular; ela registra o contrato HTTP da FNR-014 sem alterar o escopo ou as decisões aprovadas na revisão 0.20. A revisão 0.20 foi aprovada explicitamente no harness em 23/11/2026 (“Aprovo e prossiga”), junto dos artefatos da FNR-014 e do BACKLOG 0.48, como gate antes do código dependente. Essa aprovação é externa ao GitHub, não é review/check formal, não atesta implementação e não autoriza publicação. A revisão 0.19 foi aprovada pelo titular no harness em 20/11/2026; seu aceite da implementação FNR-012 também foi confirmado no harness. Essas aprovações são externas ao GitHub e não representam review/check formal nem integração. A revisão 0.18 foi aprovada explicitamente para o desenho de reconexão FNR-012; a revisão 0.19 registra a implementação e validação locais sem reabrir as decisões arquiteturais aprovadas. A revisão 0.17 foi aprovada pelo titular no harness em 19/11/2026 para registrar o estado factual da implementação local FNR-011. A revisão 0.16, que especifica a fronteira segura, foi aprovada antes do código dependente; a atualização 0.17 não reabre as decisões 0.16 nem transfere a aprovação FNR-010/TDD 0.15. O PR #24 foi integrado no GitHub em 20/11/2026; as delta specs foram sincronizadas e a mudança arquivada localmente.\
 **Base atual:** [Finora — PRD v0, revisão 0.4](PRD.md), aprovada; base anterior aprovada: PRD 0.3 e TDD 0.6.\
 **Data de início:** 9 de novembro de 2026.
 
-**Data desta revisão:** 20 de novembro de 2026. **Responsável/decisor conhecido:** autor do TCC, com elaboração assistida. A revisão 0.13 consolidou somente as decisões novas de login/sessões D1–D7 da [FNR-009](../openspec/changes/archive/2026-11-18-fnr-009-login-jwt-sessoes/design.md), com aprovações preservadas no histórico. A revisão 0.14 acrescentou o desenho FNR-010 descrito em §5 e foi aprovada no escopo registrado. A revisão 0.15 acrescentou rastreabilidade da execução FNR-010 e foi aprovada posteriormente nesse escopo. A revisão 0.16 atualizou §§2/5/11 para registrar decisões FNR-011; o titular confirmou posteriormente no harness que o diff canônico foi aprovado antes do código dependente. A revisão 0.17 acrescentou somente o estado local de implementação e evidências de validação da FNR-011 e foi aprovada após apresentação. A revisão 0.18 detalhou a reconexão FNR-012 e foi aprovada no escopo arquitetural descrito abaixo. A revisão 0.19 registra a implementação, migration e validações locais da FNR-012, sem alterar o PRD nem reabrir o desenho aprovado; o titular aprovou documentalmente o TDD 0.19 e confirmou o aceite da implementação no harness. Essas confirmações não são review/check formal do GitHub nem comprovam integração. O merge local `d4e05b1` confirma o PR #23 de encerramento documental FNR-010; não se infere daí review formal ou check do GitHub. Aprovações 0.12–0.18 permanecem preservadas em seus escopos.
+**Data desta revisão:** 23 de novembro de 2026. **Responsável/decisor conhecido:** autor do TCC, com elaboração assistida. A revisão 0.21 documenta o contrato HTTP local e aguarda revisão/aceite; a aprovação anterior da revisão 0.20 e do escopo/artefatos da FNR-014 permanece preservada, mas não aceita a implementação nem representa review/check GitHub. A revisão 0.13 consolidou somente as decisões novas de login/sessões D1–D7 da [FNR-009](../openspec/changes/archive/2026-11-18-fnr-009-login-jwt-sessoes/design.md), com aprovações preservadas no histórico. A revisão 0.14 acrescentou o desenho FNR-010 descrito em §5 e foi aprovada no escopo registrado. A revisão 0.15 acrescentou rastreabilidade da execução FNR-010 e foi aprovada posteriormente nesse escopo. A revisão 0.16 atualizou §§2/5/11 para registrar decisões FNR-011; o titular confirmou posteriormente no harness que o diff canônico foi aprovado antes do código dependente. A revisão 0.17 acrescentou somente o estado local de implementação e evidências de validação da FNR-011 e foi aprovada após apresentação. A revisão 0.18 detalhou a reconexão FNR-012 e foi aprovada no escopo arquitetural descrito abaixo. A revisão 0.19 registra a implementação, migration e validações locais da FNR-012, sem alterar o PRD nem reabrir o desenho aprovado; o titular aprovou documentalmente o TDD 0.19 e confirmou o aceite da implementação no harness. Essas confirmações não são review/check formal do GitHub nem comprovam integração. O merge local `d4e05b1` confirma o PR #23 de encerramento documental FNR-010; não se infere daí review formal ou check do GitHub. Aprovações 0.12–0.18 permanecem preservadas em seus escopos.
 
 **Revisão 0.18 — aprovada:** detalha a reconexão FNR-012 como comando interno separado, fora da API, e acrescenta em §§10/12 um registro persistente dos IDs externos de conexão aposentados para impedir replay após troca comprovada de item. A alteração exige migration aditiva, backfill dos itens ativos e recusa fail-closed de colisões preexistentes. O titular selecionou “Aprovo e prossiga” no harness em 20/11/2026 após revisar os artefatos OpenSpec, o diff TDD 0.18 e BACKLOG 0.44. A aprovação cobre somente esse desenho; não comprova implementação, migration, teste ou integração e não altera os escopos anteriores.
 
@@ -77,6 +77,8 @@
 | v0 — documental 0.17 | 19/11/2026 | Atualiza factual e pontualmente a implementação local FNR-011: CORS e limites por instância de login/titular, partições, comportamento de proxy, 429, lockout Identity e validação integrada local (restore/build, 254 testes sem PostgreSQL e 97 PostgreSQL descartável). Mantém o desenho 0.16 sem reabri-lo. Revisão documental e aceite da implementação local aprovados explicitamente pelo titular no harness; sem review/check GitHub ou autorização de integração/publicação. Evidências e limites em AMBIENTE.md/BACKLOG. |
 | v0 — documental 0.18 | 20/11/2026 | **Aprovada explicitamente no harness pelo titular:** detalha reconexão FNR-012 por comando interno separado e identidade persistente ativa/aposentada com migration aditiva e backfill fail-closed, em §§10/12. Aprovação restrita ao desenho; não confirma implementação, validação ou integração. Revisão 0.17 e aprovações anteriores preservadas. |
 | v0 — documental 0.19 | 20/11/2026 | Aprovação documental e aceite da implementação FNR-012 confirmados explicitamente pelo titular no harness. São registros externos ao GitHub; não significam review/check formal, integração, aplicação de migration em destino ou publicação. A aprovação arquitetural 0.18 permanece preservada em seu escopo. |
+| v0 — documental 0.20 | 23/11/2026 | Prepara §§6/12 e DT-43 para FNR-014: limiar configurável de 24 horas, intervalo configurável de cinco minutos compartilhado entre entrada e botão e fronteira backend/FNR-021. O titular aprovou explicitamente no harness esta revisão, o BACKLOG 0.48 e os artefatos FNR-014 (“Aprovo e prossiga”) antes do código dependente. A aprovação não representa review/check formal GitHub nem aceite da implementação. Registra localmente o merge #27/FNR-013 sem inferir reviews/checks atuais, migration em destino ou publicação. Aprovações 0.19 e anteriores permanecem restritas aos escopos históricos. |
+| v0 — documental 0.21 | 23/11/2026 | Atualiza §§6/12/DT-43 para refletir a aprovação documental 0.20 e registra o contrato HTTP local da FNR-014, códigos de resposta, exemplos sintéticos, fronteira de leitura para FNR-021 e validação focal local (restore bloqueado, build e 70 testes; evidências em [AMBIENTE.md](AMBIENTE.md)). Revisão 0.21 pendente de revisão/aceite do titular; não altera requisitos nem decisões aprovadas em 0.20, e não declara aceite da implementação, review/check GitHub, limites reais do provedor ou publicação. |
 
 Fontes desta complementação: PRD, TDD v0/FNR-001, backlog, [README](../README.md), [AGENTS.md](../AGENTS.md), SDD de FNR-002 e aprovação explícita do autor nesta conversa em 14/11/2026. A aprovação fecha a escolha das baselines registradas abaixo, mas não comprova instalação, restore, build, testes ou compatibilidade integrada. Desconhecidos e divergências futuras devem ser resolvidos nos gates dos §§7 e 16–18, não por suposição.
 
@@ -161,7 +163,7 @@ Origem **P**: desenho já descrito no TDD v0/FNR-001, nas seções indicadas; ap
 | DT-40 | Modelo relacional, UUIDs, numeric(19,4), índices, datas de origem e reconciliação de identidade | Desenho detalhado no SDD FNR-007 e aprovado no TDD 0.9 pelo titular em 17/11/2026 | Preservar integridade e semântica original, sem exigir competência financeira para persistir movimentos | Índices a refinar; não deduplicar por descrição/data/valor; não excluir por ausência | FNR-007 implementa/testa o schema; FNR-012 reconcilia importação; nenhuma valida regra geral de compra |
 | DT-41 | Contratos DTO, paginação, erros e rotas HTTP | Parcialmente decidido em FNR-011: fronteira de autorização, matriz de erros, compatibilidade e versionamento aprovados; contratos DTO/paginação de operações futuras continuam pendentes | Totais de todo o filtro e erros sanitizados descritos no §11 | Alternativas de contrato não registradas; preservar autorização e compatibilidade | FNR-011 implementa/testa a fronteira comum; FNR-015/016/017 definem e validam contratos concretos antes de estabilizá-los |
 | DT-42 | SyncRun persistente, 202/polling, posse/expiração e gravação completa; transporte RabbitMQ/MassTransit dentro da API | Revisada em 0.5: broker/host confirmados em DT-50–53; detalhes de execução ainda propostos | Evitar tarefa abandonada e sucesso parcial, conforme §§12/20 | Proposta anterior sem fila externa substituída; memória antes da transação vs staging/lotes ainda depende de medição | FNR-005/013 e gates §20; testar volume, publicação, reinício e concorrência |
-| DT-43 | Intervalo manual de cinco minutos configurável, retries limitados e janela incremental | Proposta; P §§6/12 / decisor pendente | Respeitar limites e revisitar registros mutáveis, conforme §12 | Valores/janela finais a definir; não assumir atualização só por data de importação | FNR-005/014; limites reais e política registrados |
+| DT-43 | Intervalo configurável de cinco minutos por conexão, compartilhado entre entrada e pedido manual; retries limitados e janela incremental | Revisão canônica 0.20 aprovada; compatibilidade externa permanece gate de publicação | Respeitar limites e revisitar registros mutáveis, conforme §12; contar cooldown desde a última intenção nova aceita, inclusive após falha, sem reiniciá-lo em replay | Limites efetivos do provedor e compatibilidade com Retry-After continuam pendentes; não assumir atualização só por data de importação | RF08/RF16; FNR-005/013/014/021; verificar limites reais antes da publicação |
 | DT-44 | Escopo de categoria, chave fornecida, limite de 60 e categoria opcional | Persistência aprovada em TDD 0.9: unicidade por ScopeId e CategoryId/CategoryScopeId ambos nulos para ausência; política de nomes permanece pendente | Preservar escolha manual e evitar duplicidade sem acoplar anotação ao movimento de origem | Política de acentos, catálogo e rótulo visual pendentes; não há registro especial “Sem categoria” | FNR-016 define normalização executável/catálogo; FNR-017 trata edição; validar concorrência, titular e filtros |
 | DT-45 | Resumos no backend; Chart.js apenas apresenta quando aplicável | Direção herdada; recorte descritivo 0.7 aprovado, DT-54 | MVP sem somas monetárias de movimentos em qualquer camada; backend fornece somente resumos autorizados | Indicadores financeiros antigos ficam adiados, não transferidos ao Angular; simulador P1 preservado | FNR-018/023: consistência descritiva e ausência de somas; FNR-030: fórmula independente; conciliação financeira somente em mudança posterior |
 | DT-46 | Plano de testes unitários, integração, HTTP, Angular e manual | Plano proposto; P §14 / decisor pendente | Exercitar riscos financeiros/segurança, conforme §14 | Sem cobertura percentual arbitrária; testes reais da Pluggy separados de CI | FNR-002/024/028; runner e cenários efetivamente executados |
@@ -380,13 +382,13 @@ Frontend e API separados usarão o cabeçalho Bearer no MVP, sem cookies de aute
 
 ## 6. Sincronização
 
-Referências: DT-32–DT-35; executor e limites são propostas DT-42/43. O intervalo manual proposto de cinco minutos (§12) não substitui uma política validada do provedor.
+Referências: DT-32–DT-35; execução durável em FNR-013 e política de atualização em FNR-014/DT-43. A revisão canônica 0.20 foi aprovada explicitamente pelo titular e fixa o intervalo de cinco minutos compartilhado no escopo FNR-014; isso não valida limites efetivos do provedor. A atualização factual e o contrato HTTP acrescentados nesta revisão 0.21 aguardam revisão/aceite próprios, sem reabrir a decisão aprovada.
 
-Confirmado: ao entrar na aplicação, consultar os dados disponíveis no provedor se estiverem antigos; permitir também atualização por botão. A navegação entre telas e mudanças de filtro consultam o banco local, sem acionar uma nova importação.
+Confirmado no PRD/RF16: na entrada autenticada, solicitar dados disponíveis se estiverem antigos; permitir também atualização manual. FNR-014 prepara os contratos de backend; a interface e o botão pertencem à fronteira FNR-021. Navegação e filtros consultam o banco local, sem acionar importação.
 
-Limiar confirmado para dados antigos: 24 horas desde a última importação completa bem-sucedida, configurável no backend. Se nunca houve importação, tentar a primeira ao entrar. Falha ou importação incompleta não reinicia esse prazo.
+Limiar de 24 horas desde a última importação completa bem-sucedida, configurável no backend, conforme RF16. Sem sucesso prévio, a entrada solicita atualização; exatamente 24 horas ainda é recente e somente um intervalo maior a torna antiga. Falha ou importação incompleta não reinicia esse prazo.
 
-Propostas operacionais para detalhamento: usar um único fluxo de importação para entrada e botão; impedir duas importações simultâneas da mesma conexão; desabilitar o botão durante a execução e aplicar um intervalo mínimo entre tentativas. Erros não avançam o horário de sucesso nem apagam o histórico. O intervalo mínimo e a política de nova tentativa serão definidos com os limites da API.
+Decisão aprovada na revisão canônica 0.20: o intervalo configurável de cinco minutos é compartilhado por entrada automática e pedido manual, por conexão, contado da última intenção nova aceita, inclusive se sua execução falhar. Repetir a mesma chave idempotente não cria intenção nem reinicia o intervalo; uma execução ativa continua sujeita ao conflito próprio. O instante de avaliação é do servidor e a decisão ocorre na aceitação persistente, não no Controller ou em cache por instância. A escolha do intervalo não valida os limites efetivos do provedor, que permanecem gate anterior à publicação.
 
 Exibir separadamente a última importação bem-sucedida no Finora e a atualização na origem, quando informada. Consultar o provedor não força atualização imediata no Nubank. Nenhuma rotina agendada com o aplicativo fechado foi solicitada.
 
@@ -541,9 +543,9 @@ CORS concede somente origens exatas configuradas e métodos/cabeçalhos permitid
 
 Rate limiting é por instância, sem fila: 10 logins/minuto por IP observado na conexão e 120 chamadas protegidas/minuto por titular autenticado, com valores positivos validados. Implementação local usa janelas fixas; login excedente recebe 429/no-store antes de leitura do corpo/avaliação de senha, sem token ou alteração do lockout; rota protegida excedente não executa a action. O host não configura Forwarded Headers, e `X-Forwarded-For` não é consultado; se o deploy futuro estiver atrás de proxy, configurar e restringir explicitamente os proxies confiáveis antes de aceitar cabeçalhos encaminhados, reconhecendo que conexões via mesmo proxy podem compartilhar a partição. Health, preflight e CLI ficam fora das políticas; não alegar limite global em múltiplas instâncias. O lockout independente do Identity permanece em cinco falhas/cinco minutos, conforme a configuração e os testes existentes. Decisões aprovadas no TDD 0.16; estado/evidências locais registrados na revisão 0.17, ainda pendente de revisão documental.
 
-## 12. Execução da sincronização — proposta
+## 12. Execução da sincronização — execução FNR-013 e política FNR-014
 
-Referências: DT-42/43 e DT-50–53; regras confirmadas de entrada/histórico em DT-32–DT-34. O broker e o consumidor na API são escolhas da entrevista 0.5; detalhes dependem de medição de FNR-005 e SDD de FNR-013/014 antes da implementação. Confiabilidade e contratos de transporte em §20.
+Referências: DT-42/43 e DT-50–53; regras confirmadas de entrada/histórico em DT-32–DT-34. A execução persistente FNR-013 foi integrada pelo PR #27 segundo o grafo Git local; esta revisão não repete seus testes nem consulta status atual do GitHub. A política FNR-014 abaixo foi aprovada na revisão canônica 0.20 antes do código dependente; a atualização factual e os exemplos HTTP da revisão 0.21 ainda aguardam revisão própria. O broker e o consumidor na API são escolhas da entrevista 0.5; confiabilidade e contratos de transporte permanecem ligados ao §20.
 
 O processamento deve ter registro persistente e idempotência, sem depender de uma tarefa em memória iniciada pelo Controller e abandonada após responder.
 
@@ -555,7 +557,76 @@ Fluxo: validar conexão → recuperar contas → paginar movimentos do intervalo
 
 Incrementais devem revisitar registros recentes e pendentes, além de recuperar novos lançamentos, para refletir efetivação ou estorno. A janela e o cursor serão fechados após validar a API; não presumir que apenas a data da última importação identifica mudanças.
 
-Proposta operacional: intervalo mínimo manual de cinco minutos por conexão, configurável, inclusive após tentativa que falhou, com informação de próxima tentativa. Respeitar Retry-After e limites do provedor; repetir automaticamente apenas falhas transitórias de operações seguras, com poucas tentativas e espera limitada. Falhas de autorização exigem intervenção, sem repetição automática contínua.
+Os retries internos do processamento permanecem separados do intervalo entre intenções; a revisão FNR-014 não altera o contrato de execução da FNR-013. Falhas transitórias seguem os limites próprios dessa execução, enquanto `AUTH_REQUIRED` exige intervenção e não deve gerar repetição automática contínua. A compatibilidade do intervalo de novas intenções com limites reais do provedor permanece pendente antes da publicação.
+
+**Política FNR-014 aprovada na revisão 0.20:** aplicar o limiar de 24 horas à entrada, com igualdade considerada recente, e compartilhar o intervalo configurável de cinco minutos entre entrada e botão. Avaliar replay idempotente antes das regras para preservar a execução original e o resultado de commit incerto; para intenção nova, serializar pela conexão e decidir antiguidade, execução ativa e última intenção aceita antes de persistir `SyncRun`/outbox. Um bloqueio por dados recentes ou intervalo não cria execução nem obrigação de entrega; `202` continua condicionado ao commit. Após `AUTH_REQUIRED`, não criar repetição automática contínua; eventual pedido manual continua sujeito ao intervalo e à renovação feita no provedor, sem presumir que ela ocorreu. FNR-014 limita-se aos contratos de backend; interface, entrada visual e botão ficam para FNR-021. Esta decisão não confirma limite real do provedor, infraestrutura hospedada, migration em destino ou publicação.
+
+### Contrato HTTP FNR-014 para integração futura da FNR-021
+
+As rotas abaixo exigem Bearer válido. A consulta GET é somente leitura: calcula `updateNeeded` pelo relógio do servidor, preserva `sourceUpdatedAtUtc: null` sem fonte confiável e não depende do broker nem consulta o provedor. A entrada automática exige intenção explícita via POST; o botão manual continua usando a rota manual. Cada nova intenção usa uma chave idempotente estável para seus retries e não reutiliza a chave entre modos.
+
+| Operação | Respostas principais | Códigos de problema relevantes |
+| --- | --- | --- |
+| `GET /api/connections/current/sync-state` | `200` com o estado persistido | `400 REQUEST_INVALID_INPUT`, `401 AUTH_INVALID_CREDENTIALS`, `404 RESOURCE_NOT_FOUND`, `409 RESOURCE_CONFLICT` para conexão ambígua, `503 DEPENDENCY_UNAVAILABLE`, `500 INTERNAL_ERROR` |
+| `POST /api/connections/current/sync/on-entry` | `200` `not_required` ou `reauthorization_required`; `202` após commit de `SyncRun`/outbox | `400 REQUEST_INVALID_INPUT`, `401 AUTH_INVALID_CREDENTIALS`, `404 RESOURCE_NOT_FOUND`, `409 SYNC_RUN_ALREADY_ACTIVE` ou `RESOURCE_CONFLICT`, `429 SYNC_RUN_MINIMUM_INTERVAL_ACTIVE`, `503 DEPENDENCY_UNAVAILABLE` ou `ACCEPTANCE_RESULT_INDETERMINATE`, `500 INTERNAL_ERROR` |
+| `POST /api/connections/current/sync` | `202` após commit de `SyncRun`/outbox | `400 REQUEST_INVALID_INPUT`, `401 AUTH_INVALID_CREDENTIALS`, `404 RESOURCE_NOT_FOUND`, `409 SYNC_RUN_ALREADY_ACTIVE` ou `RESOURCE_CONFLICT`, `429 SYNC_RUN_MINIMUM_INTERVAL_ACTIVE`, `503 DEPENDENCY_UNAVAILABLE` ou `ACCEPTANCE_RESULT_INDETERMINATE`, `500 INTERNAL_ERROR` |
+
+Todo POST exige exatamente um `Idempotency-Key`. O `202` significa somente que a execução e a obrigação de entrega foram persistidas; replay idêntico devolve a referência existente. `409 SYNC_RUN_ALREADY_ACTIVE` pode incluir `syncRunId`; `429 SYNC_RUN_MINIMUM_INTERVAL_ACTIVE` inclui `nextAllowedAtUtc` e o cabeçalho `Retry-After` em segundos. Os problemas usam envelope `application/problem+json` com `status`, `title`, `code` e `traceId`; não expõem titular, conexão externa, chave ou conteúdo financeiro.
+
+Os exemplos seguintes são sintéticos e ilustram formas, não dados ou resultados reais do provedor. `nextAllowedAtUtc` é nulo quando não há intervalo ativo; `latestExecution` pode ser nula quando ainda não existe execução conhecida.
+
+```json
+{
+  "updateNeeded": true,
+  "reauthorizationRequired": true,
+  "lastSuccessfulImportAtUtc": "2026-11-21T10:00:00Z",
+  "sourceUpdatedAtUtc": null,
+  "lastAttemptAtUtc": "2026-11-22T10:00:00Z",
+  "nextAllowedAtUtc": null,
+  "latestExecution": {
+    "syncRunId": "00000000-0000-0000-0000-000000000014",
+    "state": "Failed",
+    "createdAtUtc": "2026-11-22T09:59:00Z",
+    "lastAttemptAtUtc": "2026-11-22T10:00:00Z",
+    "finishedAtUtc": "2026-11-22T10:00:30Z",
+    "coverageState": "Unknown",
+    "failureCode": "AUTH_REQUIRED"
+  }
+}
+```
+
+```json
+{
+  "decision": "reauthorization_required",
+  "guidance": "Renove o acesso no provedor antes de solicitar outra sincronização manual."
+}
+```
+
+```json
+{
+  "syncRunId": "00000000-0000-0000-0000-000000000021"
+}
+```
+
+```http
+HTTP/1.1 429 Too Many Requests
+Retry-After: 120
+Content-Type: application/problem+json
+```
+
+```json
+{
+  "status": 429,
+  "title": "A conexão já recebeu uma solicitação de atualização recentemente.",
+  "code": "SYNC_RUN_MINIMUM_INTERVAL_ACTIVE",
+  "traceId": "synthetic-trace-id",
+  "nextAllowedAtUtc": "2026-11-23T12:05:00Z"
+}
+```
+
+O contrato exige que `GET` de estado/status, filtros e navegação não iniciem execução. Os testes desta mudança cobrem somente as rotas GET existentes; FNR-014 não implementa lista financeira, filtros, navegação ou interface, então a ausência de gatilhos nessas superfícies futuras deve ser verificada nos testes da FNR-015/FNR-022 e da integração FNR-021. Nenhum exemplo acima valida limites reais do provedor, MQ-P02/MQ-P04 ou publicação.
+
+O restore bloqueado, build e os testes focais locais da FNR-014 estão registrados em [AMBIENTE.md](AMBIENTE.md). Esses resultados não representam a suíte integral, integração com Pluggy/RabbitMQ reais, limite externo validado, aceite humano da implementação ou publicação.
 
 O sucesso registra cobertura e horário da importação. A atualização na origem é outro campo; importar dados idênticos não significa coleta mais recente no banco. Dados anteriores continuam legíveis durante a execução. Se o histórico solicitado exceder o disponível, informar a cobertura efetiva em vez de fabricar meses sem registros como gastos iguais a zero.
 

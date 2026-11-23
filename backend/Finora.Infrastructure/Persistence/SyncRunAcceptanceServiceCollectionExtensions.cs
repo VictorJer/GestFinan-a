@@ -11,6 +11,7 @@ public static class SyncRunAcceptanceServiceCollectionExtensions
     {
         services.AddScoped<ISyncRunAcceptanceStore, SyncRunAcceptanceStore>();
         services.AddScoped<ICurrentSyncConnectionReader, SyncRunCurrentConnectionReader>();
+        services.AddScoped<ICurrentConnectionSyncStateReader, CurrentConnectionSyncStateReader>();
         services.AddScoped<ISyncRunStatusReader, SyncRunStatusReader>();
         services.AddScoped<ISyncRunLeaseStore, SyncRunLeaseStore>();
         services.AddScoped<ISyncRunLeaseExecutionGuard, SyncRunLeaseExecutionGuard>();

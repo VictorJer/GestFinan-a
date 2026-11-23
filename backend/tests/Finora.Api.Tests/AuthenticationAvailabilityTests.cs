@@ -26,7 +26,15 @@ public sealed class AuthenticationAvailabilityTests
         using var client = factory.CreateClient();
         using var document = JsonDocument.Parse(await client.GetStringAsync("/openapi/v1.json"));
         CollectionAssert.AreEquivalent(new[]
-            { "/health", "/api/auth/login", "/api/auth/logout", "/api/connections/current/sync", "/api/sync-runs/{syncRunId}" },
+            {
+                "/health",
+                "/api/auth/login",
+                "/api/auth/logout",
+                "/api/connections/current/sync",
+                "/api/connections/current/sync/on-entry",
+                "/api/connections/current/sync-state",
+                "/api/sync-runs/{syncRunId}"
+            },
             document.RootElement.GetProperty("paths").EnumerateObject().Select(property => property.Name).ToArray());
         var syncParameters = document.RootElement.GetProperty("paths")
             .GetProperty("/api/connections/current/sync").GetProperty("post").GetProperty("parameters");

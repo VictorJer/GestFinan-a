@@ -14,6 +14,7 @@ public sealed class AcceptSyncRunHandler(
     {
         if (request.UserId == Guid.Empty
             || request.ConnectionId == Guid.Empty
+            || request.Mode is not (SyncRunRequestMode.Manual or SyncRunRequestMode.OnEntry)
             || !SyncRunIdempotency.TryHashKey(request.IdempotencyKey, out var keyHash))
         {
             return new SyncRunAcceptanceResult(SyncRunAcceptanceStatus.InvalidRequest);
@@ -32,7 +33,7 @@ public sealed class AcceptSyncRunHandler(
             requestedFrom,
             requestedToExclusive,
             idempotencyKeyHash: keyHash,
-            requestFingerprint: SyncRunIdempotency.CreateRequestFingerprint(request.ConnectionId),
+            requestFingerprint: SyncRunIdempotency.CreateRequestFingerprint(request.ConnectionId, request.Mode),
             nextAttemptAtUtc: createdAtUtc);
 
         // O store relê a chave antes de gravar e a constraint global serializa aceitações concorrentes.

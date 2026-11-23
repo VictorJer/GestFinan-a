@@ -7,9 +7,12 @@ public enum SyncRunAcceptanceStatus
 {
     Accepted,
     Replayed,
+    NotRequired,
+    ReauthorizationRequired,
     ConnectionUnavailable,
     IdempotencyConflict,
     ActiveExecutionConflict,
+    MinimumIntervalActive,
     InvalidRequest
 }
 
@@ -19,7 +22,8 @@ public sealed record SyncRunAcceptanceResult(
     Guid? SyncRunId = null,
     SyncRunState? RunState = null,
     DateOnly? RequestedFrom = null,
-    DateOnly? RequestedToExclusive = null)
+    DateOnly? RequestedToExclusive = null,
+    DateTimeOffset? NextAllowedAtUtc = null)
 {
     // Um replay só é aceito quando a chave identifica a mesma intenção e sua execução persistida.
     public bool IsAccepted => Status is SyncRunAcceptanceStatus.Accepted or SyncRunAcceptanceStatus.Replayed;
@@ -93,11 +97,29 @@ public static class SyncRunIdempotency
         return true;
     }
 
-    // O fingerprint atual cobre a intenção HTTP existente; a janela automática é capturada uma vez no primeiro aceite.
-    public static string CreateRequestFingerprint(Guid connectionId)
+    /// <summary>Preserves the exact v1 fingerprint used by existing manual clients.</summary>
+    public static string CreateRequestFingerprint(Guid connectionId) =>
+        CreateRequestFingerprint(connectionId, SyncRunRequestMode.Manual);
+
+    /// <summary>Creates a mode-specific fingerprint so one idempotency key cannot change request intent.</summary>
+    public static string CreateRequestFingerprint(Guid connectionId, SyncRunRequestMode mode)
     {
-        var canonicalIntent = $"sync-execution-request:v1\nconnectionId={connectionId:D}";
+        // A forma manual permanece byte a byte igual à v1 já persistida; entrada recebe namespace próprio.
+        var canonicalIntent = mode switch
+        {
+            SyncRunRequestMode.Manual => $"sync-execution-request:v1\nconnectionId={connectionId:D}",
+            SyncRunRequestMode.OnEntry => $"sync-execution-on-entry-request:v1\nconnectionId={connectionId:D}",
+            _ => throw new ArgumentOutOfRangeException(nameof(mode))
+        };
+
         return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
             System.Text.Encoding.ASCII.GetBytes(canonicalIntent)));
     }
+
+    // O fingerprint de entrada identifica a política sem adicionar coluna ou alterar registros manuais históricos.
+    public static bool IsOnEntryRequest(Guid connectionId, string? requestFingerprint) =>
+        string.Equals(
+            requestFingerprint,
+            CreateRequestFingerprint(connectionId, SyncRunRequestMode.OnEntry),
+            StringComparison.Ordinal);
 }
