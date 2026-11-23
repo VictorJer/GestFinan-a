@@ -9,7 +9,8 @@ services:
       POSTGRES_USER: ${POSTGRES_TEST_USER:?Defina o usuário local de ensaio}
       POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:?Defina a senha local fora do Git}
     ports:
-      - "127.0.0.1:${POSTGRES_TEST_PORT:-55443}:5432"
+      # Usa porta fora da faixa TCP excluída no Windows e mantém publicação no loopback.
+      - "127.0.0.1:${POSTGRES_TEST_PORT:-55461}:5432"
     tmpfs:
       - /var/lib/postgresql:rw,size=536870912
     healthcheck:
