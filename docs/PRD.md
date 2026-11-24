@@ -345,6 +345,7 @@ O parágrafo anterior preserva o registro da revisão 0.2/FNR-001, que não apro
 
 - Conversa de definição do escopo e aprovação relatada pelo aluno.
 - Protótipo Finora e documento “Finora — proposta e roteiro”, entregues nesta conversa.
+- [DESING.md](DESING.md) registra a aparência e as interações do protótipo como referência visual para o frontend; a adaptação ao MVP segue os requisitos e limites aprovados deste PRD, especialmente RF04–RF07 e §8. O HTML original ainda não foi localizado no repositório; esta referência não aprova novos comportamentos nem altera os critérios de aceite.
 - Documentação de uso pessoal do provedor: https://docs.pluggy.ai/en/docs/guides/meu-pluggy-personal-use
 - Autenticação: https://docs.pluggy.ai/en/reference/authentication
 - Cobertura de instituições: https://docs.pluggy.ai/en/docs/open-finance/institutions-coverage
