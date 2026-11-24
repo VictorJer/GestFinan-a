@@ -32,6 +32,7 @@ public sealed class AuthenticationAvailabilityTests
                 "/api/auth/logout",
                 "/api/cards",
                 "/api/transactions",
+                "/api/dashboard",
                 "/api/transactions/{id}/annotation",
                 "/api/categories",
                 "/api/connections/current/sync",
@@ -108,6 +109,25 @@ public sealed class AuthenticationAvailabilityTests
             transactionResponseSchema.GetProperty("properties").EnumerateObject()
                 .Select(property => property.Name)
                 .ToArray());
+        // O dashboard documenta os mesmos filtros sem paginação e somente propriedades não monetárias.
+        var dashboard = document.RootElement.GetProperty("paths").GetProperty("/api/dashboard").GetProperty("get");
+        CollectionAssert.AreEquivalent(new[] { "200", "400", "401", "404", "409", "429", "500", "503" },
+            dashboard.GetProperty("responses").EnumerateObject().Select(property => property.Name).ToArray());
+        CollectionAssert.AreEquivalent(
+            new[] { "cardId", "categoryId", "situation", "from", "toExclusive", "search" },
+            dashboard.GetProperty("parameters").EnumerateArray()
+                .Select(parameter => parameter.GetProperty("name").GetString()!)
+                .ToArray());
+        var dashboardSchema = ResolveSchema(document.RootElement,
+            dashboard.GetProperty("responses").GetProperty("200")
+                .GetProperty("content").GetProperty("application/json").GetProperty("schema"));
+        CollectionAssert.AreEquivalent(
+            new[] { "filteredCount", "countsByNature", "countsBySituation", "coverage", "dateBasis" },
+            dashboardSchema.GetProperty("properties").EnumerateObject()
+                .Select(property => property.Name).ToArray());
+        Assert.IsFalse(dashboardSchema.GetProperty("properties").EnumerateObject()
+            .Any(property => property.Name.Contains("amount", StringComparison.OrdinalIgnoreCase)));
+        StringAssert.Contains(dashboard.GetProperty("description").GetString()!, "TransactionDate");
         var annotationPatch = document.RootElement.GetProperty("paths")
             .GetProperty("/api/transactions/{id}/annotation").GetProperty("patch");
         CollectionAssert.AreEquivalent(new[] { "200", "400", "401", "404", "429", "500", "503" },

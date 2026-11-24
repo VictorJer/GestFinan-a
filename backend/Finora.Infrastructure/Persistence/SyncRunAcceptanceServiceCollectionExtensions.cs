@@ -15,6 +15,8 @@ public static class SyncRunAcceptanceServiceCollectionExtensions
         services.AddScoped<ICurrentCardsReader, CurrentCardsReader>();
         services.AddScoped<ITransactionCardOwnershipReader, TransactionCardOwnershipReader>();
         services.AddScoped<ITransactionMovementReader, TransactionMovementReader>();
+        // A leitura agregada é somente leitura e compartilha o contexto scoped da conexão autenticada.
+        services.AddScoped<ITransactionDashboardReader, TransactionDashboardReader>();
         // A edição usa o mesmo contexto scoped e mantém autorização, lock e escrita numa transação curta.
         services.AddScoped<ITransactionAnnotationStore, TransactionAnnotationStore>();
         // O catálogo pessoal compartilha apenas o contexto scoped, sem exigir conexão financeira ou provedor.

@@ -11,7 +11,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Finora.Api.Controllers;
 
-// Consulta somente movimentos persistidos do titular autenticado, sem acionar sincronização ou provedor.
+// Consulta movimentos e contagens somente do universo persistido do titular autenticado, sem acionar sincronização.
 [ApiController]
 [Authorize]
 [Route("api/transactions")]
@@ -89,6 +89,77 @@ public sealed class TransactionsController(ISender sender, TimeProvider clock) :
             result.Page.FilteredCount,
             MapCoverage(result.Page.Coverage));
         return Ok(response);
+    }
+
+    // O dashboard publica somente contagens allowlisted, cobertura e o eixo temporal técnico.
+    [HttpGet("/api/dashboard")]
+    [EndpointSummary("Consulta contagens descritivas dos movimentos persistidos")]
+    [EndpointDescription("Requer sessão Bearer ativa. Aceita os filtros cardId, categoryId, situation, from, toExclusive e search da lista, sem paginação; o intervalo é aplicado somente a TransactionDate técnica. Retorna filteredCount do universo persistido, contagens não monetárias por natureza e situação, coverage separada e dateBasis TransactionDate. Não retorna valores, agregados monetários, IDs externos nem inicia sincronização. Filtros inválidos: 400; conexão/cartão ausente ou inacessível: 404; conexão ambígua: 409; limite vigente: 429; persistência tipadamente indisponível: 503; falha inesperada: 500.")]
+    [ProducesResponseType<TransactionDashboardResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> GetDashboard(
+        [Description("ID interno de cartão próprio. Cartão inexistente ou de outro titular resulta no mesmo 404.")]
+        [FromQuery(Name = "cardId")] string? cardId,
+        [Description("ID interno de categoria vinculada a anotação própria; categoria ausente ou alheia produz conjunto vazio.")]
+        [FromQuery(Name = "categoryId")] string? categoryId,
+        [Description("Situação interna: Effective, Pending, FutureInstallment ou Unknown; não representa natureza financeira.")]
+        [FromQuery(Name = "situation")] string? situation,
+        [Description("Data yyyy-MM-dd inclusiva de TransactionDate; movimentos sem dia técnico não correspondem ao intervalo.")]
+        [FromQuery(Name = "from")] string? from,
+        [Description("Data yyyy-MM-dd exclusiva de TransactionDate; não representa competência ou ciclo de fatura.")]
+        [FromQuery(Name = "toExclusive")] string? toExclusive,
+        [Description("Substring case-insensitive literal da descrição; %, _ e barra invertida não são curingas; máximo de 200 caracteres.")]
+        [FromQuery(Name = "search")] string? search,
+        CancellationToken cancellationToken)
+    {
+        // A identidade confiável deriva da sessão e não pode ser escolhida por query string.
+        var session = JwtTokenValidation.ReadSessionClaims(User, clock);
+        if (session is null)
+        {
+            Response.Headers.WWWAuthenticate = "Bearer";
+            return ProblemResponse(StatusCodes.Status401Unauthorized);
+        }
+
+        // O mesmo handler valida filtros e resolve conexão/cartão próprios antes da consulta agregada.
+        var result = await sender.Send(
+            new GetTransactionDashboardQuery(
+                session.UserId,
+                cardId,
+                categoryId,
+                situation,
+                from,
+                toExclusive,
+                search),
+            cancellationToken);
+        if (result.Status != TransactionsQueryStatus.Ready || result.Summary is null)
+        {
+            return result.Status switch
+            {
+                TransactionsQueryStatus.InvalidRequest => ProblemResponse(StatusCodes.Status400BadRequest),
+                TransactionsQueryStatus.ConnectionNotFound or TransactionsQueryStatus.CardNotFound =>
+                    ProblemResponse(StatusCodes.Status404NotFound),
+                TransactionsQueryStatus.ConnectionAmbiguous => ProblemResponse(StatusCodes.Status409Conflict),
+                _ => ProblemResponse(StatusCodes.Status500InternalServerError)
+            };
+        }
+
+        // A allowlist impede que entidades, valores ou códigos internos arbitrários alcancem o JSON público.
+        return Ok(new TransactionDashboardResponse(
+            result.Summary.FilteredCount,
+            result.Summary.CountsByNature
+                .Select(value => new TransactionNatureCountResponse(MapNature(value.Nature), value.Count))
+                .ToArray(),
+            result.Summary.CountsBySituation
+                .Select(value => new TransactionSituationCountResponse(MapSituation(value.Situation), value.Count))
+                .ToArray(),
+            MapCoverage(result.Summary.Coverage),
+            "TransactionDate"));
     }
 
     // A rota aceita somente os campos pessoais da anotação e deriva o titular da sessão validada.
@@ -343,6 +414,20 @@ public sealed record TransactionPageResponse(
     int PageSize,
     int FilteredCount,
     TransactionCoverageResponse Coverage);
+
+// A resposta agregada não inclui itens, categorias, IDs ou qualquer campo monetário.
+public sealed record TransactionDashboardResponse(
+    int FilteredCount,
+    IReadOnlyList<TransactionNatureCountResponse> CountsByNature,
+    IReadOnlyList<TransactionSituationCountResponse> CountsBySituation,
+    TransactionCoverageResponse Coverage,
+    string DateBasis);
+
+// O código de natureza é mapeado por allowlist e acompanha somente sua contagem de movimentos.
+public sealed record TransactionNatureCountResponse(string Nature, int Count);
+
+// O código de situação não presume efetivação financeira e é publicado separadamente da natureza.
+public sealed record TransactionSituationCountResponse(string Situation, int Count);
 
 // A cobertura separa o instante de sucesso confirmado das janelas e execuções que podem não ser correlatas.
 public sealed record TransactionCoverageResponse(

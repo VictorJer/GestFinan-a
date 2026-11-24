@@ -1,7 +1,9 @@
 using System.Data.Common;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text.Json;
+using Finora.Api.Authentication;
 using Finora.Application.FinancialData;
 using Finora.Application.Pluggy;
 using Finora.Domain.FinancialData;
@@ -104,6 +106,143 @@ public sealed class PostgreSqlTransactionsApiTests
         Assert.IsFalse(json.Contains("totalByCurrency", StringComparison.OrdinalIgnoreCase));
     }
 
+    // A rota autenticada retorna grupos fixos e cobertura sem expor movimentos, IDs externos ou valores.
+    [TestMethod]
+    public async Task DashboardRouteReturnsAllowlistedCountsWithoutPaginationOrMonetaryFields()
+    {
+        await using var fixture = await PostgreSqlAuthenticationFixture.CreateAsync();
+        var userId = await fixture.SeedUserAsync();
+        await SeedMovementGraphAsync(fixture.Context, userId);
+        var token = await fixture.TokenAsync();
+        using (var scope = fixture.Factory.Services.CreateScope())
+        {
+            Assert.IsFalse(scope.ServiceProvider
+                .GetRequiredService<SyncRunAcceptanceAvailability>().IsAvailable);
+        }
+        Assert.AreEqual(0, await fixture.Context.Set<SyncRun>().CountAsync());
+
+        using var response = await GetDashboardAsync(fixture.Client, token, "?page=1&pageSize=1");
+
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync();
+        using var body = JsonDocument.Parse(json);
+        CollectionAssert.AreEquivalent(
+            new[] { "filteredCount", "countsByNature", "countsBySituation", "coverage", "dateBasis" },
+            body.RootElement.EnumerateObject().Select(property => property.Name).ToArray());
+        Assert.AreEqual(3, body.RootElement.GetProperty("filteredCount").GetInt32());
+        Assert.AreEqual("TransactionDate", body.RootElement.GetProperty("dateBasis").GetString());
+        Assert.AreEqual(6, body.RootElement.GetProperty("countsByNature").GetArrayLength());
+        Assert.AreEqual(4, body.RootElement.GetProperty("countsBySituation").GetArrayLength());
+        Assert.AreEqual(1, ReadCount(body.RootElement, "countsByNature", "nature", "Unknown"));
+        Assert.AreEqual(1, ReadCount(body.RootElement, "countsByNature", "nature", "BillPayment"));
+        Assert.AreEqual(1, ReadCount(body.RootElement, "countsByNature", "nature", "Fee"));
+        Assert.AreEqual(2, ReadCount(body.RootElement, "countsBySituation", "situation", "Effective"));
+        Assert.AreEqual(1, ReadCount(body.RootElement, "countsBySituation", "situation", "Pending"));
+        Assert.AreEqual(JsonValueKind.Null, body.RootElement.GetProperty("coverage")
+            .GetProperty("lastSuccessfulImportAtUtc").ValueKind);
+
+        // O contrato e cada bucket contêm somente código/contagem; a lista continua sendo outra rota.
+        foreach (var bucket in body.RootElement.GetProperty("countsByNature").EnumerateArray()
+                     .Concat(body.RootElement.GetProperty("countsBySituation").EnumerateArray()))
+        {
+            CollectionAssert.AreEquivalent(
+                new[] { "count", bucket.TryGetProperty("nature", out _) ? "nature" : "situation" },
+                bucket.EnumerateObject().Select(property => property.Name).ToArray());
+        }
+        Assert.IsFalse(json.Contains("external-transaction-sentinel", StringComparison.Ordinal));
+        Assert.IsFalse(json.Contains("external-account-sentinel", StringComparison.Ordinal));
+        Assert.IsFalse(json.Contains("PAGAMENTO", StringComparison.Ordinal));
+        Assert.IsFalse(json.Contains("amount", StringComparison.OrdinalIgnoreCase));
+        Assert.IsFalse(json.Contains("currency", StringComparison.OrdinalIgnoreCase));
+        Assert.IsFalse(json.Contains("totalBy", StringComparison.OrdinalIgnoreCase));
+        Assert.IsFalse(json.Contains(userId.ToString("D"), StringComparison.OrdinalIgnoreCase));
+        Assert.AreEqual(0, await fixture.Context.Set<SyncRun>().CountAsync());
+    }
+
+    // Um PATCH confirmado altera somente a categoria; filtros com data técnica nula conciliam lista e dashboard.
+    [TestMethod]
+    public async Task ConfirmedCategoryPatchChangesSummaryAndListUniverseWithoutChangingSourceClassification()
+    {
+        await using var fixture = await PostgreSqlAuthenticationFixture.CreateAsync();
+        var userId = await fixture.SeedUserAsync();
+        await SeedMovementGraphAsync(fixture.Context, userId);
+        var updatedCategoryId = Guid.Parse("e398b39b-25f4-49bf-9555-08cb0fa51be7");
+        fixture.Context.Set<Category>().Add(Category.Create(
+            updatedCategoryId,
+            userId,
+            isSystem: false,
+            "Categoria sintética atualizada",
+            "categoria-sintetica-atualizada"));
+        await fixture.Context.SaveChangesAsync();
+        var token = await fixture.TokenAsync();
+
+        using var patch = await PatchAnnotationAsync(
+            fixture.Client,
+            token,
+            UnknownMovementId,
+            new { categoryId = updatedCategoryId });
+        Assert.AreEqual(HttpStatusCode.OK, patch.StatusCode);
+        using (var patchedBody = JsonDocument.Parse(await patch.Content.ReadAsStringAsync()))
+        {
+            Assert.AreEqual(updatedCategoryId, patchedBody.RootElement.GetProperty("categoryId").GetGuid());
+            CollectionAssert.AreEquivalent(
+                new[] { "categoryId", "note" },
+                patchedBody.RootElement.EnumerateObject().Select(property => property.Name).ToArray());
+        }
+
+        // A categoria antiga deixa o conjunto; a nova inclui a data nula sem intervalo e a exclui com intervalo.
+        var oldCategoryQuery = $"?cardId={BrlCardId:D}&categoryId={OwnerCategoryId:D}";
+        var newCategoryQuery = $"?cardId={BrlCardId:D}&categoryId={updatedCategoryId:D}";
+        var technicalDateRange = "&from=2026-11-01&toExclusive=2026-12-01";
+        using var oldListResponse = await GetTransactionsAsync(fixture.Client, token, oldCategoryQuery);
+        using var newListResponse = await GetTransactionsAsync(fixture.Client, token, newCategoryQuery);
+        using var rangedListResponse = await GetTransactionsAsync(
+            fixture.Client,
+            token,
+            newCategoryQuery + technicalDateRange);
+        Assert.AreEqual(HttpStatusCode.OK, oldListResponse.StatusCode);
+        Assert.AreEqual(HttpStatusCode.OK, newListResponse.StatusCode);
+        Assert.AreEqual(HttpStatusCode.OK, rangedListResponse.StatusCode);
+        var oldListCount = await ReadFilteredCountAsync(oldListResponse);
+        var newListCount = await ReadFilteredCountAsync(newListResponse);
+        var rangedListCount = await ReadFilteredCountAsync(rangedListResponse);
+        Assert.AreEqual(0, oldListCount);
+        Assert.AreEqual(1, newListCount);
+        Assert.AreEqual(0, rangedListCount);
+
+        var dashboardReader = new TransactionDashboardReader(fixture.Context);
+        var noDateDashboard = await dashboardReader.ReadAsync(
+            new ValidatedTransactionDashboardQuery(
+                userId, OwnerConnectionId, BrlCardId, updatedCategoryId, null, null, null, null),
+            CancellationToken.None);
+        var rangedDashboard = await dashboardReader.ReadAsync(
+            new ValidatedTransactionDashboardQuery(
+                userId,
+                OwnerConnectionId,
+                BrlCardId,
+                updatedCategoryId,
+                null,
+                new DateOnly(2026, 11, 1),
+                new DateOnly(2026, 12, 1),
+                null),
+            CancellationToken.None);
+        Assert.AreEqual(newListCount, noDateDashboard.FilteredCount);
+        Assert.AreEqual(rangedListCount, rangedDashboard.FilteredCount);
+
+        // A anotação muda, mas os fatos de origem e interpretações existentes permanecem intactos.
+        var movement = await fixture.Context.Set<FinancialTransaction>()
+            .AsNoTracking()
+            .SingleAsync(value => value.Id == UnknownMovementId);
+        Assert.AreEqual(TransactionNature.Unknown, movement.Nature);
+        Assert.AreEqual(TransactionSituation.Effective, movement.Situation);
+        Assert.IsNull(movement.TransactionDate);
+        Assert.AreEqual("movimento ambíguo sintético", movement.Description);
+        var annotation = await fixture.Context.Set<TransactionAnnotation>()
+            .AsNoTracking()
+            .SingleAsync(value => value.TransactionId == UnknownMovementId);
+        Assert.AreEqual(updatedCategoryId, annotation.CategoryId);
+    }
+
     // A sessão é obrigatória; filtros malformados recebem 400 e o limitador vigente pode rejeitar uma leitura válida.
     [TestMethod]
     public async Task TransactionsRouteRequiresBearerValidatesFiltersAndAppliesProtectedRateLimit()
@@ -127,6 +266,29 @@ public sealed class PostgreSqlTransactionsApiTests
         await AssertProblemAsync(limited, HttpStatusCode.TooManyRequests, "RATE_LIMITED");
     }
 
+    // A rota do dashboard exige challenge Bearer, valida filtros sem eco e respeita o limite protegido vigente.
+    [TestMethod]
+    public async Task DashboardRouteRequiresBearerValidatesFiltersAndAppliesProtectedRateLimit()
+    {
+        await using var fixture = await PostgreSqlAuthenticationFixture.CreateAsync(
+            apiConfiguration: RateLimitConfiguration());
+        var userId = await fixture.SeedUserAsync();
+        await AddConnectionAsync(fixture.Context, userId, OwnerConnectionId, "dashboard-rate-limit-item");
+
+        using var anonymous = await GetDashboardAsync(fixture.Client);
+        await PostgreSqlBearerTests.AssertChallengeAsync(anonymous);
+
+        var token = await fixture.TokenAsync();
+        using var invalid = await GetDashboardAsync(fixture.Client, token, "?from=invalid-date-sentinel");
+        await AssertProblemAsync(invalid, HttpStatusCode.BadRequest, "REQUEST_INVALID_INPUT");
+
+        // Entrada inválida consome a primeira permissão autenticada; a segunda consulta chega ao handler.
+        using var accepted = await GetDashboardAsync(fixture.Client, token);
+        Assert.AreEqual(HttpStatusCode.OK, accepted.StatusCode);
+        using var limited = await GetDashboardAsync(fixture.Client, token);
+        await AssertProblemAsync(limited, HttpStatusCode.TooManyRequests, "RATE_LIMITED");
+    }
+
     // O cartão alheio e o ID inexistente compartilham exatamente o mesmo 404 sem ecoar o ID solicitado.
     [TestMethod]
     public async Task ForeignAndMissingCardFiltersReturnIndistinguishableNotFound()
@@ -143,6 +305,8 @@ public sealed class PostgreSqlTransactionsApiTests
 
         using var foreign = await GetTransactionsAsync(fixture.Client, token, $"?cardId={ForeignCardId:D}");
         using var missing = await GetTransactionsAsync(fixture.Client, token, $"?cardId={MissingCardId:D}");
+        using var dashboardForeign = await GetDashboardAsync(fixture.Client, token, $"?cardId={ForeignCardId:D}");
+        using var dashboardMissing = await GetDashboardAsync(fixture.Client, token, $"?cardId={MissingCardId:D}");
 
         var foreignProblem = await AssertProblemAsync(foreign, HttpStatusCode.NotFound, "RESOURCE_NOT_FOUND");
         var missingProblem = await AssertProblemAsync(missing, HttpStatusCode.NotFound, "RESOURCE_NOT_FOUND");
@@ -152,6 +316,22 @@ public sealed class PostgreSqlTransactionsApiTests
         Assert.IsFalse(foreignJson.Contains(ForeignCardId.ToString("D"), StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(missingJson.Contains(MissingCardId.ToString("D"), StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(foreignJson.Contains("foreign-item-sentinel", StringComparison.Ordinal));
+        var dashboardForeignProblem = await AssertProblemAsync(
+            dashboardForeign,
+            HttpStatusCode.NotFound,
+            "RESOURCE_NOT_FOUND");
+        var dashboardMissingProblem = await AssertProblemAsync(
+            dashboardMissing,
+            HttpStatusCode.NotFound,
+            "RESOURCE_NOT_FOUND");
+        Assert.AreEqual(
+            dashboardForeignProblem.GetProperty("title").GetString(),
+            dashboardMissingProblem.GetProperty("title").GetString());
+        var dashboardForeignJson = await dashboardForeign.Content.ReadAsStringAsync();
+        var dashboardMissingJson = await dashboardMissing.Content.ReadAsStringAsync();
+        Assert.IsFalse(dashboardForeignJson.Contains(ForeignCardId.ToString("D"), StringComparison.OrdinalIgnoreCase));
+        Assert.IsFalse(dashboardMissingJson.Contains(MissingCardId.ToString("D"), StringComparison.OrdinalIgnoreCase));
+        Assert.IsFalse(dashboardForeignJson.Contains("foreign-item-sentinel", StringComparison.Ordinal));
     }
 
     // A ausência de conexão resulta em 404; conexões próprias múltiplas resultam em 409 sem escolha implícita.
@@ -165,6 +345,10 @@ public sealed class PostgreSqlTransactionsApiTests
                 missingFixture.Client,
                 await missingFixture.TokenAsync());
             await AssertProblemAsync(missingResponse, HttpStatusCode.NotFound, "RESOURCE_NOT_FOUND");
+            using var dashboardMissingResponse = await GetDashboardAsync(
+                missingFixture.Client,
+                await missingFixture.TokenAsync());
+            await AssertProblemAsync(dashboardMissingResponse, HttpStatusCode.NotFound, "RESOURCE_NOT_FOUND");
         }
 
         await using (var ambiguousFixture = await PostgreSqlAuthenticationFixture.CreateAsync())
@@ -176,6 +360,10 @@ public sealed class PostgreSqlTransactionsApiTests
                 ambiguousFixture.Client,
                 await ambiguousFixture.TokenAsync());
             await AssertProblemAsync(conflict, HttpStatusCode.Conflict, "RESOURCE_CONFLICT");
+            using var dashboardConflict = await GetDashboardAsync(
+                ambiguousFixture.Client,
+                await ambiguousFixture.TokenAsync());
+            await AssertProblemAsync(dashboardConflict, HttpStatusCode.Conflict, "RESOURCE_CONFLICT");
         }
     }
 
@@ -202,6 +390,42 @@ public sealed class PostgreSqlTransactionsApiTests
         await AssertProblemAsync(unexpected, HttpStatusCode.InternalServerError, "INTERNAL_ERROR");
         Assert.IsFalse(fixture.Factory.Logs.Text.Contains("database-sentinel", StringComparison.Ordinal));
         Assert.IsFalse(fixture.Factory.Logs.Text.Contains("provider-sentinel", StringComparison.Ordinal));
+    }
+
+    // Indisponibilidade tipada e falha inesperada são sanitizadas sem refletir busca, finanças ou mensagens internas.
+    [TestMethod]
+    public async Task DashboardRouteSanitizesTypedUnavailableAndUnexpectedFailures()
+    {
+        var reader = new FaultingDashboardReader();
+        await using var fixture = await PostgreSqlAuthenticationFixture.CreateAsync(services =>
+        {
+            services.RemoveAll<ITransactionDashboardReader>();
+            services.AddSingleton<ITransactionDashboardReader>(reader);
+        });
+        var userId = await fixture.SeedUserAsync();
+        await AddConnectionAsync(fixture.Context, userId, OwnerConnectionId, "dashboard-failure-item");
+        var token = await fixture.TokenAsync();
+
+        reader.Failure = new SyntheticDatabaseUnavailableException();
+        using var unavailable = await GetDashboardAsync(
+            fixture.Client,
+            token,
+            "?search=dashboard-search-sentinel");
+        await AssertProblemAsync(unavailable, HttpStatusCode.ServiceUnavailable, "DEPENDENCY_UNAVAILABLE");
+
+        reader.Failure = new InvalidOperationException("dashboard-provider-message-sentinel");
+        using var unexpected = await GetDashboardAsync(
+            fixture.Client,
+            token,
+            "?search=dashboard-search-sentinel");
+        await AssertProblemAsync(unexpected, HttpStatusCode.InternalServerError, "INTERNAL_ERROR");
+        foreach (var sentinel in new[]
+        {
+            "database-sentinel", "dashboard-provider-message-sentinel", "dashboard-search-sentinel"
+        })
+        {
+            Assert.IsFalse(fixture.Factory.Logs.Text.Contains(sentinel, StringComparison.Ordinal));
+        }
     }
 
     // Gera três movimentos sintéticos com moedas/sinais distintos e uma anotação pessoal permitida na projeção.
@@ -294,6 +518,52 @@ public sealed class PostgreSqlTransactionsApiTests
         return await client.SendAsync(request);
     }
 
+    // A requisição do dashboard mantém filtros em query string e autenticação isolada por chamada.
+    private static async Task<HttpResponseMessage> GetDashboardAsync(
+        HttpClient client,
+        string? token = null,
+        string query = "")
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/dashboard" + query);
+        if (token is not null)
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        }
+
+        return await client.SendAsync(request);
+    }
+
+    // Procura um código allowlisted no eixo escolhido sem depender da ordem serializada dos buckets.
+    private static int ReadCount(JsonElement root, string axis, string codeProperty, string code) =>
+        root.GetProperty(axis).EnumerateArray()
+            .Single(bucket => bucket.GetProperty(codeProperty).GetString() == code)
+            .GetProperty("count")
+            .GetInt32();
+
+    // A chamada PATCH usa a rota autenticada real e mantém o conteúdo JSON sintético no escopo do teste.
+    private static async Task<HttpResponseMessage> PatchAnnotationAsync(
+        HttpClient client,
+        string token,
+        Guid transactionId,
+        object body)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Patch,
+            $"/api/transactions/{transactionId:D}/annotation")
+        {
+            Content = JsonContent.Create(body)
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return await client.SendAsync(request);
+    }
+
+    // A lista expõe uma única contagem total que pode ser comparada diretamente à leitura sem paginação.
+    private static async Task<int> ReadFilteredCountAsync(HttpResponseMessage response)
+    {
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return body.RootElement.GetProperty("filteredCount").GetInt32();
+    }
+
     // A configuração de teste reduz a janela protegida sem alterar os defaults da API.
     private static Dictionary<string, string?> RateLimitConfiguration() => new()
     {
@@ -331,6 +601,22 @@ public sealed class PostgreSqlTransactionsApiTests
                     query.PageSize,
                     0,
                     Array.Empty<TransactionMovementSummary>(),
+                    new TransactionImportCoverageSummary(null, null, null)));
+    }
+
+    // O double permite exercitar a fronteira HTTP sem falsificar um estado de banco bem-sucedido.
+    private sealed class FaultingDashboardReader : ITransactionDashboardReader
+    {
+        public Exception? Failure { get; set; }
+
+        public Task<TransactionMovementDashboardSummary> ReadAsync(
+            ValidatedTransactionDashboardQuery query,
+            CancellationToken cancellationToken) => Failure is { } failure
+                ? Task.FromException<TransactionMovementDashboardSummary>(failure)
+                : Task.FromResult(new TransactionMovementDashboardSummary(
+                    0,
+                    Array.Empty<TransactionNatureCountSummary>(),
+                    Array.Empty<TransactionSituationCountSummary>(),
                     new TransactionImportCoverageSummary(null, null, null)));
     }
 
