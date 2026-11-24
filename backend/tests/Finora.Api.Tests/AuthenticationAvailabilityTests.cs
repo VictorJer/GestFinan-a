@@ -30,6 +30,8 @@ public sealed class AuthenticationAvailabilityTests
                 "/health",
                 "/api/auth/login",
                 "/api/auth/logout",
+                "/api/cards",
+                "/api/transactions",
                 "/api/connections/current/sync",
                 "/api/connections/current/sync/on-entry",
                 "/api/connections/current/sync-state",
@@ -42,6 +44,36 @@ public sealed class AuthenticationAvailabilityTests
             parameter.GetProperty("name").GetString() == "Idempotency-Key");
         Assert.AreEqual("header", idempotencyHeader.GetProperty("in").GetString());
         Assert.IsTrue(idempotencyHeader.GetProperty("required").GetBoolean());
+        var cardsResponses = document.RootElement.GetProperty("paths").GetProperty("/api/cards")
+            .GetProperty("get").GetProperty("responses");
+        CollectionAssert.AreEquivalent(new[] { "200", "400", "401", "404", "409", "429", "500", "503" },
+            cardsResponses.EnumerateObject().Select(property => property.Name).ToArray());
+        // OpenAPI descreve filtros opcionais, erros e formato paginado sem depender de banco configurado.
+        var transactions = document.RootElement.GetProperty("paths").GetProperty("/api/transactions").GetProperty("get");
+        CollectionAssert.AreEquivalent(new[] { "200", "400", "401", "404", "409", "429", "500", "503" },
+            transactions.GetProperty("responses").EnumerateObject().Select(property => property.Name).ToArray());
+        CollectionAssert.AreEquivalent(
+            new[] { "cardId", "categoryId", "situation", "from", "toExclusive", "search", "page", "pageSize" },
+            transactions.GetProperty("parameters").EnumerateArray()
+                .Select(parameter => parameter.GetProperty("name").GetString()!)
+                .ToArray());
+        foreach (var parameter in transactions.GetProperty("parameters").EnumerateArray())
+        {
+            Assert.AreEqual("query", parameter.GetProperty("in").GetString());
+            Assert.IsFalse(parameter.TryGetProperty("required", out var required) && required.GetBoolean());
+            Assert.IsFalse(string.IsNullOrWhiteSpace(parameter.GetProperty("description").GetString()));
+        }
+        StringAssert.Contains(transactions.GetProperty("description").GetString()!, "TransactionDate");
+        StringAssert.Contains(transactions.GetProperty("description").GetString()!, "fim exclusivo");
+        var transactionResponseSchema = ResolveSchema(
+            document.RootElement,
+            transactions.GetProperty("responses").GetProperty("200")
+                .GetProperty("content").GetProperty("application/json").GetProperty("schema"));
+        CollectionAssert.AreEquivalent(
+            new[] { "items", "page", "pageSize", "filteredCount", "coverage" },
+            transactionResponseSchema.GetProperty("properties").EnumerateObject()
+                .Select(property => property.Name)
+                .ToArray());
         var syncRunStatus = document.RootElement.GetProperty("paths")
             .GetProperty("/api/sync-runs/{syncRunId}").GetProperty("get");
         CollectionAssert.AreEquivalent(new[] { "200", "401", "404" },
@@ -58,6 +90,22 @@ public sealed class AuthenticationAvailabilityTests
             using var response = await client.PostAsJsonAsync(path, new { });
             Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
         }
+    }
+
+    // Resolve referências locais para validar que o OpenAPI descreve o formato de página, não só o status HTTP.
+    private static JsonElement ResolveSchema(JsonElement document, JsonElement schema)
+    {
+        while (schema.TryGetProperty("$ref", out var reference))
+        {
+            foreach (var part in reference.GetString()![2..].Split('/'))
+            {
+                document = document.GetProperty(part);
+            }
+
+            schema = document;
+        }
+
+        return schema;
     }
 
     // A política fallback protege rotas HTTP sem atributo explícito e mantém os endpoints anônimos existentes.
@@ -127,11 +175,16 @@ public sealed class AuthenticationAvailabilityTests
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "invalid-token-sentinel");
         using var health = await client.GetAsync("/health");
         Assert.AreEqual(HttpStatusCode.OK, health.StatusCode);
-        // A composição válida registra o caso de uso e seu adapter, mas resolver ambos não abre o banco.
+        // A composição válida registra handlers de leitura e aceitação; resolvê-los não abre o banco.
         using var scope = factory.Services.CreateScope();
         var services = scope.ServiceProvider;
         Assert.IsNotNull(services.GetRequiredService<IRequestHandler<AcceptSyncRunCommand, SyncRunAcceptanceResult>>());
         Assert.IsNotNull(services.GetRequiredService<ISyncRunAcceptanceStore>());
+        Assert.IsNotNull(services.GetRequiredService<IRequestHandler<GetCurrentCardsQuery, CurrentCardsQueryResult>>());
+        Assert.IsNotNull(services.GetRequiredService<ICurrentCardsReader>());
+        Assert.IsNotNull(services.GetRequiredService<IRequestHandler<GetTransactionsQuery, GetTransactionsQueryResult>>());
+        Assert.IsNotNull(services.GetRequiredService<ITransactionCardOwnershipReader>());
+        Assert.IsNotNull(services.GetRequiredService<ITransactionMovementReader>());
         Assert.AreEqual(System.Data.ConnectionState.Closed, services.GetRequiredService<FinoraDbContext>().Database.GetDbConnection().State);
         using var login = await client.PostAsJsonAsync("/api/auth/login", new { email = "email-sentinel@example.invalid", password = "password-sentinel" });
         await AssertProblemAsync(login, HttpStatusCode.ServiceUnavailable);
