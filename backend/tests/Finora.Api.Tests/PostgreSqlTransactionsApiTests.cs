@@ -92,6 +92,9 @@ public sealed class PostgreSqlTransactionsApiTests
         Assert.AreEqual("Fee", pending.GetProperty("nature").GetString());
         Assert.AreEqual("Pending", pending.GetProperty("situation").GetString());
         Assert.AreEqual("NOT_EFFECTIVE", pending.GetProperty("situationReason").GetString());
+        // Ausência de anotação segue os campos nulos existentes; listar opções não inventa uma associação.
+        Assert.AreEqual(JsonValueKind.Null, pending.GetProperty("categoryId").ValueKind);
+        Assert.AreEqual(JsonValueKind.Null, pending.GetProperty("note").ValueKind);
 
         Assert.IsFalse(json.Contains("external-transaction-sentinel", StringComparison.Ordinal));
         Assert.IsFalse(json.Contains("external-account-sentinel", StringComparison.Ordinal));

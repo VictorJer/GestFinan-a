@@ -32,7 +32,8 @@ public sealed class PostgreSqlSyncRunExecutionMigrationTests
                 PostgreSqlAuthenticationSessionTests.MigrationId,
                 PreviousMigrationId,
                 ExecutionMigrationId,
-                RecoveryMigrationId
+                RecoveryMigrationId,
+                "20261124043312_Fnr016InitialCategories" // A migração de dados FNR-016 estende a sequência atual.
             },
             (await fixture.Context.Database.GetAppliedMigrationsAsync()).ToArray());
         Assert.AreEqual(0, await fixture.Context.Set<SyncRunLease>().CountAsync());

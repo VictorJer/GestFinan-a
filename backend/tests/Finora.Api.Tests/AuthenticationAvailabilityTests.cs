@@ -32,6 +32,7 @@ public sealed class AuthenticationAvailabilityTests
                 "/api/auth/logout",
                 "/api/cards",
                 "/api/transactions",
+                "/api/categories",
                 "/api/connections/current/sync",
                 "/api/connections/current/sync/on-entry",
                 "/api/connections/current/sync-state",
@@ -46,6 +47,38 @@ public sealed class AuthenticationAvailabilityTests
         Assert.IsTrue(idempotencyHeader.GetProperty("required").GetBoolean());
         var cardsResponses = document.RootElement.GetProperty("paths").GetProperty("/api/cards")
             .GetProperty("get").GetProperty("responses");
+        // O catálogo só publica listagem/criação e explicita respostas sanitizadas no documento diagnóstico.
+        var categories = document.RootElement.GetProperty("paths").GetProperty("/api/categories");
+        CollectionAssert.AreEquivalent(new[] { "200", "401", "429", "500", "503" },
+            categories.GetProperty("get").GetProperty("responses").EnumerateObject()
+                .Select(property => property.Name).ToArray());
+        CollectionAssert.AreEquivalent(new[] { "201", "400", "401", "409", "429", "500", "503" },
+            categories.GetProperty("post").GetProperty("responses").EnumerateObject()
+                .Select(property => property.Name).ToArray());
+        var getOperation = categories.GetProperty("get");
+        StringAssert.Contains(getOperation.GetProperty("description").GetString()!, "virtual");
+        var getSchema = getOperation.GetProperty("responses").GetProperty("200")
+            .GetProperty("content").GetProperty("application/json").GetProperty("schema");
+        Assert.AreEqual("array", getSchema.GetProperty("type").GetString());
+        var categoryItem = ResolveSchema(document.RootElement, getSchema.GetProperty("items"));
+        CollectionAssert.AreEquivalent(new[] { "id", "name", "kind" },
+            categoryItem.GetProperty("properties").EnumerateObject().Select(property => property.Name).ToArray());
+        var createdCategory = ResolveSchema(document.RootElement,
+            categories.GetProperty("post").GetProperty("responses").GetProperty("201")
+                .GetProperty("content").GetProperty("application/json").GetProperty("schema"));
+        CollectionAssert.AreEquivalent(new[] { "id", "name", "kind" },
+            createdCategory.GetProperty("properties").EnumerateObject().Select(property => property.Name).ToArray());
+        var requestCategory = ResolveSchema(document.RootElement,
+            categories.GetProperty("post").GetProperty("requestBody")
+                .GetProperty("content").GetProperty("application/json").GetProperty("schema"));
+        // O body nullable do Controller pode ser emitido como oneOf(null, DTO); inspeciona o DTO não nulo.
+        var requestPayloadSchema = requestCategory.TryGetProperty("oneOf", out var requestVariants)
+            ? ResolveSchema(document.RootElement, requestVariants.EnumerateArray()
+                .Single(variant => variant.TryGetProperty("$ref", out _)))
+            : requestCategory;
+        CollectionAssert.AreEqual(new[] { "name" },
+            requestPayloadSchema.GetProperty("properties").EnumerateObject()
+                .Select(property => property.Name).ToArray());
         CollectionAssert.AreEquivalent(new[] { "200", "400", "401", "404", "409", "429", "500", "503" },
             cardsResponses.EnumerateObject().Select(property => property.Name).ToArray());
         // OpenAPI descreve filtros opcionais, erros e formato paginado sem depender de banco configurado.

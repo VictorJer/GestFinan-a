@@ -26,6 +26,7 @@ public sealed class ExplorationTests
             new[]
             {
                 "/health", "/api/auth/login", "/api/auth/logout", "/api/cards", "/api/transactions",
+                "/api/categories", // O catálogo autenticado FNR-016 agora integra a superfície OpenAPI.
                 "/api/connections/current/sync", "/api/connections/current/sync/on-entry",
                 "/api/connections/current/sync-state", "/api/sync-runs/{syncRunId}"
             },

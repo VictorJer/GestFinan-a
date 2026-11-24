@@ -15,6 +15,8 @@ public static class SyncRunAcceptanceServiceCollectionExtensions
         services.AddScoped<ICurrentCardsReader, CurrentCardsReader>();
         services.AddScoped<ITransactionCardOwnershipReader, TransactionCardOwnershipReader>();
         services.AddScoped<ITransactionMovementReader, TransactionMovementReader>();
+        // O catálogo pessoal compartilha apenas o contexto scoped, sem exigir conexão financeira ou provedor.
+        services.AddScoped<ICategoryCatalogStore, CategoryCatalogStore>();
         services.AddScoped<ISyncRunStatusReader, SyncRunStatusReader>();
         services.AddScoped<ISyncRunLeaseStore, SyncRunLeaseStore>();
         services.AddScoped<ISyncRunLeaseExecutionGuard, SyncRunLeaseExecutionGuard>();
