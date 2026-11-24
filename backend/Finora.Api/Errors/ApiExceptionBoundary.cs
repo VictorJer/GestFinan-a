@@ -22,7 +22,8 @@ internal sealed class ApiExceptionBoundary(RequestDelegate next, ILogger<ApiExce
         catch (Exception exception)
         {
             var acceptanceIndeterminate = exception is SyncRunAcceptanceIndeterminateException;
-            var unavailable = exception is AuthenticationUnavailableException or DbException or DbUpdateException;
+            var unavailable = exception is AuthenticationUnavailableException or CategoryCatalogUnavailableException
+                or DbException or DbUpdateException;
             var status = unavailable || acceptanceIndeterminate
                 ? StatusCodes.Status503ServiceUnavailable
                 : StatusCodes.Status500InternalServerError;
