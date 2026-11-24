@@ -58,9 +58,90 @@ dotnet test --solution backend/Finora.slnx --no-build --filter 'FullyQualifiedNa
 dotnet run --project backend/Finora.Api --launch-profile http --no-build --no-restore
 ```
 
-Acesse `http://127.0.0.1:5080/health`: HTTP 200 e `{"status":"ok"}`. É apenas **liveness**: não valida banco, Pluggy, autenticação ou dados reais. Não existem endpoints financeiros nesta base.
+Acesse `http://127.0.0.1:5080/health`: HTTP 200 e `{"status":"ok"}`. É apenas **liveness**: não valida banco, Pluggy, autenticação ou dados reais. A API também possui rotas protegidas de conexão/sincronização/status e, nesta branch, `GET /api/cards` e `GET /api/transactions`.
 
-Para testar pelo navegador, abra `http://127.0.0.1:5080/swagger`, expanda `GET /health`, clique em **Try it out** e **Execute**. Confira código 200 e corpo `{"status":"ok"}`. O documento fica em `/openapi/v1.json`; documento, UI e assets locais estão disponíveis **somente em Development** (404 em Production/Staging). O documento descreve somente health e login; não há rota financeira ou cadastro público. Encerre com `Ctrl+C`.
+Para testar pelo navegador, abra `http://127.0.0.1:5080/swagger`, expanda `GET /health`, clique em **Try it out** e **Execute**. Confira código 200 e corpo `{"status":"ok"}`. O documento fica em `/openapi/v1.json`; documento, UI e assets locais estão disponíveis **somente em Development** (404 em Production/Staging). O OpenAPI descreve as rotas implementadas, incluindo consultas de cartões e movimentos; não há cadastro público. Encerre com `Ctrl+C`.
+
+### Consulta de cartões persistidos (FNR-015, estado local)
+
+`GET /api/cards` exige Bearer válido e sessão ativa. Com uma conexão própria única, responde `200` com uma lista JSON de cartões persistidos; cada item contém somente `id` interno, `name`, `lastFour` e `currencyCode`. Nome e final permanecem `null` quando não foram fornecidos na origem. A lista `[]` significa apenas que nenhum cartão está persistido para aquela conexão; não afirma ausência de cartões no provedor. A implementação local desta branch ainda não foi aceita ou integrada. O contrato normativo está em [TDD §11](docs/TDD.md).
+
+Exemplo inteiramente sintético, inclusive os identificadores e dados de apresentação:
+
+```json
+[
+  {
+    "id": "c6d392d9-ff26-4e26-8c39-5e44620a7409",
+    "name": "Cartão principal",
+    "lastFour": "1234",
+    "currencyCode": "BRL"
+  },
+  {
+    "id": "4f930625-d9cb-4777-9871-287f50be3b21",
+    "name": null,
+    "lastFour": null,
+    "currencyCode": "USD"
+  }
+]
+```
+
+Falhas usam `application/problem+json` sanitizado. `401` inclui challenge Bearer; `404 RESOURCE_NOT_FOUND` cobre ausência de conexão própria; `409 RESOURCE_CONFLICT` indica mais de uma conexão própria, sem seleção arbitrária; `429 RATE_LIMITED` aplica o limitador já configurado. A consulta não inicia sincronização e não chama broker ou provedor. Ausência/ambiguidade e os demais erros HTTP estão detalhados em TDD §11 e no OpenAPI.
+
+### Consulta paginada de movimentos (FNR-015, estado local)
+
+`GET /api/transactions` exige Bearer válido e sessão ativa. A API deriva o titular da sessão; não aceita `UserId` do cliente. Os parâmetros opcionais combinam-se por interseção:
+
+| Parâmetro | Contrato |
+|---|---|
+| `cardId` | ID interno de cartão próprio. ID ausente ou de outro titular retorna o mesmo `404 RESOURCE_NOT_FOUND`. |
+| `categoryId` | ID interno de categoria vinculada a anotação própria; categoria inexistente/alheia não revela existência e não seleciona movimentos. |
+| `situation` | `Effective`, `Pending`, `FutureInstallment` ou `Unknown`; situação não substitui natureza. |
+| `from` | Data `yyyy-MM-dd` inclusiva da `TransactionDate` técnica; pode ser usada sem `toExclusive`. |
+| `toExclusive` | Data `yyyy-MM-dd` exclusiva da `TransactionDate` técnica; pode ser usada sem `from`. |
+| `search` | Substring case-insensitive literal da descrição; `%`, `_` e `\\` não são curingas; máximo de 200 caracteres. |
+| `page` | Página positiva; padrão `1`. |
+| `pageSize` | De `1` a `100`; padrão `25`. |
+
+O intervalo temporal usa somente `TransactionDate`, com início inclusivo e fim exclusivo; não representa competência nem ciclo de fatura. Sem filtro de data, movimentos cuja data técnica seja nula continuam visíveis, com `originalDate` preservada e `transactionDate`/motivo apresentados sem inventar data. A ordenação é por `transactionDate` decrescente, nulos por último e ID interno decrescente como desempate. `filteredCount` conta todo o conjunto filtrado antes de paginar e não é quantidade monetária nem gasto. `coverage` é separado dessa contagem: `lastSuccessfulImportAtUtc` mostra o último sucesso persistido, `lastSuccessfulWindow` só existe quando uma `SyncRun` de sucesso da mesma conexão termina exatamente naquele instante, e `latestExecution` mostra a execução mais recente independentemente do sucesso anterior. Códigos de falha são allowlisted; estado e cobertura são strings estáveis.
+
+Exemplo inteiramente sintético de uma página com data técnica indeterminável:
+
+```json
+{
+  "items": [
+    {
+      "id": "5b76333c-6d8e-4d9e-aac6-3a6096f97ab1",
+      "cardId": "2a990192-cb59-43eb-8520-cfef6a0e3e40",
+      "description": "movimento sintético não classificado",
+      "amount": 17.25,
+      "currencyCode": "BRL",
+      "originalDate": "2026-99-99T00:00:00Z",
+      "transactionDate": null,
+      "dateReason": "INVALID_DATE",
+      "nature": "Unknown",
+      "natureReason": "UNKNOWN_OPERATION_TYPE",
+      "situation": "Effective",
+      "situationReason": null,
+      "installmentNumber": null,
+      "totalInstallments": null,
+      "categoryId": null,
+      "note": null
+    }
+  ],
+  "page": 1,
+  "pageSize": 25,
+  "filteredCount": 1,
+  "coverage": {
+    "lastSuccessfulImportAtUtc": null,
+    "lastSuccessfulWindow": null,
+    "latestExecution": null
+  }
+}
+```
+
+Os valores são individuais por movimento; natureza, situação, cobertura e motivos são strings allowlisted, não enums numéricos. `CompleteForRequestedWindow` significa conclusão somente daquela janela solicitada, não histórico bancário integral ou classificação completa. Sucesso legado sem `SyncRun` correlata mantém a janela ausente; falha ou execução pendente posterior não apaga o sucesso anterior. Não há soma, total por moeda, média ou qualquer agregado monetário; `filteredCount: 0` não significa gasto zero. Falhas usam `application/problem+json` sanitizado: `400 REQUEST_INVALID_INPUT`, `401 AUTH_INVALID_CREDENTIALS` com challenge Bearer, `404 RESOURCE_NOT_FOUND`, `409 RESOURCE_CONFLICT` para conexão própria ambígua, `429 RATE_LIMITED`, `503 DEPENDENCY_UNAVAILABLE` somente para indisponibilidade tipada de persistência e `500 INTERNAL_ERROR` inesperado. A leitura consulta somente o histórico persistido e não inicia sincronização, broker ou provedor. Esta implementação local da branch ainda não foi aceita ou integrada; o contrato normativo está em [TDD §11](docs/TDD.md), e o OpenAPI expõe parâmetros, descrições e respostas.
+
+As consultas `GET` acima leem somente o histórico persistido no PostgreSQL: filtros e troca de página não acionam Pluggy nem broker, não criam `SyncRun` e continuam servindo os dados já gravados quando o broker está indisponível (se API e banco estiverem disponíveis). A atualização é separada e explícita: `POST /api/connections/current/sync` solicita execução manual; `POST /api/connections/current/sync/on-entry` aplica a política de atualização ao entrar. Uma resposta `202` confirma a aceitação persistente da execução/outbox, não que a coleta terminou. `coverage` descreve o último sucesso e a janela correlata comprovada; mesmo `CompleteForRequestedWindow` vale só para aquela janela, não para todo o histórico do provedor. Assim, a leitura continua disponível durante indisponibilidade externa, mas não promete cobertura nova ou integral.
 
 ### Login e sessões locais (FNR-009)
 
