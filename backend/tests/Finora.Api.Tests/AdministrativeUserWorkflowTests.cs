@@ -550,23 +550,17 @@ public sealed class AdministrativeUserWorkflowTests
         return services.BuildServiceProvider(validateScopes: true);
     }
 
-    // A fábrica fornece connection string sintética e preserva a mesma supressão de logs do host administrativo.
+    // A fábrica desativa defaults antes do builder e fornece configuração sintética sem ler ambiente ou appsettings.
     private static HostApplicationBuilder CreateConfiguredBuilder()
     {
-        var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
-        {
-            ApplicationName = "Finora.Api",
-            ContentRootPath = AppContext.BaseDirectory,
-            EnvironmentName = Environments.Production,
-            Args = Array.Empty<string>()
-        });
-        builder.Configuration.Sources.Clear();
+        var builder = AdministrativeUserCommand.CreateHostBuilder(
+            Environments.Production,
+            disableDefaults: true);
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["ConnectionStrings:Finora"] =
                 "Host=127.0.0.1;Database=finora_integration_test;Username=connection-private-sentinel"
         });
-        builder.Logging.ClearProviders();
         return builder;
     }
 

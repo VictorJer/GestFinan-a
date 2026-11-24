@@ -17,11 +17,17 @@ internal static class AdministrativeUserCommand
     private const string InvalidConfigurationMessage = "User admin: failure=invalid_configuration";
     private const string OperationalFailureMessage = "User admin: failure=operational";
 
-    // Registra os handlers Application no mesmo host isolado que contém os serviços scoped de Identity.
+    // Registra somente os handlers administrativos no host isolado que contém os serviços scoped de Identity.
     internal static HostApplicationBuilder AddAdministrativeUserHandlers(HostApplicationBuilder builder)
     {
         builder.Services.AddMediatR(configuration =>
-            configuration.RegisterServicesFromAssembly(typeof(CheckAdministrativeUserPreflightQuery).Assembly));
+        {
+            configuration.RegisterServicesFromAssembly(typeof(CheckAdministrativeUserPreflightQuery).Assembly);
+            // A allowlist impede que a CLI valide dependências de autenticação HTTP, Pluggy e execução financeira.
+            configuration.TypeEvaluator = type => type == typeof(CheckAdministrativeUserPreflightHandler)
+                || type == typeof(CreateAdministrativeUserHandler)
+                || type == typeof(ResetAdministrativeUserPasswordHandler);
+        });
         return builder;
     }
 
@@ -37,8 +43,10 @@ internal static class AdministrativeUserCommand
     internal static string ResolveEnvironmentName(string? dotnetEnvironment) =>
         string.IsNullOrWhiteSpace(dotnetEnvironment) ? Environments.Production : dotnetEnvironment;
 
-    // Cria configuração da aplicação sem encaminhar os argumentos do comando como providers de configuração.
-    internal static HostApplicationBuilder CreateHostBuilder(string? environmentName = null)
+    // Cria a configuração operacional normalmente; a opção de defaults desativados só isola testes antes de ler fontes externas.
+    internal static HostApplicationBuilder CreateHostBuilder(
+        string? environmentName = null,
+        bool disableDefaults = false)
     {
         var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
         {
@@ -46,7 +54,8 @@ internal static class AdministrativeUserCommand
             ContentRootPath = AppContext.BaseDirectory,
             EnvironmentName = ResolveEnvironmentName(
                 environmentName ?? Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")),
-            Args = Array.Empty<string>()
+            Args = Array.Empty<string>(),
+            DisableDefaults = disableDefaults
         });
 
         // A saída administrativa é allowlist; providers do host/EF não podem registrar dados sensíveis.
