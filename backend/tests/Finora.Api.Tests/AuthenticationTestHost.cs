@@ -25,7 +25,7 @@ internal sealed class AuthenticationApiFactory : WebApplicationFactory<Program>
     private readonly Action<IServiceCollection>? _configure;
     internal AuthenticationLogCapture Logs { get; } = new();
 
-    // Valores nulos explícitos impedem herdar User Secrets/variáveis operacionais da máquina de desenvolvimento.
+    // Valores ausentes/nulos viram strings vazias para sobrescrever User Secrets e variáveis da máquina.
     internal AuthenticationApiFactory(Dictionary<string, string?>? configuration = null, TimeProvider? clock = null,
         Action<IServiceCollection>? configure = null)
     {
@@ -37,7 +37,10 @@ internal sealed class AuthenticationApiFactory : WebApplicationFactory<Program>
                      "Messaging:RabbitMq:Username", "Messaging:RabbitMq:Password", "Messaging:RabbitMq:UseTls"
                  })
         {
-            _configuration.TryAdd(key, null);
+            if (!_configuration.TryGetValue(key, out var value) || value is null)
+            {
+                _configuration[key] = string.Empty;
+            }
         }
         _clock = clock ?? TimeProvider.System;
         _configure = configure;
@@ -66,17 +69,21 @@ internal sealed class AuthenticationApiFactory : WebApplicationFactory<Program>
     // Minimal hosting lê o snapshot antes de ConfigureServices; a fixture usa ambiente transitório, nunca argumentos com segredos.
     protected override IHost CreateHost(IHostBuilder builder)
     {
-        var previous = new Dictionary<string, string?>();
-        foreach (var entry in _configuration)
+        lock (TestHostEnvironment.ConfigurationLock)
         {
-            var variable = entry.Key.Replace(":", "__", StringComparison.Ordinal);
-            previous[variable] = Environment.GetEnvironmentVariable(variable);
-            Environment.SetEnvironmentVariable(variable, entry.Value);
-        }
-        try { return base.CreateHost(builder); }
-        finally
-        {
-            foreach (var entry in previous) { Environment.SetEnvironmentVariable(entry.Key, entry.Value); }
+            var previous = new Dictionary<string, string?>();
+            foreach (var entry in _configuration)
+            {
+                var variable = entry.Key.Replace(":", "__", StringComparison.Ordinal);
+                previous[variable] = Environment.GetEnvironmentVariable(variable);
+                Environment.SetEnvironmentVariable(variable, entry.Value);
+            }
+
+            try { return base.CreateHost(builder); }
+            finally
+            {
+                foreach (var entry in previous) { Environment.SetEnvironmentVariable(entry.Key, entry.Value); }
+            }
         }
     }
 }
@@ -108,9 +115,8 @@ public sealed class AuthenticationProbeController(
     }
 }
 
-// Prova a política fallback em um endpoint de teste sem [Authorize], fora do assembly de produção.
+// O endpoint sem [Authorize] fica visível no OpenAPI apenas porque o host de testes adiciona este assembly.
 [ApiController]
-[ApiExplorerSettings(IgnoreApi = true)]
 [Route("_tests/fallback-authentication-probe")]
 public sealed class FallbackAuthenticationProbeController(
     AuthenticationProbeCounter counter,

@@ -180,14 +180,27 @@ public sealed class AuthenticationAvailabilityTests
         await using var factory = new AuthenticationApiFactory(Configuration());
         using var client = factory.CreateClient();
 
+        // A operação de prova é documentada pela fallback; health continua anônimo no mesmo host.
+        using var openApi = await client.GetAsync("/openapi/v1.json");
+        Assert.AreEqual(HttpStatusCode.OK, openApi.StatusCode);
+        using var document = JsonDocument.Parse(await openApi.Content.ReadAsStringAsync());
+        var paths = document.RootElement.GetProperty("paths");
+        var fallbackOperation = paths.GetProperty("/_tests/fallback-authentication-probe").GetProperty("get");
+        var fallbackSecurity = fallbackOperation.GetProperty("security");
+        Assert.AreEqual(1, fallbackSecurity.GetArrayLength());
+        var fallbackRequirement = fallbackSecurity[0].EnumerateObject().Single();
+        Assert.AreEqual("Bearer", fallbackRequirement.Name);
+        Assert.AreEqual(0, fallbackRequirement.Value.GetArrayLength());
+        Assert.IsTrue(document.RootElement.GetProperty("components").GetProperty("securitySchemes")
+            .TryGetProperty(fallbackRequirement.Name, out _));
+        Assert.IsFalse(paths.GetProperty("/health").GetProperty("get").TryGetProperty("security", out _));
+
         using var probe = await client.GetAsync("/_tests/fallback-authentication-probe");
         await PostgreSqlBearerTests.AssertChallengeAsync(probe);
         Assert.AreEqual(0, factory.Services.GetRequiredService<AuthenticationProbeCounter>().Calls);
 
         using var health = await client.GetAsync("/health");
         Assert.AreEqual(HttpStatusCode.OK, health.StatusCode);
-        using var openApi = await client.GetAsync("/openapi/v1.json");
-        Assert.AreEqual(HttpStatusCode.OK, openApi.StatusCode);
     }
 
     // A unidade JWT/banco precisa estar completa; headers Bearer incidentais não afetam liveness/documentação.
