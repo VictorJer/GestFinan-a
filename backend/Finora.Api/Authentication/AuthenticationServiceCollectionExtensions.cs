@@ -38,14 +38,16 @@ public static class AuthenticationServiceCollectionExtensions
         services.AddMediatR(options =>
         {
             options.RegisterServicesFromAssembly(typeof(LoginCommand).Assembly);
-            // Não registrar handlers CLI/Pluggy no HTTP só por compartilharem o assembly da Application.
+            // A allowlist exclui CLI/Pluggy e handlers de banco só é habilitada com configuração autenticada válida.
             options.TypeEvaluator = type => type == typeof(LoginHandler)
                 || (available && (type == typeof(LogoutHandler)
                     || type == typeof(AcceptSyncRunHandler)
                     || (rabbitMq is not null && type == typeof(ExecuteSyncRunHandler))
-                    || type == typeof(ResolveCurrentSyncConnectionHandler)
-                    || type == typeof(GetCurrentConnectionSyncStateHandler)
-                    || type == typeof(GetSyncRunStatusHandler)));
+                     || type == typeof(ResolveCurrentSyncConnectionHandler)
+                      || type == typeof(GetCurrentConnectionSyncStateHandler)
+                      || type == typeof(GetCurrentCardsHandler)
+                      || type == typeof(GetTransactionsQueryHandler)
+                      || type == typeof(GetSyncRunStatusHandler)));
         });
         services.Configure<ApiBehaviorOptions>(options => options.InvalidModelStateResponseFactory = action =>
         {
@@ -75,7 +77,7 @@ public static class AuthenticationServiceCollectionExtensions
         services.AddSingleton(settings!);
         services.AddSingleton<IAccessTokenIssuer, JwtAccessTokenIssuer>();
         services.AddFinoraSessionPersistence(connection!);
-        // A resolução e aceitação usam o mesmo contexto scoped da autenticação, sem abrir conexão no startup.
+        // Resolução, consulta de cartões e aceitação compartilham contexto scoped sem abrir conexão no startup.
         services.AddFinoraSyncRunAcceptancePersistence();
         if (rabbitMq is not null)
         {

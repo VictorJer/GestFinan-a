@@ -8,7 +8,7 @@ namespace Finora.Api.Tests;
 [TestClass]
 public sealed class ExplorationTests
 {
-    // O documento deve refletir somente o endpoint existente e seu contrato JSON de sucesso.
+    // O documento lista somente rotas implementadas e mantém a operação de health com contrato explícito.
     [TestMethod]
     public async Task DevelopmentPublishesHealthContract()
     {
@@ -23,7 +23,12 @@ public sealed class ExplorationTests
         StringAssert.StartsWith(root.GetProperty("openapi").GetString()!, "3.");
         var paths = root.GetProperty("paths");
         CollectionAssert.AreEquivalent(
-            new[] { "/health", "/api/auth/login", "/api/auth/logout", "/api/connections/current/sync", "/api/sync-runs/{syncRunId}" },
+            new[]
+            {
+                "/health", "/api/auth/login", "/api/auth/logout", "/api/cards", "/api/transactions",
+                "/api/connections/current/sync", "/api/connections/current/sync/on-entry",
+                "/api/connections/current/sync-state", "/api/sync-runs/{syncRunId}"
+            },
             paths.EnumerateObject().Select(p => p.Name).ToArray());
         // Login e logout documentam somente os resultados implementados; reset/cadastro/refresh seguem ausentes.
         var login = paths.GetProperty("/api/auth/login").GetProperty("post");
