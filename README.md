@@ -52,15 +52,15 @@ Requer SDK .NET `10.0.402`. Da raiz do repositório:
 dotnet restore backend/Finora.slnx --locked-mode
 # Compila a solução sem novo restore.
 dotnet build backend/Finora.slnx --no-restore
-# Executa a suíte sem PostgreSQL pelo runner MTP selecionado em global.json.
-dotnet test --solution backend/Finora.slnx --no-build --filter 'FullyQualifiedName!~PostgreSql'
+# Exclui testes PostgreSQL por nome e as classes de integração que usam PostgreSQL sem esse sufixo.
+dotnet test --solution backend/Finora.slnx --no-build --filter 'FullyQualifiedName!~PostgreSql&FullyQualifiedName!~MqP01CompatibilityTests&FullyQualifiedName!~OwnershipProbeTests&FullyQualifiedName!~ProblemDetailsContractTests'
 # Inicia em Development e loopback, sem banco ou segredos.
 dotnet run --project backend/Finora.Api --launch-profile http --no-build --no-restore
 ```
 
 Acesse `http://127.0.0.1:5080/health`: HTTP 200 e `{"status":"ok"}`. É apenas **liveness**: não valida banco, Pluggy, autenticação ou dados reais. A API também possui rotas protegidas de conexão/sincronização/status, `GET /api/cards`, `GET /api/transactions` e o catálogo FNR-016 nesta branch.
 
-Para testar pelo navegador, abra `http://127.0.0.1:5080/swagger`, expanda `GET /health`, clique em **Try it out** e **Execute**. Confira código 200 e corpo `{"status":"ok"}`. O documento fica em `/openapi/v1.json`; documento, UI e assets locais estão disponíveis **somente em Development** (404 em Production/Staging). O OpenAPI descreve as rotas implementadas, incluindo consultas de cartões e movimentos; não há cadastro público. Encerre com `Ctrl+C`.
+Para testar pelo navegador, abra `http://127.0.0.1:5080/swagger`, expanda `GET /health`, clique em **Try it out** e **Execute**. Confira código 200 e corpo `{"status":"ok"}`. Para uma operação protegida, use **Authorize** e informe manualmente somente o valor de `accessToken`, sem o prefixo `Bearer`; a UI monta o cabeçalho para as operações protegidas documentadas. A interface não emite nem obtém tokens: a autenticação continua sendo responsabilidade da API. Use apenas um valor sintético e transitório no roteiro; nunca registre tokens reais em código, exemplos, arquivos, logs ou capturas. Login e health permanecem públicos. O documento fica em `/openapi/v1.json`; documento, UI e assets locais estão disponíveis **somente em Development** (404 em Production/Staging). O OpenAPI descreve as rotas implementadas, incluindo consultas de cartões e movimentos; não há cadastro público. Encerre com `Ctrl+C`.
 
 ### Consulta de cartões persistidos (FNR-015, estado local)
 

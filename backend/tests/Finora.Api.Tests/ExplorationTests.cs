@@ -1,5 +1,9 @@
 using System.Net;
 using System.Text.Json;
+using Finora.Api.Authentication;
+using Finora.Infrastructure.Persistence;
+using Finora.Infrastructure.Pluggy;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Finora.Api.Tests;
@@ -14,6 +18,15 @@ public sealed class ExplorationTests
     {
         await using var factory = new ApiFactory("Development");
         using var client = factory.CreateClient();
+
+        // A ausência de JWT/banco também exclui handlers externos; health e OpenAPI continuam sendo diagnóstico local.
+        Assert.IsFalse(factory.Services.GetRequiredService<AuthenticationAvailability>().IsAvailable);
+        Assert.IsNull(factory.Services.GetService<FinoraDbContext>());
+        Assert.IsNull(factory.Services.GetService<PluggyApiClient>());
+        using var health = await client.GetAsync("/health");
+        Assert.AreEqual(HttpStatusCode.OK, health.StatusCode);
+        Assert.AreEqual("{\"status\":\"ok\"}", await health.Content.ReadAsStringAsync());
+
         using var response = await client.GetAsync("/openapi/v1.json");
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         Assert.AreEqual("application/json", response.Content.Headers.ContentType?.MediaType);
@@ -21,6 +34,12 @@ public sealed class ExplorationTests
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var root = document.RootElement;
         StringAssert.StartsWith(root.GetProperty("openapi").GetString()!, "3.");
+        // O mecanismo é reutilizável, mas a política deve ser aplicada por operação, nunca globalmente.
+        var bearer = root.GetProperty("components").GetProperty("securitySchemes").GetProperty("Bearer");
+        Assert.AreEqual("http", bearer.GetProperty("type").GetString());
+        Assert.AreEqual("bearer", bearer.GetProperty("scheme").GetString());
+        Assert.AreEqual("JWT", bearer.GetProperty("bearerFormat").GetString());
+        Assert.IsFalse(root.TryGetProperty("security", out _));
         var paths = root.GetProperty("paths");
         CollectionAssert.AreEquivalent(
             new[]
@@ -32,6 +51,47 @@ public sealed class ExplorationTests
                 "/api/connections/current/sync-state", "/api/sync-runs/{syncRunId}"
             },
             paths.EnumerateObject().Select(p => p.Name).ToArray());
+        // A matriz exercita método e rota; cada proteção precisa resolver o esquema sem criar alternativas duplicadas.
+        var protectedOperations = new (string Path, string Method)[]
+        {
+            ("/api/auth/logout", "post"),
+            ("/api/cards", "get"),
+            ("/api/transactions", "get"),
+            ("/api/transactions/{id}/annotation", "patch"),
+            ("/api/categories", "get"),
+            ("/api/categories", "post"),
+            ("/api/connections/current/sync", "post"),
+            ("/api/connections/current/sync/on-entry", "post"),
+            ("/api/connections/current/sync-state", "get"),
+            ("/api/sync-runs/{syncRunId}", "get")
+        };
+        var publicOperations = new (string Path, string Method)[]
+        {
+            ("/health", "get"),
+            ("/api/auth/login", "post")
+        };
+        var operationsWithSecurity = paths.EnumerateObject()
+            .SelectMany(path => path.Value.EnumerateObject()
+                .Where(method => method.Value.TryGetProperty("security", out _))
+                .Select(method => $"{path.Name}:{method.Name}"))
+            .ToArray();
+        CollectionAssert.AreEquivalent(
+            protectedOperations.Select(item => $"{item.Path}:{item.Method}").ToArray(),
+            operationsWithSecurity);
+        foreach (var (path, method) in protectedOperations)
+        {
+            var requirements = paths.GetProperty(path).GetProperty(method).GetProperty("security");
+            Assert.AreEqual(1, requirements.GetArrayLength(), $"Duplicate security requirements: {method} {path}");
+            var schemeRequirement = requirements[0].EnumerateObject().Single();
+            Assert.AreEqual("Bearer", schemeRequirement.Name);
+            Assert.AreEqual(0, schemeRequirement.Value.GetArrayLength());
+            Assert.IsTrue(root.GetProperty("components").GetProperty("securitySchemes")
+                .TryGetProperty(schemeRequirement.Name, out _));
+        }
+        foreach (var (path, method) in publicOperations)
+        {
+            Assert.IsFalse(paths.GetProperty(path).GetProperty(method).TryGetProperty("security", out _));
+        }
         // Login e logout documentam somente os resultados implementados; reset/cadastro/refresh seguem ausentes.
         var login = paths.GetProperty("/api/auth/login").GetProperty("post");
         CollectionAssert.AreEquivalent(new[] { "200", "400", "401", "413", "503", "500" },
@@ -75,10 +135,14 @@ public sealed class ExplorationTests
         Assert.IsFalse(html.Contains("src=\"https://", StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(html.Contains("href=\"https://", StringComparison.OrdinalIgnoreCase));
 
-        // Nesta versão a configuração é emitida no inicializador local, separado do HTML.
+        // O inicializador aponta ao documento da aplicação e não embute cabeçalhos, token ou valor de autorização.
         using var initializer = await client.GetAsync("/swagger/index.js");
         Assert.AreEqual(HttpStatusCode.OK, initializer.StatusCode);
-        StringAssert.Contains(await initializer.Content.ReadAsStringAsync(), "/openapi/v1.json");
+        var initializerContent = await initializer.Content.ReadAsStringAsync();
+        StringAssert.Contains(initializerContent, "/openapi/v1.json");
+        Assert.IsFalse(initializerContent.Contains("accessToken", StringComparison.OrdinalIgnoreCase));
+        Assert.IsFalse(initializerContent.Contains("token", StringComparison.OrdinalIgnoreCase));
+        Assert.IsFalse(initializerContent.Contains("Bearer ", StringComparison.OrdinalIgnoreCase));
 
         using var asset = await client.GetAsync("/swagger/swagger-ui-bundle.js");
         Assert.AreEqual(HttpStatusCode.OK, asset.StatusCode);

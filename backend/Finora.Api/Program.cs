@@ -68,9 +68,13 @@ builder.Logging.AddFilter("Microsoft.AspNetCore.Identity", LogLevel.None);
 builder.Logging.AddFilter("Microsoft.AspNetCore.Authentication", LogLevel.None);
 builder.Logging.AddFilter("Microsoft.IdentityModel", LogLevel.None);
 builder.Logging.AddFilter("Microsoft.AspNetCore.Mvc", LogLevel.None);
-// O gerador nativo descreve os Controllers e documenta o body lido manualmente pela rota PATCH.
+// O gerador nativo preserva o transformer PATCH e acrescenta o esquema de autenticação ao documento.
 builder.Services.AddOpenApi(options =>
-    options.AddOperationTransformer<TransactionAnnotationOpenApiTransformer>());
+{
+    options.AddDocumentTransformer<BearerSecuritySchemeOpenApiDocumentTransformer>();
+    options.AddOperationTransformer<TransactionAnnotationOpenApiTransformer>();
+    options.AddOperationTransformer<BearerSecurityOperationOpenApiTransformer>();
+});
 
 // Publica somente os Controllers implementados; diagnóstico não implica prontidão de integrações.
 var app = builder.Build();
