@@ -42,6 +42,14 @@ public sealed class PostgreSqlTransactionsQueryTests
     private static readonly Guid LiteralSearchDecoyTransactionId = Guid.Parse("00000000-0000-0000-0000-000000000108");
     private static readonly Guid NullDateLowTransactionId = Guid.Parse("00000000-0000-0000-0000-000000000109");
     private static readonly Guid NullDateHighTransactionId = Guid.Parse("00000000-0000-0000-0000-000000000110");
+    private static readonly Guid DashboardUnknownNatureId = Guid.Parse("00000000-0000-0000-0000-000000000201");
+    private static readonly Guid DashboardBillPaymentId = Guid.Parse("00000000-0000-0000-0000-000000000202");
+    private static readonly Guid DashboardRefundId = Guid.Parse("00000000-0000-0000-0000-000000000203");
+    private static readonly Guid DashboardFeeId = Guid.Parse("00000000-0000-0000-0000-000000000204");
+    private static readonly Guid DashboardPendingFeeId = Guid.Parse("00000000-0000-0000-0000-000000000205");
+    private static readonly Guid DashboardFutureInstallmentId = Guid.Parse("00000000-0000-0000-0000-000000000206");
+    private static readonly Guid DashboardAdjustmentId = Guid.Parse("00000000-0000-0000-0000-000000000207");
+    private static readonly Guid DashboardPurchaseId = Guid.Parse("00000000-0000-0000-0000-000000000208");
     private static readonly DateOnly ReferenceDate = new(2026, 11, 23);
     private static readonly DateTimeOffset PromotionStartedAtUtc = new(2026, 11, 23, 13, 0, 0, TimeSpan.Zero);
 
@@ -147,6 +155,7 @@ public sealed class PostgreSqlTransactionsQueryTests
         CollectionAssert.AreEqual(
             new[] { TieHighTransactionId, TieLowTransactionId, FromBoundaryTransactionId },
             intersection.Items.Select(movement => movement.Id).ToArray());
+        Assert.AreEqual(3, intersection.FilteredCount);
 
         // Sem data, dias conhecidos vêm primeiro; empates e datas nulas usam ID interno decrescente.
         var ordered = await reader.ReadAsync(
@@ -166,6 +175,146 @@ public sealed class PostgreSqlTransactionsQueryTests
                 NullDateLowTransactionId
             },
             ordered.Items.Select(movement => movement.Id).ToArray());
+    }
+
+    // Categoria de outro titular e ID inexistente produzem o mesmo conjunto vazio no filtro persistido.
+    [TestMethod]
+    public async Task ForeignAndMissingCategoryFiltersReturnTheSameEmptyUniverse()
+    {
+        await using var fixture = DisposablePostgresMigrationFixture.CreateValidated();
+        await fixture.ResetToEmptySchemaAsync();
+        await fixture.Context.Database.MigrateAsync(PostgreSqlPersistenceTests.CoreMigrationId);
+        await SeedFilterGraphAsync(fixture.Context);
+
+        var reader = new TransactionMovementReader(fixture.Context);
+        var owned = await reader.ReadAsync(
+            CreateValidatedQuery(cardId: OwnerCardId, categoryId: OwnerCategoryId),
+            CancellationToken.None);
+        var foreign = await reader.ReadAsync(
+            CreateValidatedQuery(cardId: OwnerCardId, categoryId: OtherCategoryId),
+            CancellationToken.None);
+        var missing = await reader.ReadAsync(
+            CreateValidatedQuery(
+                cardId: OwnerCardId,
+                categoryId: Guid.Parse("4b9ffb6c-6467-490e-82ce-c4670c5b3b91")),
+            CancellationToken.None);
+
+        Assert.AreEqual(8, owned.FilteredCount);
+        Assert.AreEqual(0, foreign.FilteredCount);
+        Assert.AreEqual(foreign.FilteredCount, missing.FilteredCount);
+        Assert.AreEqual(0, foreign.Items.Count);
+        Assert.AreEqual(0, missing.Items.Count);
+    }
+
+    // O dashboard e a lista usam o mesmo predicado para filtros combinados e categorias alheias/inexistentes.
+    [TestMethod]
+    public async Task DashboardFilteredCountMatchesListForCombinedAndUnownedCategoryFilters()
+    {
+        await using var fixture = DisposablePostgresMigrationFixture.CreateValidated();
+        await fixture.ResetToEmptySchemaAsync();
+        await fixture.Context.Database.MigrateAsync(PostgreSqlPersistenceTests.CoreMigrationId);
+        await SeedFilterGraphAsync(fixture.Context);
+
+        var listReader = new TransactionMovementReader(fixture.Context);
+        var combined = CreateValidatedQuery(
+            cardId: OwnerCardId,
+            categoryId: OwnerCategoryId,
+            situation: TransactionSituation.Pending,
+            from: "2026-11-19",
+            toExclusive: "2026-11-21",
+            search: "compra 50%_ \\abc");
+        var listResult = await listReader.ReadAsync(combined, CancellationToken.None);
+        var commandCapture = new ReadCommandCaptureInterceptor();
+        await using var dashboardContext = CreateContext(commandCapture);
+        var dashboardReader = new TransactionDashboardReader(dashboardContext);
+        var dashboardResult = await dashboardReader.ReadAsync(ToDashboardQuery(combined), CancellationToken.None);
+
+        Assert.AreEqual(3, listResult.FilteredCount);
+        Assert.AreEqual(listResult.FilteredCount, dashboardResult.FilteredCount);
+        Assert.IsFalse(commandCapture.Commands.Any(command =>
+            command.Contains("\"Amount\"", StringComparison.Ordinal)));
+
+        // Categoria alheia e ID inexistente permanecem no mesmo universo vazio em ambos os readers.
+        foreach (var categoryId in new[]
+        {
+            OtherCategoryId,
+            Guid.Parse("4b9ffb6c-6467-490e-82ce-c4670c5b3b91")
+        })
+        {
+            var filteredList = await listReader.ReadAsync(
+                CreateValidatedQuery(cardId: OwnerCardId, categoryId: categoryId),
+                CancellationToken.None);
+            var dashboardQuery = new ValidatedTransactionDashboardQuery(
+                OwnerId,
+                OwnerConnectionId,
+                OwnerCardId,
+                categoryId,
+                null,
+                null,
+                null,
+                null);
+            var filteredDashboard = await dashboardReader.ReadAsync(dashboardQuery, CancellationToken.None);
+
+            Assert.AreEqual(0, filteredList.FilteredCount);
+            Assert.AreEqual(filteredList.FilteredCount, filteredDashboard.FilteredCount);
+        }
+    }
+
+    // Os eixos mantêm classificações independentes e incluem natureza/situação desconhecidas sem valores monetários.
+    [TestMethod]
+    public async Task DashboardGroupsNatureAndSituationIndependentlyAndIncludesZeroBuckets()
+    {
+        await using var fixture = DisposablePostgresMigrationFixture.CreateValidated();
+        await fixture.ResetToEmptySchemaAsync();
+        await fixture.Context.Database.MigrateAsync(PostgreSqlPersistenceTests.CoreMigrationId);
+        await SeedDashboardGraphAsync(fixture.Context);
+
+        var result = await new TransactionDashboardReader(fixture.Context).ReadAsync(
+            new ValidatedTransactionDashboardQuery(
+                OwnerId,
+                OwnerConnectionId,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null),
+            CancellationToken.None);
+
+        Assert.AreEqual(8, result.FilteredCount);
+        Assert.AreEqual(result.FilteredCount, result.CountsByNature.Sum(value => value.Count));
+        Assert.AreEqual(result.FilteredCount, result.CountsBySituation.Sum(value => value.Count));
+        Assert.AreEqual(Enum.GetValues<TransactionNature>().Length, result.CountsByNature.Count);
+        Assert.AreEqual(Enum.GetValues<TransactionSituation>().Length, result.CountsBySituation.Count);
+        Assert.AreEqual(1, NatureCount(result, TransactionNature.Purchase));
+        Assert.AreEqual(1, NatureCount(result, TransactionNature.Refund));
+        Assert.AreEqual(1, NatureCount(result, TransactionNature.BillPayment));
+        Assert.AreEqual(3, NatureCount(result, TransactionNature.Fee));
+        Assert.AreEqual(1, NatureCount(result, TransactionNature.Adjustment));
+        Assert.AreEqual(1, NatureCount(result, TransactionNature.Unknown));
+        Assert.AreEqual(6, SituationCount(result, TransactionSituation.Effective));
+        Assert.AreEqual(1, SituationCount(result, TransactionSituation.Pending));
+        Assert.AreEqual(1, SituationCount(result, TransactionSituation.FutureInstallment));
+        Assert.AreEqual(0, SituationCount(result, TransactionSituation.Unknown));
+        Assert.IsNull(result.Coverage.LastSuccessfulImportAtUtc);
+        Assert.IsNull(result.Coverage.LastSuccessfulWindow);
+        Assert.IsNull(result.Coverage.LatestExecution);
+
+        // Um filtro vazio conserva todos os códigos permitidos com zero no mesmo contrato de resposta.
+        var emptyResult = await new TransactionDashboardReader(fixture.Context).ReadAsync(
+            new ValidatedTransactionDashboardQuery(
+                OwnerId,
+                OwnerConnectionId,
+                null,
+                null,
+                TransactionSituation.Unknown,
+                null,
+                null,
+                null),
+            CancellationToken.None);
+        Assert.AreEqual(0, emptyResult.FilteredCount);
+        Assert.IsTrue(emptyResult.CountsByNature.All(value => value.Count == 0));
+        Assert.IsTrue(emptyResult.CountsBySituation.All(value => value.Count == 0));
     }
 
     // Contagem precede a paginação, repete-se entre páginas e permanece correta numa página além do fim.
@@ -231,6 +380,39 @@ public sealed class PostgreSqlTransactionsQueryTests
             .CountAsync(transaction => transaction.UserId == OwnerId && transaction.CardAccountId == OwnerCardId));
         Assert.AreEqual(1, await verification.Set<FinancialTransaction>()
             .CountAsync(transaction => transaction.ExternalId == "concurrent-promotion-transaction"));
+    }
+
+    // Contagens, grupos e cobertura do dashboard permanecem no snapshot anterior à promoção concorrente.
+    [TestMethod]
+    public async Task DashboardReaderKeepsCountsAndCoverageOnSnapshotDuringConcurrentPromotion()
+    {
+        await using var fixture = DisposablePostgresMigrationFixture.CreateValidated();
+        await fixture.ResetToEmptySchemaAsync();
+        await fixture.Context.Database.MigrateAsync();
+        await SeedFilterGraphAsync(fixture.Context, includeConnectionIdentity: true);
+
+        var interceptor = new PromoteAfterCountCommandInterceptor(PromoteConcurrentSnapshotAsync);
+        await using var readContext = CreateContext(interceptor);
+        var result = await new TransactionDashboardReader(readContext).ReadAsync(
+            ToDashboardQuery(CreateValidatedQuery(cardId: OwnerCardId)),
+            CancellationToken.None);
+
+        Assert.IsTrue(interceptor.WasTriggered, "A promoção deve ocorrer após a contagem no snapshot do dashboard.");
+        Assert.AreEqual(9, result.FilteredCount);
+        Assert.AreEqual(result.FilteredCount, result.CountsByNature.Sum(value => value.Count));
+        Assert.AreEqual(result.FilteredCount, result.CountsBySituation.Sum(value => value.Count));
+        Assert.IsNull(result.Coverage.LastSuccessfulImportAtUtc);
+        Assert.IsNull(result.Coverage.LastSuccessfulWindow);
+        Assert.IsNull(result.Coverage.LatestExecution);
+
+        // Uma leitura nova vê a promoção e sua cobertura; a resposta anterior continua no estado inicial.
+        await using var verification = CreateContext();
+        var promoted = await new TransactionDashboardReader(verification).ReadAsync(
+            ToDashboardQuery(CreateValidatedQuery(cardId: OwnerCardId)),
+            CancellationToken.None);
+        Assert.AreEqual(10, promoted.FilteredCount);
+        Assert.AreEqual(SyncRunState.Succeeded, promoted.Coverage.LatestExecution?.State);
+        Assert.IsNotNull(promoted.Coverage.LastSuccessfulImportAtUtc);
     }
 
     // Semeia movimentos anotados do titular, de outra conexão e de outro usuário para provar ambos os limites no SQL.
@@ -327,7 +509,7 @@ public sealed class PostgreSqlTransactionsQueryTests
         FinoraDbContext context,
         bool includeConnectionIdentity = false)
     {
-        context.Users.Add(new ApplicationUser(OwnerId));
+        context.Users.AddRange(new ApplicationUser(OwnerId), new ApplicationUser(OtherUserId));
         await context.SaveChangesAsync();
 
         context.Set<FinancialConnection>().Add(
@@ -346,7 +528,8 @@ public sealed class PostgreSqlTransactionsQueryTests
             CardAccount.Create(SameConnectionOtherCardId, OwnerId, OwnerConnectionId, "owner-other-filter-card", "BRL"));
         context.Set<Category>().AddRange(
             Category.Create(OwnerCategoryId, OwnerId, isSystem: false, "Categoria filtrada", "categoria-filtrada"),
-            Category.Create(OwnerOtherCategoryId, OwnerId, isSystem: false, "Outra categoria", "outra-categoria"));
+            Category.Create(OwnerOtherCategoryId, OwnerId, isSystem: false, "Outra categoria", "outra-categoria"),
+            Category.Create(OtherCategoryId, OtherUserId, isSystem: false, "Categoria alheia", "categoria-alheia"));
         await context.SaveChangesAsync();
 
         // Descrições coincidem por caixa e substring; o decoy só seria aceito se % e _ virassem curingas.
@@ -432,6 +615,82 @@ public sealed class PostgreSqlTransactionsQueryTests
             filters.PageSize);
     }
 
+    // A adaptação mantém apenas filtros já validados e remove paginação antes de consultar o resumo.
+    private static ValidatedTransactionDashboardQuery ToDashboardQuery(ValidatedTransactionsQuery query) => new(
+        query.UserId,
+        query.ConnectionId,
+        query.CardId,
+        query.CategoryId,
+        query.Situation,
+        query.From,
+        query.ToExclusive,
+        query.Search);
+
+    // Cada eixo retorna o código solicitado mesmo quando sua contagem é zero.
+    private static int NatureCount(
+        TransactionMovementDashboardSummary result,
+        TransactionNature nature) =>
+        result.CountsByNature.Single(value => value.Nature == nature).Count;
+
+    // A situação permanece separada de natureza e dos sinais dos valores de origem.
+    private static int SituationCount(
+        TransactionMovementDashboardSummary result,
+        TransactionSituation situation) =>
+        result.CountsBySituation.Single(value => value.Situation == situation).Count;
+
+    // Semeia naturezas e situações independentes com sinais/moedas mistos e parcela futura explícita.
+    private static async Task SeedDashboardGraphAsync(FinoraDbContext context)
+    {
+        context.Users.Add(new ApplicationUser(OwnerId));
+        await context.SaveChangesAsync();
+        context.Set<FinancialConnection>().Add(FinancialConnection.Create(
+            OwnerConnectionId,
+            OwnerId,
+            "pluggy",
+            "owner-dashboard-item"));
+        await context.SaveChangesAsync();
+        context.Set<CardAccount>().Add(CardAccount.Create(
+            OwnerCardId,
+            OwnerId,
+            OwnerConnectionId,
+            "owner-dashboard-card",
+            "BRL"));
+        await context.SaveChangesAsync();
+
+        context.Set<FinancialTransaction>().AddRange(
+            CreateMovement(
+                DashboardUnknownNatureId, OwnerId, OwnerCardId, "owner-dashboard-card", "dashboard-unknown",
+                "pagamento ambíguo", "2026-11-20", "POSTED", "PAGAMENTO"),
+            CreateMovement(
+                DashboardBillPaymentId, OwnerId, OwnerCardId, "owner-dashboard-card", "dashboard-bill-payment",
+                "pagamento de fatura", "2026-11-20", "POSTED", "PAGAMENTO_FATURA",
+                transactionType: "CREDIT", amount: -15.50m),
+            CreateMovement(
+                DashboardRefundId, OwnerId, OwnerCardId, "owner-dashboard-card", "dashboard-refund",
+                "estorno", "2026-11-20", "POSTED", "ESTORNO",
+                transactionType: "CREDIT", amount: -3.25m, currencyCode: "USD"),
+            CreateMovement(
+                DashboardFeeId, OwnerId, OwnerCardId, "owner-dashboard-card", "dashboard-fee",
+                "tarifa", "2026-11-20", "POSTED", "TARIFA", amount: 2.75m),
+            CreateMovement(
+                DashboardPendingFeeId, OwnerId, OwnerCardId, "owner-dashboard-card", "dashboard-pending-fee",
+                "tarifa pendente", "2026-11-20", "PENDING", "TARIFA", amount: 4.00m),
+            CreateMovement(
+                DashboardFutureInstallmentId, OwnerId, OwnerCardId, "owner-dashboard-card", "dashboard-future-fee",
+                "tarifa parcelada futura", "2026-12-15", "PENDING", "TARIFA", amount: 5.00m,
+                installmentNumber: 2, totalInstallments: 4, billForecastDate: "2026-12-15",
+                paymentType: "INSTALLMENT"),
+            CreateMovement(
+                DashboardAdjustmentId, OwnerId, OwnerCardId, "owner-dashboard-card", "dashboard-adjustment",
+                "ajuste cashback", "2026-11-20", "POSTED", "CASHBACK",
+                transactionType: "CREDIT", amount: -1.00m),
+            CreateMovement(
+                DashboardPurchaseId, OwnerId, OwnerCardId, "owner-dashboard-card", "dashboard-purchase",
+                "compra sintética", "2026-11-20", "POSTED", operationType: null,
+                amount: 11.00m, positivePurchaseRuleConfirmed: true));
+        await context.SaveChangesAsync();
+    }
+
     // A promoção real de uma página sintética é disparada pelo interceptor após a primeira consulta COUNT.
     private static async Task PromoteConcurrentSnapshotAsync(CancellationToken cancellationToken)
     {
@@ -476,19 +735,34 @@ public sealed class PostgreSqlTransactionsQueryTests
         string description,
         string originalDate,
         string status,
-        string operationType)
+        string? operationType,
+        string transactionType = "DEBIT",
+        decimal amount = 17.2500m,
+        string currencyCode = "BRL",
+        int? installmentNumber = null,
+        int? totalInstallments = null,
+        string? billForecastDate = null,
+        string? paymentType = null,
+        bool positivePurchaseRuleConfirmed = false)
     {
         var facts = new TransactionFacts(
             externalId,
             externalAccountId,
             description,
-            17.2500m,
-            "BRL",
+            amount,
+            currencyCode,
             originalDate,
-            "DEBIT",
+            transactionType,
             status,
-            operationType);
-        var normalization = TransactionNormalizer.Normalize(facts, ReferenceDate);
+            operationType,
+            installmentNumber,
+            totalInstallments,
+            BillForecastDate: billForecastDate,
+            PaymentType: paymentType);
+        var normalization = TransactionNormalizer.Normalize(
+            facts,
+            ReferenceDate,
+            positivePurchaseRuleConfirmed);
         return FinancialTransaction.Create(
             id,
             userId,
@@ -548,6 +822,22 @@ public sealed class PostgreSqlTransactionsQueryTests
             }
 
             return result;
+        }
+    }
+
+    // Captura somente SQL emitido pelo reader agregado para impedir seleção acidental de valores monetários.
+    private sealed class ReadCommandCaptureInterceptor : DbCommandInterceptor
+    {
+        public List<string> Commands { get; } = [];
+
+        public override ValueTask<System.Data.Common.DbDataReader> ReaderExecutedAsync(
+            System.Data.Common.DbCommand command,
+            CommandExecutedEventData eventData,
+            System.Data.Common.DbDataReader result,
+            CancellationToken cancellationToken = default)
+        {
+            Commands.Add(command.CommandText);
+            return ValueTask.FromResult(result);
         }
     }
 }

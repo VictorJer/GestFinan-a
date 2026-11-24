@@ -57,3 +57,24 @@ public interface ITransactionMovementReader
         ValidatedTransactionsQuery query,
         CancellationToken cancellationToken);
 }
+
+// Cada eixo descreve somente quantos movimentos persistidos ocupam um código allowlisted.
+public sealed record TransactionNatureCountSummary(TransactionNature Nature, int Count);
+
+// A situação é contada independentemente da natureza e não representa uma conclusão financeira.
+public sealed record TransactionSituationCountSummary(TransactionSituation Situation, int Count);
+
+// O contrato agregado omite itens e valores; cobertura continua separada do total filtrado.
+public sealed record TransactionMovementDashboardSummary(
+    int FilteredCount,
+    IReadOnlyList<TransactionNatureCountSummary> CountsByNature,
+    IReadOnlyList<TransactionSituationCountSummary> CountsBySituation,
+    TransactionImportCoverageSummary Coverage);
+
+// O reader do dashboard recebe apenas critérios já validados e com titular/conexão resolvidos.
+public interface ITransactionDashboardReader
+{
+    Task<TransactionMovementDashboardSummary> ReadAsync(
+        ValidatedTransactionDashboardQuery query,
+        CancellationToken cancellationToken);
+}

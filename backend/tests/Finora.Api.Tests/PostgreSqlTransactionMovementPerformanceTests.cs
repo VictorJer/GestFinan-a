@@ -27,14 +27,14 @@ public sealed class PostgreSqlTransactionMovementPerformanceTests
 
     public TestContext TestContext { get; set; } = null!;
 
-    // O conjunto distribui 5.000 movimentos em 90 dias para medir intervalo seletivo, count total e página limitada.
+    // O schema aplica todas as migrations atuais; a amostra distribui 5.000 movimentos para medir lista e resumo.
     [TestMethod]
     public async Task CountAndPagePlanAreMeasuredForFiveThousandSyntheticMovements()
     {
         var settings = DisposablePostgresTestConfiguration.ReadRequired();
         await using var fixture = DisposablePostgresMigrationFixture.CreateValidated();
         await fixture.ResetToEmptySchemaAsync();
-        await fixture.Context.Database.MigrateAsync(PostgreSqlPersistenceTests.CoreMigrationId);
+        await fixture.Context.Database.MigrateAsync();
         await SeedMovementsAsync(fixture.Context);
         await fixture.Context.Database.ExecuteSqlRawAsync(
             "ANALYZE \"FinancialConnection\"; ANALYZE \"CardAccount\"; ANALYZE \"FinancialTransaction\";");
@@ -60,9 +60,32 @@ public sealed class PostgreSqlTransactionMovementPerformanceTests
         Assert.AreEqual(5_000, unfiltered.FilteredCount);
         Assert.AreEqual(25, unfiltered.PageCount);
 
-        // As medições registram tempos e operadores locais, sem converter uma máquina de teste em SLA de produção.
+        // O resumo consulta o mesmo conjunto, com e sem intervalo, sem carregar Amount nem depender da página.
+        var dashboardReader = new TransactionDashboardReader(queryContext);
+        var selectiveDashboardCriteria = new ValidatedTransactionDashboardQuery(
+            OwnerId, ConnectionId, CardId, null, null, from, toExclusive, null);
+        var selectiveDashboard = await MeasureDashboardQueryAsync(
+            dashboardReader,
+            capture,
+            settings.ConnectionString,
+            selectiveDashboardCriteria,
+            $"card+TransactionDate[{from:yyyy-MM-dd},{toExclusive:yyyy-MM-dd})");
+        Assert.AreEqual(392, selectiveDashboard.FilteredCount);
+        var unfilteredDashboardCriteria = new ValidatedTransactionDashboardQuery(
+            OwnerId, ConnectionId, null, null, null, null, null, null);
+        var unfilteredDashboard = await MeasureDashboardQueryAsync(
+            dashboardReader,
+            capture,
+            settings.ConnectionString,
+            unfilteredDashboardCriteria,
+            "none");
+        Assert.AreEqual(5_000, unfilteredDashboard.FilteredCount);
+
+        // As medições registram tempos e planos locais para comparar com RNF-08, sem impor SLA hospedado.
         TestContext.WriteLine(FormatMeasurement("card_date", selective));
         TestContext.WriteLine(FormatMeasurement("unfiltered", unfiltered));
+        TestContext.WriteLine(FormatDashboardMeasurement("card_date", selectiveDashboard));
+        TestContext.WriteLine(FormatDashboardMeasurement("unfiltered", unfilteredDashboard));
     }
 
     // O fixture usa somente identidade e valores financeiros sintéticos, todos ligados à única conexão/cartão próprios.
@@ -127,6 +150,46 @@ public sealed class PostgreSqlTransactionMovementPerformanceTests
             await ExplainAsync(connectionString, pageCommand));
     }
 
+    // Mede total, grupos e cobertura do dashboard no mesmo snapshot e explica os três SELECTs financeiros.
+    private static async Task<DashboardMeasurement> MeasureDashboardQueryAsync(
+        TransactionDashboardReader reader,
+        FinancialQueryCommandCapture capture,
+        string connectionString,
+        ValidatedTransactionDashboardQuery criteria,
+        string filters)
+    {
+        capture.Clear();
+        var elapsed = Stopwatch.StartNew();
+        var result = await reader.ReadAsync(criteria, CancellationToken.None);
+        elapsed.Stop();
+
+        Assert.AreEqual(result.FilteredCount, result.CountsByNature.Sum(value => value.Count));
+        Assert.AreEqual(result.FilteredCount, result.CountsBySituation.Sum(value => value.Count));
+        var financialCommands = capture.Commands
+            .Where(command => command.CommandText.Contains("\"FinancialTransaction\"", StringComparison.Ordinal))
+            .ToArray();
+        var groupedCommands = financialCommands
+            .Where(command => command.CommandText.Contains("GROUP BY", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        Assert.AreEqual(2, groupedCommands.Length);
+        var countCommand = financialCommands.Single(command =>
+            !command.CommandText.Contains("GROUP BY", StringComparison.OrdinalIgnoreCase));
+        var natureCommand = groupedCommands.Single(command =>
+            command.CommandText.Contains("\"Nature\"", StringComparison.OrdinalIgnoreCase));
+        var situationCommand = groupedCommands.Single(command =>
+            command.CommandText.Contains("\"Situation\"", StringComparison.OrdinalIgnoreCase));
+
+        return new DashboardMeasurement(
+            result.FilteredCount,
+            result.CountsByNature.Count,
+            result.CountsBySituation.Count,
+            filters,
+            elapsed.Elapsed.TotalMilliseconds,
+            await ExplainAsync(connectionString, countCommand),
+            await ExplainAsync(connectionString, natureCommand),
+            await ExplainAsync(connectionString, situationCommand));
+    }
+
     // A saída diferencia índices da contagem e da página e mantém os operadores úteis para a decisão de schema.
     private static string FormatMeasurement(string scenario, ReaderMeasurement measurement) => string.Format(
         CultureInfo.InvariantCulture,
@@ -143,6 +206,29 @@ public sealed class PostgreSqlTransactionMovementPerformanceTests
         string.Join(',', measurement.PagePlan.NodeTypes),
         string.Join(',', measurement.CountPlan.IndexNames.Distinct()),
         string.Join(',', measurement.PagePlan.IndexNames.Distinct()));
+
+    // A linha registra filtros, duração integral e operadores/índices de cada consulta agregada do dashboard.
+    private static string FormatDashboardMeasurement(string scenario, DashboardMeasurement measurement) => string.Format(
+        CultureInfo.InvariantCulture,
+        "FNR018_PERF scenario={0} base_rows=5000 filters={1} filtered={2} nature_groups={3} situation_groups={4} " +
+        "reader_ms={5:F3} total_plan_ms={6:F3} nature_plan_ms={7:F3} situation_plan_ms={8:F3} " +
+        "total_nodes=[{9}] nature_nodes=[{10}] situation_nodes=[{11}] " +
+        "total_indexes=[{12}] nature_indexes=[{13}] situation_indexes=[{14}]",
+        scenario,
+        measurement.Filters,
+        measurement.FilteredCount,
+        measurement.NatureGroupCount,
+        measurement.SituationGroupCount,
+        measurement.ReaderMilliseconds,
+        measurement.CountPlan.ExecutionMilliseconds,
+        measurement.NaturePlan.ExecutionMilliseconds,
+        measurement.SituationPlan.ExecutionMilliseconds,
+        string.Join(',', measurement.CountPlan.NodeTypes),
+        string.Join(',', measurement.NaturePlan.NodeTypes),
+        string.Join(',', measurement.SituationPlan.NodeTypes),
+        string.Join(',', measurement.CountPlan.IndexNames.Distinct()),
+        string.Join(',', measurement.NaturePlan.IndexNames.Distinct()),
+        string.Join(',', measurement.SituationPlan.IndexNames.Distinct()));
 
     // EXPLAIN ANALYZE reexecuta apenas os dois SELECT capturados, no mesmo banco efêmero e com os mesmos parâmetros.
     private static async Task<PlanMetrics> ExplainAsync(string connectionString, CapturedCommand captured)
@@ -278,4 +364,15 @@ public sealed class PostgreSqlTransactionMovementPerformanceTests
         double ReaderMilliseconds,
         PlanMetrics CountPlan,
         PlanMetrics PagePlan);
+
+    // O resultado distingue as três consultas de contagem e registra os filtros realmente medidos.
+    private sealed record DashboardMeasurement(
+        int FilteredCount,
+        int NatureGroupCount,
+        int SituationGroupCount,
+        string Filters,
+        double ReaderMilliseconds,
+        PlanMetrics CountPlan,
+        PlanMetrics NaturePlan,
+        PlanMetrics SituationPlan);
 }

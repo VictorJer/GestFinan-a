@@ -39,6 +39,49 @@ public enum TransactionsQueryStatus
     CardNotFound
 }
 
+// A resolução compartilhada impede divergência de titularidade entre lista paginada e resumo sem paginação.
+public sealed record TransactionQueryAccessResult(
+    TransactionsQueryStatus Status,
+    Guid? ConnectionId = null);
+
+// A conexão própria e o cartão solicitado são confirmados antes que qualquer reader consulte os movimentos.
+public static class TransactionQueryAccessResolver
+{
+    public static async Task<TransactionQueryAccessResult> ResolveAsync(
+        ValidatedTransactionQueryFilters filters,
+        ICurrentSyncConnectionReader connectionReader,
+        ITransactionCardOwnershipReader cardOwnershipReader,
+        CancellationToken cancellationToken)
+    {
+        var connection = await connectionReader.ResolveAsync(filters.UserId, cancellationToken);
+        if (connection.Status != CurrentSyncConnectionStatus.Found
+            || connection.ConnectionId is not Guid connectionId)
+        {
+            return connection.Status switch
+            {
+                CurrentSyncConnectionStatus.NotFound =>
+                    new TransactionQueryAccessResult(TransactionsQueryStatus.ConnectionNotFound),
+                CurrentSyncConnectionStatus.Ambiguous =>
+                    new TransactionQueryAccessResult(TransactionsQueryStatus.ConnectionAmbiguous),
+                _ => new TransactionQueryAccessResult(TransactionsQueryStatus.InvalidRequest)
+            };
+        }
+
+        // Cartão alheio e inexistente compartilham a mesma resposta para não revelar sua titularidade.
+        if (filters.CardId is Guid cardId
+            && !await cardOwnershipReader.IsOwnedAsync(
+                filters.UserId,
+                connectionId,
+                cardId,
+                cancellationToken))
+        {
+            return new TransactionQueryAccessResult(TransactionsQueryStatus.CardNotFound);
+        }
+
+        return new TransactionQueryAccessResult(TransactionsQueryStatus.Ready, connectionId);
+    }
+}
+
 // Somente Ready contém critérios validados; CardNotFound não diferencia ausência de cartão alheio.
 public sealed record GetTransactionsQueryResult(
     TransactionsQueryStatus Status,
@@ -181,32 +224,20 @@ public sealed class GetTransactionsQueryHandler(
             return new GetTransactionsQueryResult(TransactionsQueryStatus.InvalidRequest);
         }
 
-        // Ausência e ambiguidade da conexão são resolvidas antes de qualquer consulta a movimentos.
-        var connection = await connectionReader.ResolveAsync(request.UserId, cancellationToken);
-        if (connection.Status != CurrentSyncConnectionStatus.Found || connection.ConnectionId is null)
+        // Lista e resumo aplicam a mesma resolução de conexão/cartão antes de chegar ao leitor persistido.
+        var access = await TransactionQueryAccessResolver.ResolveAsync(
+            filters,
+            connectionReader,
+            cardOwnershipReader,
+            cancellationToken);
+        if (access.Status != TransactionsQueryStatus.Ready || access.ConnectionId is not Guid connectionId)
         {
-            return connection.Status switch
-            {
-                CurrentSyncConnectionStatus.NotFound => new GetTransactionsQueryResult(TransactionsQueryStatus.ConnectionNotFound),
-                CurrentSyncConnectionStatus.Ambiguous => new GetTransactionsQueryResult(TransactionsQueryStatus.ConnectionAmbiguous),
-                _ => new GetTransactionsQueryResult(TransactionsQueryStatus.InvalidRequest)
-            };
-        }
-
-        // O filtro de cartão converte ID alheio e inexistente no mesmo estado antes de qualquer paginação.
-        if (filters.CardId is Guid cardId
-            && !await cardOwnershipReader.IsOwnedAsync(
-                request.UserId,
-                connection.ConnectionId.Value,
-                cardId,
-                cancellationToken))
-        {
-            return new GetTransactionsQueryResult(TransactionsQueryStatus.CardNotFound);
+            return new GetTransactionsQueryResult(access.Status);
         }
 
         var validatedQuery = new ValidatedTransactionsQuery(
             filters.UserId,
-            connection.ConnectionId.Value,
+            connectionId,
             filters.CardId,
             filters.CategoryId,
             filters.Situation,

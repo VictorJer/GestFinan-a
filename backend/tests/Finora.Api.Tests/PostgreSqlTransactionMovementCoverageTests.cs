@@ -32,6 +32,9 @@ public sealed class PostgreSqlTransactionMovementCoverageTests
         Assert.IsNull(result.Coverage.LastSuccessfulImportAtUtc);
         Assert.IsNull(result.Coverage.LastSuccessfulWindow);
         Assert.IsNull(result.Coverage.LatestExecution);
+        var dashboard = await ReadDashboardAsync(fixture.Context);
+        Assert.AreEqual(0, dashboard.FilteredCount);
+        Assert.AreEqual(result.Coverage, dashboard.Coverage);
     }
 
     // Um timestamp legado sem uma única SyncRun própria com mesmo fim não atribui uma janela aproximada.
@@ -46,6 +49,8 @@ public sealed class PostgreSqlTransactionMovementCoverageTests
         Assert.AreEqual(SuccessAtUtc, result.Coverage?.LastSuccessfulImportAtUtc);
         Assert.IsNull(result.Coverage?.LastSuccessfulWindow);
         Assert.IsNull(result.Coverage?.LatestExecution);
+        var dashboard = await ReadDashboardAsync(fixture.Context);
+        Assert.AreEqual(result.Coverage, dashboard.Coverage);
     }
 
     // A janela só é exposta quando uma execução concluída corresponde ao instante do último sucesso da conexão.
@@ -68,6 +73,8 @@ public sealed class PostgreSqlTransactionMovementCoverageTests
         Assert.AreEqual(new DateOnly(2026, 11, 20), window.ObservedTo);
         Assert.AreEqual(SyncCoverageState.CompleteForRequestedWindow, window.CoverageState);
         Assert.AreEqual(SyncRunState.Succeeded, result.Coverage?.LatestExecution?.State);
+        var dashboard = await ReadDashboardAsync(fixture.Context);
+        Assert.AreEqual(result.Coverage, dashboard.Coverage);
     }
 
     // Falha posterior não apaga janela antiga; estado recente e código desconhecido permanecem sanitizados.
@@ -91,6 +98,8 @@ public sealed class PostgreSqlTransactionMovementCoverageTests
         Assert.AreEqual(SyncRunState.Failed, result.Coverage?.LatestExecution?.State);
         Assert.AreEqual(SyncCoverageState.Partial, result.Coverage?.LatestExecution?.CoverageState);
         Assert.IsNull(result.Coverage?.LatestExecution?.FailureCode);
+        var dashboard = await ReadDashboardAsync(fixture.Context);
+        Assert.AreEqual(result.Coverage, dashboard.Coverage);
     }
 
     // A execução pendente é mostrada separadamente e não substitui nem reclassifica o sucesso previamente confirmado.
@@ -118,6 +127,8 @@ public sealed class PostgreSqlTransactionMovementCoverageTests
         Assert.AreEqual(SyncRunState.Pending, result.Coverage?.LatestExecution?.State);
         Assert.AreEqual(SyncCoverageState.Unknown, result.Coverage?.LatestExecution?.CoverageState);
         Assert.IsNull(result.Coverage?.LatestExecution?.FailureCode);
+        var dashboard = await ReadDashboardAsync(fixture.Context);
+        Assert.AreEqual(result.Coverage, dashboard.Coverage);
     }
 
     // Cada teste usa schema PostgreSQL descartável atualizado explicitamente, sem migration no host da API.
@@ -149,6 +160,20 @@ public sealed class PostgreSqlTransactionMovementCoverageTests
     private static Task<PagedTransactionMovementSummary> ReadCoverageAsync(FinoraDbContext context) =>
         new TransactionMovementReader(context).ReadAsync(
             new ValidatedTransactionsQuery(UserId, ConnectionId, null, null, null, null, null, null, 1, 25),
+            CancellationToken.None);
+
+    // O dashboard usa os mesmos fatos de cobertura para o universo sem filtros adicionais.
+    private static Task<TransactionMovementDashboardSummary> ReadDashboardAsync(FinoraDbContext context) =>
+        new TransactionDashboardReader(context).ReadAsync(
+            new ValidatedTransactionDashboardQuery(
+                UserId,
+                ConnectionId,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null),
             CancellationToken.None);
 
     // O registro de sucesso tem janela e extremos conhecidos, com FinishedAtUtc igual ao último sucesso da conexão.

@@ -6,7 +6,7 @@ Projeto desenvolvido como proposta de Trabalho de Conclusão de Curso (TCC), com
 
 Como complementos, o projeto prevê uma carteira de investimentos com cadastro manual e um simulador de evolução patrimonial com aportes.
 
-> **Status:** ideia aprovada pelo professor e protótipo navegável disponível. FNR-001/002/003 concluídas nos respectivos escopos conforme o backlog. Base backend FNR-003 validada localmente, revisada, aceita pelo autor e integrada pelo [PR #8](https://github.com/VictorJer/GestFinan-a/pull/8), merge `2bd63ae`. FNR-004 foi aceita e integrada pelo [PR #10](https://github.com/VictorJer/GestFinan-a/pull/10), com prova real limitada a uma página (321 transações). FNR-005 está em validação parcial: incremento técnico e três coletas reais limitadas a uma página cada; a matriz não reconhece compras e a competência permanece semânticamente não confirmada, portanto o gate financeiro está bloqueado. Ainda não há importação persistente, dashboard ou publicação desta funcionalidade; a tarefa 5.3 e o aceite final continuam pendentes.
+> **Status:** ideia aprovada pelo professor e protótipo navegável disponível. FNR-001/002/003 concluídas nos respectivos escopos conforme o backlog. Base backend FNR-003 validada localmente, revisada, aceita pelo autor e integrada pelo [PR #8](https://github.com/VictorJer/GestFinan-a/pull/8), merge `2bd63ae`. FNR-004 foi aceita e integrada pelo [PR #10](https://github.com/VictorJer/GestFinan-a/pull/10), com prova real limitada a uma página (321 transações). A FNR-005 foi encerrada no escopo técnico revisado; regra positiva de compra, competência e objetivos financeiros antigos permanecem adiados. Consulta persistida e anotações FNR-015/016/017 já estão implementadas; o resumo FNR-018 está em implementação local, com 9/13 tarefas OpenSpec, sem aceite final, integração ou publicação. Interface/lista integrada e recorrência continuam em entregas próprias.
 
 ## Objetivo
 
@@ -25,13 +25,13 @@ Desenvolver uma aplicação web que consulte dados de cartão de crédito por me
 | Base backend FNR-003 | Restore com --locked-mode/build e 20 testes aprovados localmente; Swagger verificado no navegador; revisão e aceite explícitos; PR #8 integrado. Sem reviews formais/checks reportados no GitHub; evidências e limites no backlog e guia. |
 | Conexão no painel do provedor | Cartão e transações visualizados pelo autor |
 | Consulta local pelo backend .NET (FNR-004) | Concluída no escopo limitado, com prova real de uma página; não comprova importação completa |
-| Contrato e normalização Pluggy (FNR-005) | Em validação; análise limitada documentada; regra positiva de compra e competência bloqueadas por evidência insuficiente |
+| Contrato e normalização Pluggy (FNR-005) | Escopo técnico revisado e encerrado; regra positiva de compra, competência e objetivos financeiros antigos permanecem adiados |
 | Login JWT e sessões persistentes (FNR-009) | Implementação aceita pelo titular e [PR #20](https://github.com/VictorJer/GestFinan-a/pull/20) integrado; 225 testes sem PostgreSQL e 64 no PostgreSQL descartável aprovados localmente. Revogação completa FNR-010, FNR-011/020 e publicação permanecem pendentes; publicação autenticada bloqueada até FNR-010 e demais gates. |
 | Aplicação integrada e publicação definitiva | Pendentes |
 
 A visualização no painel da Pluggy é evidência preliminar de acesso aos dados. A leitura local pela API foi demonstrada em FNR-004; FNR-005 observou campos e agregados em três coletas autorizadas de uma página cada, mas não valida histórico completo, regra positiva de compra, competência por instituição ou comportamento de sincronização.
 
-A prova de conceito local de consulta real foi concluída em FNR-004 sem exposição pública. Validar o contrato financeiro conservador em FNR-005 ainda é um gate anterior à persistência, dashboard e aplicação hospedada.
+A prova de conceito local de consulta real foi concluída em FNR-004 sem exposição pública. O encerramento técnico revisado da FNR-005 habilitou planejamento descritivo, mas não validou regras financeiras; a API de resumo FNR-018 não transforma contagens em gastos ou compras elegíveis.
 
 ## Documentação e fluxo de trabalho
 
@@ -58,7 +58,7 @@ dotnet test --solution backend/Finora.slnx --no-build --filter 'FullyQualifiedNa
 dotnet run --project backend/Finora.Api --launch-profile http --no-build --no-restore
 ```
 
-Acesse `http://127.0.0.1:5080/health`: HTTP 200 e `{"status":"ok"}`. É apenas **liveness**: não valida banco, Pluggy, autenticação ou dados reais. A API também possui rotas protegidas de conexão/sincronização/status, `GET /api/cards`, `GET /api/transactions` e o catálogo FNR-016 nesta branch.
+Acesse `http://127.0.0.1:5080/health`: HTTP 200 e `{"status":"ok"}`. É apenas **liveness**: não valida banco, Pluggy, autenticação ou dados reais. A API também possui rotas protegidas de conexão/sincronização/status, `GET /api/cards`, `GET /api/transactions`, `GET /api/dashboard` e o catálogo/anotações FNR-016/017 nesta branch.
 
 Para testar pelo navegador, abra `http://127.0.0.1:5080/swagger`, expanda `GET /health`, clique em **Try it out** e **Execute**. Confira código 200 e corpo `{"status":"ok"}`. Para uma operação protegida, use **Authorize** e informe manualmente somente o valor de `accessToken`, sem o prefixo `Bearer`; a UI monta o cabeçalho para as operações protegidas documentadas. A interface não emite nem obtém tokens: a autenticação continua sendo responsabilidade da API. Use apenas um valor sintético e transitório no roteiro; nunca registre tokens reais em código, exemplos, arquivos, logs ou capturas. Login e health permanecem públicos. O documento fica em `/openapi/v1.json`; documento, UI e assets locais estão disponíveis **somente em Development** (404 em Production/Staging). O OpenAPI descreve as rotas implementadas, incluindo consultas de cartões e movimentos; não há cadastro público. Encerre com `Ctrl+C`.
 
@@ -143,13 +143,13 @@ Os valores são individuais por movimento; natureza, situação, cobertura e mot
 
 As consultas `GET` acima leem somente o histórico persistido no PostgreSQL: filtros e troca de página não acionam Pluggy nem broker, não criam `SyncRun` e continuam servindo os dados já gravados quando o broker está indisponível (se API e banco estiverem disponíveis). A atualização é separada e explícita: `POST /api/connections/current/sync` solicita execução manual; `POST /api/connections/current/sync/on-entry` aplica a política de atualização ao entrar. Uma resposta `202` confirma a aceitação persistente da execução/outbox, não que a coleta terminou. `coverage` descreve o último sucesso e a janela correlata comprovada; mesmo `CompleteForRequestedWindow` vale só para aquela janela, não para todo o histórico do provedor. Assim, a leitura continua disponível durante indisponibilidade externa, mas não promete cobertura nova ou integral.
 
-### Catálogo de categorias (FNR-016, implementação local em validação)
+### Catálogo de categorias (FNR-016, implementação aceita e merge local)
 
 `GET /api/categories` exige sessão Bearer válida e devolve uma lista de `{ id, name, kind }`: sete categorias de sistema na ordem Alimentação, Transporte, Compras, Lazer, Saúde, Educação, Outros; pessoais do titular por chave/ID; ao final a opção virtual `{ "id": null, "name": "Sem categoria", "kind": "unassigned" }`. `kind` vale `system`, `personal` ou `unassigned`; não existe oitava categoria persistida. Exemplo **sintético** de item pessoal: `{ "id": "6e209084-7488-4d97-930f-10f52df4b116", "name": "Projetos", "kind": "personal" }`. A listagem independe de conexão financeira; catálogo ausente/incompatível devolve 503 sanitizado, nunca seed implícito.
 
 `POST /api/categories` aceita exclusivamente `{ "name": "Projetos" }`, deriva o titular da sessão e responde 201 com `{ id, name, kind: "personal" }` (sem rota de GET individual). Nome e chave limitados a 60 caracteres; controles e campos adicionais retornam 400, equivalência por acentos/caixa/espaços a um nome reservado ou pessoal já existente retorna 409. As rotas protegidas preservam 401 com challenge, 429 por limite, 503 por dependência indisponível e 500 para falha inesperada, com `application/problem+json` sanitizado. O catálogo não cria `SyncRun` nem associa categorias automaticamente; a edição pessoal está descrita a seguir e o seletor visual pertence à FNR-022.
 
-### Edição pessoal de anotações (FNR-017, implementação local em validação)
+### Edição pessoal de anotações (FNR-017, implementação aceita e merge local)
 
 `PATCH /api/transactions/{id}/annotation` exige Bearer e sessão ativa. O `id` é o identificador interno do movimento; o titular é sempre derivado da sessão. O corpo JSON é estrito e aceita somente `categoryId` e/ou `note`, com pelo menos uma propriedade. Omitir uma propriedade preserva seu valor; `categoryId: null` limpa somente a categoria e `note: null` ou `note: ""` limpa somente a observação. UUID vazio/malformado, tipo inválido, propriedade extra ou observação acima de 500 caracteres retorna `400 REQUEST_INVALID_INPUT`, sem truncamento.
 
@@ -163,7 +163,45 @@ Exemplo **sintético** de troca de categoria preservando a observação omitida:
 }
 ```
 
-O OpenAPI documenta o corpo allowlist e os status da rota em Development. O contrato continua em validação local; esta documentação e os testes não declaram integração, publicação ou coleta real. Consulte as [evidências locais e limitações da FNR-017](docs/AMBIENTE.md).
+O OpenAPI documenta o corpo allowlist e os status da rota em Development. A implementação FNR-017 foi aceita pelo titular e o merge do PR #31 consta no grafo Git local; isso não afirma review/check GitHub ou publicação. Consulte as [evidências locais e limitações da FNR-017](docs/AMBIENTE.md).
+
+### Resumo descritivo sem agregados monetários (FNR-018, implementação local)
+
+`GET /api/dashboard` exige Bearer válido e sessão ativa. Aceita `cardId`, `categoryId`, `situation`, `from`, `toExclusive` e `search`, com a mesma validação e semântica de `GET /api/transactions`; não aceita paginação, titular, ordenação ou expressão SQL. Os filtros combinam-se por interseção. `from` é inclusivo e `toExclusive` exclusivo no dia técnico `TransactionDate` (`yyyy-MM-dd`); data técnica nula só pertence à consulta sem intervalo. Busca é substring case-insensitive literal da descrição, com máximo de 200 caracteres. Cartão alheio/inexistente retorna o mesmo 404; categoria ausente/alheia/inexistente resulta em conjunto vazio.
+
+A resposta não contém itens nem valores. `filteredCount` conta o conjunto persistido inteiro, independente de qualquer paginação da lista. `countsByNature` contém os códigos fixos `Purchase`, `Refund`, `BillPayment`, `Fee`, `Adjustment` e `Unknown`; `countsBySituation` contém `Effective`, `Pending`, `FutureInstallment` e `Unknown`. Cada movimento contribui uma vez para cada eixo e cada eixo soma `filteredCount`; buckets sem ocorrência vêm com zero. Os códigos não inferem compras efetivadas. `coverage` mantém último sucesso/janela correlata e execução mais recente separados das contagens. `dateBasis` é sempre `TransactionDate`, não competência ou ciclo de fatura.
+
+Exemplo inteiramente sintético, com dados ausentes de cobertura e buckets zero:
+
+```json
+{
+  "filteredCount": 2,
+  "countsByNature": [
+    { "nature": "Purchase", "count": 0 },
+    { "nature": "Refund", "count": 0 },
+    { "nature": "BillPayment", "count": 1 },
+    { "nature": "Fee", "count": 1 },
+    { "nature": "Adjustment", "count": 0 },
+    { "nature": "Unknown", "count": 0 }
+  ],
+  "countsBySituation": [
+    { "situation": "Effective", "count": 1 },
+    { "situation": "Pending", "count": 1 },
+    { "situation": "FutureInstallment", "count": 0 },
+    { "situation": "Unknown", "count": 0 }
+  ],
+  "coverage": {
+    "lastSuccessfulImportAtUtc": null,
+    "lastSuccessfulWindow": null,
+    "latestExecution": null
+  },
+  "dateBasis": "TransactionDate"
+}
+```
+
+Não calcula, seleciona nem retorna `Amount`, soma, subtotal, média, distribuição ou série monetária; `filteredCount: 0` não significa gasto zero ou histórico integral. A consulta lê somente dados persistidos, não chama Pluggy/broker e não cria `SyncRun`. Filtros inválidos retornam `400`; sessão ausente/revogada `401` com challenge Bearer; conexão/cartão ausente ou inacessível `404`; conexão ambígua `409`; limite protegido `429`; falha inesperada `500`; persistência indisponível tipada `503`. Erros são `application/problem+json` sanitizados.
+
+A implementação está na branch local `feature/fnr-018-resumos-descritivos`, com 9/13 tarefas OpenSpec concluídas nesta etapa; não está aceita nem integrada e não há publicação afirmada. O contrato normativo e a rastreabilidade de PRD RF05/RF07 e M-03 estão em [TDD §§11/13/19](docs/TDD.md). A API não implementa lista/navegação nem visão integrada: UI reutilizando lista pertence a FNR-022/023; recorrência permanece na FNR-038. O critério anterior de conciliação financeira e qualquer indicador de gasto continuam adiados.
 
 **Provisionamento administrativo antes de liberar as rotas dependentes:** configure `ConnectionStrings__Finora` fora do repositório, confira o banco de destino e seu schema/versão e execute `dotnet ef database update 20261124043312_Fnr016InitialCategories --project backend/Finora.Infrastructure/Finora.Infrastructure.csproj --startup-project backend/Finora.Infrastructure/Finora.Infrastructure.csproj --context FinoraDbContext`. A factory não inicia a API; migration não roda no startup. Em um banco descartável, `FINORA_TEST_CONNECTION_STRING` deve apontar somente para `finora_integration_test` em loopback antes dos testes PostgreSQL. Após aplicar, confira `__EFMigrationsHistory` e as sete linhas `"IsSystem" = true` da tabela `"Category"` contra os IDs fixos abaixo, `"UserId" IS NULL`, `"ScopeId"` UUID vazio, nomes/chaves esperados e inexistência de registro “Sem categoria”. Registros incompatíveis causam erro e rollback; **não** excluir nem reatribuir categorias para contornar o bloqueio. Pare a liberação e reconcilie com autorização. Reexecutar a migration pelo EF ou o bloco SQL transacional isolado não duplica linhas; downgrade mantém linhas possivelmente referenciadas. Esta orientação não afirma aplicação em destino, Pluggy/Neon nem publicação.
 
