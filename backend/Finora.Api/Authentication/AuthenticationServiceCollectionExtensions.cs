@@ -46,8 +46,9 @@ public static class AuthenticationServiceCollectionExtensions
                      || type == typeof(ResolveCurrentSyncConnectionHandler)
                       || type == typeof(GetCurrentConnectionSyncStateHandler)
                       || type == typeof(GetCurrentCardsHandler)
-                       || type == typeof(GetTransactionsQueryHandler)
-                       || type == typeof(CreatePersonalCategoryHandler)
+                        || type == typeof(GetTransactionsQueryHandler)
+                        || type == typeof(UpdateTransactionAnnotationHandler)
+                        || type == typeof(CreatePersonalCategoryHandler)
                        || type == typeof(GetCategoriesHandler)
                       || type == typeof(GetSyncRunStatusHandler)));
         });

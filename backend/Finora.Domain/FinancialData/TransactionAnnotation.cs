@@ -71,6 +71,14 @@ public sealed class TransactionAnnotation
     public TransactionAnnotation ClearNote(DateTimeOffset updatedAtUtc) =>
         WithNote(null, updatedAtUtc);
 
+    /// <summary>Atualiza categoria e observação como uma única anotação pessoal.</summary>
+    public TransactionAnnotation WithCategoryAndNote(
+        Guid? categoryId,
+        Guid? categoryScopeId,
+        string? note,
+        DateTimeOffset updatedAtUtc) =>
+        Create(TransactionId, UserId, categoryId, categoryScopeId, note, updatedAtUtc);
+
     // Categoria e escopo são ambos nulos ou ambos presentes; escopo só pode ser sistema ou o próprio titular.
     private static void EnsureCategoryScope(Guid userId, Guid? categoryId, Guid? categoryScopeId)
     {

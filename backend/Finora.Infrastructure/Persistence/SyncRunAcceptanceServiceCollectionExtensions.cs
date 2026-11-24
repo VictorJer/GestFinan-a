@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Finora.Infrastructure.Persistence;
 
-/// <summary>Registra os adapters EF de consulta financeira e aceitação de SyncRun, sem abrir conexão no startup.</summary>
+/// <summary>Registra adapters EF financeiros e de SyncRun, sem abrir conexão ou aplicar migrations no startup.</summary>
 public static class SyncRunAcceptanceServiceCollectionExtensions
 {
     // O DbContext já é configurado pela composição HTTP; os adapters não abrem conexão nem aplicam migration.
@@ -15,6 +15,8 @@ public static class SyncRunAcceptanceServiceCollectionExtensions
         services.AddScoped<ICurrentCardsReader, CurrentCardsReader>();
         services.AddScoped<ITransactionCardOwnershipReader, TransactionCardOwnershipReader>();
         services.AddScoped<ITransactionMovementReader, TransactionMovementReader>();
+        // A edição usa o mesmo contexto scoped e mantém autorização, lock e escrita numa transação curta.
+        services.AddScoped<ITransactionAnnotationStore, TransactionAnnotationStore>();
         // O catálogo pessoal compartilha apenas o contexto scoped, sem exigir conexão financeira ou provedor.
         services.AddScoped<ICategoryCatalogStore, CategoryCatalogStore>();
         services.AddScoped<ISyncRunStatusReader, SyncRunStatusReader>();
