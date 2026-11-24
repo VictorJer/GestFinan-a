@@ -297,7 +297,7 @@ Diagrama **planejado**, não integração implementada. Middleware/filters HTTP 
 
 **Fora do escopo do MediatR:** pipeline behaviors obrigatórios, FluentValidation, notificações/eventos de domínio, streams e despacho encadeado de handlers como fluxo padrão. Broker/outbox, excluídos na revisão 0.4, passam a ter escopo próprio e limitado em DT-50–53/§20, sem usar notifications do MediatR para entrega durável. Regras reutilizáveis pertencem ao Domain ou a serviços de aplicação específicos; não ocultar dependências em cadeias de Send. `GET /health` continua direto, sem handler artificial, e os comandos administrativos não devem ganhar dependência obrigatória do host HTTP.
 
-O frontend usará templates HTML do Angular com Tailwind CSS, preservando o protótipo como referência visual. Não adotar Angular Material. Componentes próprios devem contemplar foco, navegação por teclado, rótulos, mensagens de erro e estados de carregamento.
+O frontend usará templates HTML do Angular com Tailwind CSS, preservando o protótipo como referência visual documentada em [DESING.md](DESING.md) (§§2–12). Não adotar Angular Material. Componentes próprios devem contemplar foco, navegação por teclado, rótulos, mensagens de erro e estados de carregamento. A adaptação ao MVP segue a seção 13 daquela referência, sem promover dados fictícios ou funções demonstrativas a contratos reais.
 
 ### Repositório e frontend
 

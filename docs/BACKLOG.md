@@ -127,6 +127,8 @@ A prova local FNR-004 foi a primeira meta funcional; o fluxo integrado permanece
 
 O backlog organiza o trabalho; **não substitui as especificações nem aprova uma implementação**.
 
+Para as entregas de frontend, consultar também [DESING.md](DESING.md) como referência visual do protótipo, especialmente sua seção 13 para a adaptação ao MVP. PRD, TDD e specs aprovados continuam determinando escopo e comportamento; a presença de uma tela no protótipo não altera dependências, status ou aceite dos itens abaixo.
+
 Para cada mudança, mantendo uma por vez:
 
 1. Conferir os requisitos do PRD e as decisões do TDD; ajustar inconsistências antes de avançar.
@@ -190,11 +192,11 @@ O status inicial dos itens é **A fazer**; atualizações ficam no registro de e
 | FNR-016 | P0 | M | Provisionar categorias e criar categorias pessoais | 007, 011 | RF06; TDD §15 |
 | FNR-017 | P0 | M | Editar categoria e observação do movimento, sem mudar a natureza financeira | 015, 016 | RF06, RF15 revisados; TDD §§6, 15 |
 | FNR-018 | P0 | G | Fornecer resumos descritivos não monetários; indicadores financeiros originais adiados | 005 revisada, 015, 017 | RF07 revisado; PRD §8; TDD §13, DT-54 |
-| FNR-019 | P0 | M | Criar base Angular com Tailwind | 002, 003 | TDD §3 |
-| FNR-020 | P0 | M | Integrar login, sessão e navegação protegida | 010, 011, 019 | RF14; TDD §§3, 5 |
-| FNR-021 | P0 | M | Exibir cartão e atualização de dados | 014, 020 | RF08, RF09; TDD §§6, 13 |
-| FNR-022 | P0 | G | Implementar lista descritiva, filtros e categorias na interface | 015, 016, 017, 020 | RF04, RF05, RF06, RF09 revisados |
-| FNR-023 | P0 | G | Integrar visão descritiva reutilizando lista FNR-022, sem gráficos financeiros | 018, 020, 022 | RF07, RF09 revisados; TDD §13 |
+| FNR-019 | P0 | M | Criar base Angular com Tailwind | 002, 003 | TDD §3; [DESING §§2–5, 7, 9, 11–13](DESING.md) — referência visual |
+| FNR-020 | P0 | M | Integrar login, sessão e navegação protegida | 010, 011, 019 | RF14; TDD §§3, 5; [DESING §§5, 10, 13](DESING.md) — adaptação |
+| FNR-021 | P0 | M | Exibir cartão e atualização de dados | 014, 020 | RF08, RF09; TDD §§6, 13; [DESING §§6.2, 10, 13](DESING.md) — somente visual |
+| FNR-022 | P0 | G | Implementar lista descritiva, filtros e categorias na interface | 015, 016, 017, 020 | RF04, RF05, RF06, RF09 revisados; [DESING §§6.3, 7, 13](DESING.md) — adaptação |
+| FNR-023 | P0 | G | Integrar visão descritiva reutilizando lista FNR-022, sem gráficos financeiros | 018, 020, 022 | RF07, RF09 revisados; TDD §13; [DESING §§6.1, 13](DESING.md) — somente visual |
 | FNR-038 | P0 | G | Detectar candidatos a recorrência e permitir confirmação pelo titular, em mudança própria | 012, 015, 020, 022; tolerâncias aprovadas antes de implementar | RF17/VP-07; TDD §§10/11/13/14/19, DT-55 |
 | FNR-024 | P0 | M | Consolidar testes críticos e CI do núcleo revisado, incluindo recorrência | 010, 013, 017, 018, 023, 038 | TDD §14; RF17 |
 | FNR-025 | P0 | M | Preparar Docker de produção e verificação de saúde | 003, 011, 013 | TDD §§2, 9 |
