@@ -2,6 +2,7 @@ using Finora.Api;
 using Finora.Api.Authentication;
 using Finora.Api.Cors;
 using Finora.Api.Errors;
+using Finora.Api.OpenApi;
 using Finora.Api.RateLimiting;
 using Finora.Application.Pluggy;
 using Finora.Infrastructure.Pluggy;
@@ -67,8 +68,9 @@ builder.Logging.AddFilter("Microsoft.AspNetCore.Identity", LogLevel.None);
 builder.Logging.AddFilter("Microsoft.AspNetCore.Authentication", LogLevel.None);
 builder.Logging.AddFilter("Microsoft.IdentityModel", LogLevel.None);
 builder.Logging.AddFilter("Microsoft.AspNetCore.Mvc", LogLevel.None);
-// O gerador nativo descreve os Controllers; a UI não adiciona outro gerador.
-builder.Services.AddOpenApi();
+// O gerador nativo descreve os Controllers e documenta o body lido manualmente pela rota PATCH.
+builder.Services.AddOpenApi(options =>
+    options.AddOperationTransformer<TransactionAnnotationOpenApiTransformer>());
 
 // Publica somente os Controllers implementados; diagnóstico não implica prontidão de integrações.
 var app = builder.Build();

@@ -32,6 +32,7 @@ public sealed class AuthenticationAvailabilityTests
                 "/api/auth/logout",
                 "/api/cards",
                 "/api/transactions",
+                "/api/transactions/{id}/annotation",
                 "/api/categories",
                 "/api/connections/current/sync",
                 "/api/connections/current/sync/on-entry",
@@ -107,6 +108,37 @@ public sealed class AuthenticationAvailabilityTests
             transactionResponseSchema.GetProperty("properties").EnumerateObject()
                 .Select(property => property.Name)
                 .ToArray());
+        var annotationPatch = document.RootElement.GetProperty("paths")
+            .GetProperty("/api/transactions/{id}/annotation").GetProperty("patch");
+        CollectionAssert.AreEquivalent(new[] { "200", "400", "401", "404", "429", "500", "503" },
+            annotationPatch.GetProperty("responses").EnumerateObject()
+                .Select(property => property.Name).ToArray());
+        StringAssert.Contains(annotationPatch.GetProperty("description").GetString()!, "Bearer");
+        StringAssert.Contains(annotationPatch.GetProperty("description").GetString()!, "404 indistinguível");
+        var movementParameter = annotationPatch.GetProperty("parameters").EnumerateArray().Single();
+        Assert.AreEqual("id", movementParameter.GetProperty("name").GetString());
+        Assert.AreEqual("path", movementParameter.GetProperty("in").GetString());
+        Assert.IsTrue(movementParameter.GetProperty("required").GetBoolean());
+
+        var annotationBody = annotationPatch.GetProperty("requestBody");
+        Assert.IsTrue(annotationBody.GetProperty("required").GetBoolean());
+        StringAssert.Contains(annotationBody.GetProperty("description").GetString()!, "pelo menos uma");
+        var annotationRequestSchema = ResolveSchema(document.RootElement,
+            annotationBody.GetProperty("content").GetProperty("application/json").GetProperty("schema"));
+        CollectionAssert.AreEquivalent(new[] { "categoryId", "note" },
+            annotationRequestSchema.GetProperty("properties").EnumerateObject()
+                .Select(property => property.Name).ToArray());
+        Assert.IsFalse(annotationRequestSchema.GetProperty("properties").EnumerateObject()
+            .Any(property => property.Name is "userId" or "description" or "amount"));
+        Assert.AreEqual(500, annotationRequestSchema.GetProperty("properties")
+            .GetProperty("note").GetProperty("maxLength").GetInt32());
+
+        var annotationResponseSchema = ResolveSchema(document.RootElement,
+            annotationPatch.GetProperty("responses").GetProperty("200")
+                .GetProperty("content").GetProperty("application/json").GetProperty("schema"));
+        CollectionAssert.AreEquivalent(new[] { "categoryId", "note" },
+            annotationResponseSchema.GetProperty("properties").EnumerateObject()
+                .Select(property => property.Name).ToArray());
         var syncRunStatus = document.RootElement.GetProperty("paths")
             .GetProperty("/api/sync-runs/{syncRunId}").GetProperty("get");
         CollectionAssert.AreEquivalent(new[] { "200", "401", "404" },
@@ -216,6 +248,7 @@ public sealed class AuthenticationAvailabilityTests
         Assert.IsNotNull(services.GetRequiredService<IRequestHandler<GetCurrentCardsQuery, CurrentCardsQueryResult>>());
         Assert.IsNotNull(services.GetRequiredService<ICurrentCardsReader>());
         Assert.IsNotNull(services.GetRequiredService<IRequestHandler<GetTransactionsQuery, GetTransactionsQueryResult>>());
+        Assert.IsNotNull(services.GetRequiredService<IRequestHandler<UpdateTransactionAnnotationCommand, UpdateTransactionAnnotationResult>>());
         Assert.IsNotNull(services.GetRequiredService<ITransactionCardOwnershipReader>());
         Assert.IsNotNull(services.GetRequiredService<ITransactionMovementReader>());
         Assert.AreEqual(System.Data.ConnectionState.Closed, services.GetRequiredService<FinoraDbContext>().Database.GetDbConnection().State);

@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Text.Json;
 using Finora.Api.Authentication;
 using Finora.Api.Errors;
 using Finora.Application.FinancialData;
@@ -88,6 +89,115 @@ public sealed class TransactionsController(ISender sender, TimeProvider clock) :
             result.Page.FilteredCount,
             MapCoverage(result.Page.Coverage));
         return Ok(response);
+    }
+
+    // A rota aceita somente os campos pessoais da anotação e deriva o titular da sessão validada.
+    [HttpPatch("{id}/annotation")]
+    [EndpointSummary("Edita categoria e observação de um movimento próprio")]
+    [EndpointDescription("Requer Bearer e sessão ativa. PATCH estrito aceita somente categoryId e/ou note: campos omitidos são preservados, null limpa o campo e ao menos um deve estar presente. A resposta contém somente categoryId e note. Entrada inválida: 400; movimento/categoria ausente ou alheio: 404 indistinguível; sessão inválida: 401; limite protegido: 429; persistência indisponível: 503; falha inesperada: 500.")]
+    [ProducesResponseType<TransactionAnnotationResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> PatchAnnotation([FromRoute] string id, CancellationToken cancellationToken)
+    {
+        var session = JwtTokenValidation.ReadSessionClaims(User, clock);
+        if (session is null)
+        {
+            Response.Headers.WWWAuthenticate = "Bearer";
+            return ProblemResponse(StatusCodes.Status401Unauthorized);
+        }
+
+        // IDs malformados/vazios e corpos fora do contrato são recusados antes de despachar o comando.
+        if (!Guid.TryParse(id, out var transactionId) || transactionId == Guid.Empty)
+        {
+            return ProblemResponse(StatusCodes.Status400BadRequest);
+        }
+
+        var patch = await ReadAnnotationPatchAsync(Request, cancellationToken);
+        if (patch is null)
+        {
+            return ProblemResponse(StatusCodes.Status400BadRequest);
+        }
+
+        // Presença e valor seguem separados até a Application; titular nunca vem do corpo da requisição.
+        var result = await sender.Send(
+            new UpdateTransactionAnnotationCommand(
+                session.UserId,
+                transactionId,
+                patch.HasCategoryId,
+                patch.CategoryId,
+                patch.HasNote,
+                patch.Note),
+            cancellationToken);
+        return result.Status switch
+        {
+            UpdateTransactionAnnotationStatus.Updated
+                when result.CategoryId != Guid.Empty =>
+                    Ok(new TransactionAnnotationResponse(result.CategoryId, result.Note)),
+            UpdateTransactionAnnotationStatus.InvalidRequest => ProblemResponse(StatusCodes.Status400BadRequest),
+            UpdateTransactionAnnotationStatus.TransactionNotFound or UpdateTransactionAnnotationStatus.CategoryNotFound =>
+                ProblemResponse(StatusCodes.Status404NotFound),
+            _ => ProblemResponse(StatusCodes.Status500InternalServerError)
+        };
+    }
+
+    // JSON estrito distingue omissão de null, rejeita duplicatas e não materializa campos desconhecidos.
+    private static async Task<TransactionAnnotationPatch?> ReadAnnotationPatchAsync(
+        HttpRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!request.HasJsonContentType()) { return null; }
+
+        try
+        {
+            using var document = await JsonDocument.ParseAsync(request.Body, cancellationToken: cancellationToken);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) { return null; }
+
+            var hasCategoryId = false;
+            Guid? categoryId = null;
+            var hasNote = false;
+            string? note = null;
+            foreach (var property in root.EnumerateObject())
+            {
+                switch (property.Name)
+                {
+                    case "categoryId" when !hasCategoryId:
+                        hasCategoryId = true;
+                        if (property.Value.ValueKind == JsonValueKind.Null) { break; }
+                        if (property.Value.ValueKind != JsonValueKind.String
+                            || !Guid.TryParse(property.Value.GetString(), out var parsedCategoryId)
+                            || parsedCategoryId == Guid.Empty)
+                        {
+                            return null;
+                        }
+                        categoryId = parsedCategoryId;
+                        break;
+                    case "note" when !hasNote:
+                        hasNote = true;
+                        if (property.Value.ValueKind == JsonValueKind.Null) { break; }
+                        if (property.Value.ValueKind != JsonValueKind.String) { return null; }
+                        note = property.Value.GetString();
+                        if (note?.Length > 500) { return null; }
+                        if (string.IsNullOrEmpty(note)) { note = null; }
+                        break;
+                    default:
+                        return null;
+                }
+            }
+
+            return hasCategoryId || hasNote
+                ? new TransactionAnnotationPatch(hasCategoryId, categoryId, hasNote, note)
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     // O envelope público mantém códigos fixos e não reflete filtros, titular ou dados financeiros.
@@ -200,6 +310,12 @@ public sealed class TransactionsController(ISender sender, TimeProvider clock) :
         _ => throw new ArgumentOutOfRangeException(nameof(reason))
     };
 }
+
+// A estrutura interna preserva a presença das propriedades sem expor tipos de parsing no contrato público.
+internal sealed record TransactionAnnotationPatch(bool HasCategoryId, Guid? CategoryId, bool HasNote, string? Note);
+
+// A resposta HTTP é uma allowlist deliberada sem dados financeiros, IDs externos ou titularidade.
+public sealed record TransactionAnnotationResponse(Guid? CategoryId, string? Note);
 
 // O DTO é uma allowlist independente do domínio e não inclui IDs externos, enums numéricos ou agregados monetários.
 public sealed record TransactionMovementResponse(
