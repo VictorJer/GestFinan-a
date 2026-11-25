@@ -1,0 +1,20 @@
+<section aria-labelledby="dashboard-applied-filters-title" class="space-y-3 rounded-lg border p-4">
+  <h2 id="dashboard-applied-filters-title" class="font-semibold">Filtros aplicados</h2>
+
+  @if (labels().length === 0) {
+    <p>Nenhum filtro aplicado; o resumo considera o conjunto de movimentos persistidos.</p>
+  } @else {
+    <dl class="grid gap-2 sm:grid-cols-2">
+      @for (label of labels(); track label.name) {
+        <div>
+          <dt class="font-medium">{{ label.name }}</dt>
+          <dd class="break-words">{{ label.value }}</dd>
+        </div>
+      }
+    </dl>
+    <p>
+      O rascunho ainda não enviado na lista não altera este resumo. Use os controles da única lista de
+      movimentos para mudar os filtros.
+    </p>
+  }
+</section>

@@ -2,6 +2,7 @@ import { Routes } from '@angular/router';
 import { AuthenticatedAreaPage } from './auth/area/authenticated-area';
 import { authenticatedSessionGuard } from './auth/authenticated-session.guard';
 import { TransactionListPage } from './auth/area/transaction-list-page';
+import { DashboardOverviewPage } from './auth/area/dashboard-overview-page';
 import { LoginPage } from './auth/login/login';
 import { HomePage } from './home/home';
 import { NotFoundPage } from './not-found/not-found';
@@ -30,6 +31,12 @@ export const routes: Routes = [
     component: TransactionListPage,
     canActivate: [authenticatedSessionGuard],
     title: 'Movimentos — Finora',
+  },
+  {
+    path: 'area/visao',
+    component: DashboardOverviewPage,
+    canActivate: [authenticatedSessionGuard],
+    title: 'Visão descritiva — Finora',
   },
   {
     path: '**',

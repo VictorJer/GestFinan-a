@@ -16,6 +16,33 @@ import { NotFoundPage } from './not-found/not-found';
 
 const API_BASE = 'http://127.0.0.1:5080/api';
 
+// Mantém a resposta sintética no contrato allowlisted para testar navegação sem dados reais.
+function dashboardSummaryResponse(): Record<string, unknown> {
+  return {
+    filteredCount: 0,
+    countsByNature: [
+      { nature: 'Purchase', count: 0 },
+      { nature: 'Refund', count: 0 },
+      { nature: 'BillPayment', count: 0 },
+      { nature: 'Fee', count: 0 },
+      { nature: 'Adjustment', count: 0 },
+      { nature: 'Unknown', count: 0 },
+    ],
+    countsBySituation: [
+      { situation: 'Effective', count: 0 },
+      { situation: 'Pending', count: 0 },
+      { situation: 'FutureInstallment', count: 0 },
+      { situation: 'Unknown', count: 0 },
+    ],
+    coverage: {
+      lastSuccessfulImportAtUtc: null,
+      lastSuccessfulWindow: null,
+      latestExecution: null,
+    },
+    dateBasis: 'TransactionDate',
+  };
+}
+
 // Responde às três chamadas permitidas ao abrir /area sem depender de uma API real.
 function flushAuthenticatedAreaStartup(http: HttpTestingController): void {
   const cards = http.expectOne(`${API_BASE}/cards`);
@@ -97,6 +124,61 @@ describe('Página inicial pública', () => {
     );
   });
 
+  // O guard redireciona acesso direto sem sessão sem consultar contagens nem cobertura privadas.
+  it('encaminha acesso anônimo à visão para login sem iniciar requests', async () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+
+    await TestBed.inject(Router).navigateByUrl('/area/visao');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(TestBed.inject(Router).url).toBe('/login');
+    expect(fixture.nativeElement.textContent).toContain('Entrar no Finora');
+    TestBed.inject(HttpTestingController).expectNone(() => true);
+    fixture.destroy();
+  });
+
+  // A rota autenticada é independente de /area e consulta somente GET /api/dashboard ao entrar.
+  it('abre diretamente a visão protegida sem avaliação automática ou importação', async () => {
+    TestBed.inject(SessionService).startSession({
+      accessToken: 'synthetic-overview-route-token',
+      tokenType: 'Bearer',
+      expiresIn: 1800,
+      expiresAtUtc: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    });
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    const router = TestBed.inject(Router);
+
+    await router.navigateByUrl('/area/visao');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const dashboard = TestBed.inject(HttpTestingController).expectOne(`${API_BASE}/dashboard`);
+
+    expect(router.url).toBe('/area/visao');
+    expect(dashboard.request.method).toBe('GET');
+    expect(dashboard.request.headers.get('Authorization')).toMatch(/^Bearer /);
+    dashboard.flush(dashboardSummaryResponse());
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Visão descritiva');
+    expect(
+      fixture.nativeElement.querySelector(
+        'app-dashboard-overview-page a[href="/area/movimentos"]',
+      )?.textContent,
+    ).toContain('Abrir lista de movimentos');
+    TestBed.inject(HttpTestingController).expectNone(
+      (request) =>
+        request.url.toLowerCase().includes('/sync') ||
+        request.url.endsWith('/cards') ||
+        request.url.includes('/connections/') ||
+        request.url === `${API_BASE}/transactions`,
+    );
+    fixture.destroy();
+  });
+
   // Mantém só início/login no menu público e confirma ausência de chamadas financeiras nas duas rotas.
   it('vincula a navegação pública às rotas entregues', async () => {
     const fixture = TestBed.createComponent(App);
@@ -116,6 +198,7 @@ describe('Página inicial pública', () => {
       '/card',
       '/transactions',
       '/area/movimentos',
+      '/area/visao',
       '/investments',
       '/simulator',
       '/sync',
@@ -126,6 +209,7 @@ describe('Página inicial pública', () => {
       'login',
       'area',
       'area/movimentos',
+      'area/visao',
       '**',
     ]);
     expect(navigation.map((link) => link.getAttribute('href'))).toEqual([
@@ -187,22 +271,28 @@ describe('Página inicial pública', () => {
       '/',
       '/area',
       '/area/movimentos',
+      '/area/visao',
       '/',
       '/area',
       '/area/movimentos',
+      '/area/visao',
     ]);
     expect(navigation.map((link) => link.getAttribute('aria-label'))).toEqual([
       'Início',
       'Cartões e conexão',
       'Movimentos',
+      'Visão descritiva',
       'Início',
       'Cartões e conexão',
       'Movimentos',
+      'Visão descritiva',
     ]);
     expect(navigation[1]?.textContent).toContain('Cartões e conexão');
     expect(navigation[2]?.textContent).toContain('Movimentos');
-    expect(navigation[4]?.textContent).toContain('Cartões');
-    expect(navigation[5]?.textContent).toContain('Movimentos');
+    expect(navigation[3]?.textContent).toContain('Visão descritiva');
+    expect(navigation[5]?.textContent).toContain('Cartões');
+    expect(navigation[6]?.textContent).toContain('Movimentos');
+    expect(navigation[7]?.textContent).toContain('Visão');
     expect(shell.querySelector('app-home a[href="/area"]')?.textContent).toContain(
       'Abrir cartões e conexão',
     );
@@ -216,7 +306,9 @@ describe('Página inicial pública', () => {
     expect(
       linkTargets
         .filter((path) => path?.startsWith('/'))
-        .every((path) => ['/', '/area', '/area/movimentos', '/login'].includes(path ?? '')),
+        .every((path) =>
+          ['/', '/area', '/area/movimentos', '/area/visao', '/login'].includes(path ?? ''),
+        ),
     ).toBe(true);
     TestBed.inject(HttpTestingController).expectNone(() => true);
     fixture.destroy();
@@ -248,6 +340,7 @@ describe('Página inicial pública', () => {
     expect(router.url).toBe('/area');
     expect(fixture.nativeElement.textContent).toContain('Cartões e conexão');
     expect(fixture.nativeElement.querySelectorAll('nav a[href="/area/movimentos"]')).toHaveLength(2);
+    expect(fixture.nativeElement.querySelectorAll('nav a[href="/area/visao"]')).toHaveLength(2);
     expect(fixture.nativeElement.innerHTML).not.toContain('synthetic-flow-token');
     flushAuthenticatedAreaStartup(TestBed.inject(HttpTestingController));
     fixture.detectChanges();
@@ -266,6 +359,7 @@ describe('Página inicial pública', () => {
 
     expect(router.url).toBe('/login');
     expect(fixture.nativeElement.querySelectorAll('nav a[href="/area/movimentos"]')).toHaveLength(0);
+    expect(fixture.nativeElement.querySelectorAll('nav a[href="/area/visao"]')).toHaveLength(0);
     expect(fixture.nativeElement.textContent).toContain('Saída confirmada pelo servidor');
     expect(fixture.nativeElement.querySelector('[role="status"]')?.textContent).toContain(
       'Saída confirmada',

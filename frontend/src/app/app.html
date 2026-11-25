@@ -80,6 +80,20 @@
           </svg>
           <span class="sr-only wide:not-sr-only">Movimentos</span>
         </a>
+        <a
+          aria-label="Visão descritiva"
+          ariaCurrentWhenActive="page"
+          class="flex min-h-11 items-center justify-center gap-3 rounded-finora-control px-3 py-2 text-sm font-semibold text-white/80 transition-colors hover:bg-white/10 outline-finora-focus focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 wide:justify-start"
+          routerLink="/area/visao"
+          routerLinkActive="bg-finora-nav-active text-white"
+        >
+          <svg aria-hidden="true" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" viewBox="0 0 24 24">
+            <path d="M4 19V5"></path>
+            <path d="M4 19h16"></path>
+            <path d="m7 15 4-4 3 2 5-6"></path>
+          </svg>
+          <span class="sr-only wide:not-sr-only">Visão descritiva</span>
+        </a>
         <button
           type="button"
           aria-label="Sair da sessão"
@@ -231,6 +245,13 @@
         routerLink="/area/movimentos"
         routerLinkActive="text-finora-brand"
       >Movimentos</a>
+      <a
+        aria-label="Visão descritiva"
+        ariaCurrentWhenActive="page"
+        class="flex min-h-11 min-w-0 flex-1 items-center justify-center rounded-finora-control px-1 py-2 text-[11px] font-semibold text-finora-muted transition-colors hover:bg-finora-lavender outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+        routerLink="/area/visao"
+        routerLinkActive="text-finora-brand"
+      >Visão</a>
       <button
         type="button"
         class="flex min-h-11 min-w-0 flex-1 items-center justify-center rounded-finora-control px-2 py-2 text-xs font-semibold text-finora-muted transition-colors hover:bg-finora-lavender outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:cursor-wait disabled:opacity-60"
