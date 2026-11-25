@@ -41,7 +41,7 @@ A aplicação SHALL manter token e expiração somente em memória, sem cookies,
 - **THEN** a aplicação não inicia sessão e informa falha segura, sem registrar o corpo sensível
 
 ### Requirement: Navegação protegida e acesso honesto
-A aplicação SHALL permitir abrir sua área autenticada informativa somente com sessão local válida, orientar novo login quando necessário e não carregar dados financeiros por entrar nessa área. A API continua sendo a autoridade sobre o acesso real.
+A aplicação SHALL permitir abrir sua área autenticada somente com sessão local válida e orientar novo login quando necessário. Na área protegida, SHALL apresentar cartões e estado de conexão próprios obtidos da API e avaliar atualização conforme o contrato de entrada, sem revelar dados ao visitante ou atribuir à sessão local autoridade sobre o acesso real da API.
 
 #### Scenario: Acesso direto sem sessão
 - **WHEN** uma pessoa abre diretamente a URL da área protegida sem sessão local válida
@@ -49,7 +49,11 @@ A aplicação SHALL permitir abrir sua área autenticada informativa somente com
 
 #### Scenario: Acesso autenticado
 - **WHEN** o titular navega para a área protegida durante sessão local ainda válida
-- **THEN** vê somente a área informativa, sem cartões, movimentos, importação ou dados de demonstração apresentados como reais
+- **THEN** vê somente os cartões e o estado da conexão de sua sessão quando disponíveis, com avaliação de entrada conforme a política aprovada, sem movimentos da futura lista ou dados de demonstração apresentados como reais
+
+#### Scenario: Sessão encerrada na visão de cartão
+- **WHEN** a sessão local termina enquanto uma consulta de cartões ou estado ainda está pendente
+- **THEN** a área protegida deixa de exibir dados privados e uma resposta tardia não reabre acesso nem restaura o conteúdo
 
 ### Requirement: Bearer restrito e reação a respostas protegidas
 A aplicação SHALL enviar o Bearer somente em chamadas protegidas destinadas à base configurada da API Finora, nunca para outra origem, URL parecida, login público ou página pública. Um 401 de chamada protegida SHALL encerrar a sessão local; 403 SHALL informar falta de permissão sem provocar login repetido.
