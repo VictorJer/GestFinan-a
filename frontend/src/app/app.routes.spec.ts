@@ -23,7 +23,7 @@ function startSession(expiresAtUtc = new Date(Date.now() + 30 * 60 * 1000).toISO
   });
 }
 
-// Testa os limites entre rota pública, guarda local e área informativa sem dados financeiros.
+// Testa os limites entre rotas públicas, guarda local e leituras protegidas de cartão/conexão.
 describe('Rotas da sessão no navegador', () => {
   let backend: HttpTestingController;
 
@@ -63,7 +63,9 @@ describe('Rotas da sessão no navegador', () => {
 
     expect(TestBed.inject(Router).url).toBe('/login');
     expect(harness.routeNativeElement?.textContent).toContain('Entrar no Finora');
-    expect(harness.routeNativeElement?.textContent).not.toContain('Acesso protegido ativo');
+    expect(harness.routeNativeElement?.textContent).not.toContain(
+      'Não há cartões disponíveis nos dados persistidos',
+    );
     backend.expectNone(() => true);
   });
 
@@ -81,18 +83,40 @@ describe('Rotas da sessão no navegador', () => {
     backend.expectNone(() => true);
   });
 
-  // Sessão válida permite somente conteúdo informativo e não dispara chamadas financeiras.
-  it('permite a área informativa sem dados artificiais ou requests financeiros', async () => {
+  // Sessão válida permite a visão protegida e envia apenas as leituras/avaliação previstas com Bearer.
+  it('carrega cartões e conexão de /area com a sessão atual', async () => {
     startSession();
     const harness = await RouterTestingHarness.create();
     await harness.navigateByUrl('/area', AuthenticatedAreaPage);
+    const cardsRequest = backend.expectOne(`${API_BASE}/api/cards`);
+    const stateRequest = backend.expectOne(`${API_BASE}/api/connections/current/sync-state`);
+    const entryRequest = backend.expectOne(`${API_BASE}/api/connections/current/sync/on-entry`);
+
+    expect(cardsRequest.request.method).toBe('GET');
+    expect(stateRequest.request.method).toBe('GET');
+    expect(entryRequest.request.method).toBe('POST');
+    expect(cardsRequest.request.headers.get('Authorization')).toBe('Bearer synthetic-area-token');
+    expect(stateRequest.request.headers.get('Authorization')).toBe('Bearer synthetic-area-token');
+    expect(entryRequest.request.headers.get('Authorization')).toBe('Bearer synthetic-area-token');
+    cardsRequest.flush([]);
+    stateRequest.flush({
+      updateNeeded: false,
+      reauthorizationRequired: false,
+      lastSuccessfulImportAtUtc: null,
+      sourceUpdatedAtUtc: null,
+      lastAttemptAtUtc: null,
+      nextAllowedAtUtc: null,
+      latestExecution: null,
+    });
+    entryRequest.flush({ decision: 'not_required' });
+    harness.fixture.detectChanges();
     const content = harness.routeNativeElement?.textContent?.toLocaleLowerCase('pt-BR') ?? '';
 
     expect(TestBed.inject(Router).url).toBe('/area');
-    expect(content).toContain('área autenticada');
-    expect(content).toContain('ainda não estão disponíveis');
+    expect(content).toContain('cartões e conexão');
+    expect(content).toContain('não há cartões disponíveis nos dados persistidos');
     expect(content).not.toMatch(/r\$\s*[\d.,]+|\b\d{1,3}(?:\.\d{3})*(?:,\d{2})\b/);
-    expect(content).not.toMatch(/saldo|fatura|investimento|sincronizado/);
+    expect(content).not.toMatch(/saldo|fatura|investimento|movimento/);
     backend.expectNone(() => true);
   });
 });

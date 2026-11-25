@@ -1184,3 +1184,65 @@ Validação local executada em 25/11/2026, em Windows, Node.js `v24.22.0` e npm 
 Os testes de DOM verificam comportamento Angular, nomes acessíveis, classes de foco e breakpoints declarados; não substituem inspeção visual em navegador, leitor de tela ou dispositivo físico. Não foi feita chamada à API real, prova de CORS, deploy, check ou revisão do GitHub. A origem pública permanece nula em produção. Não houve alteração de backend, contrato, banco ou migration; RF14 não é declarado integrado nem publicado. A pedido do titular, as duas delta specs foram sincronizadas e passaram validação estrita **18/18** specs, e a mudança foi arquivada localmente em `openspec/changes/archive/2026-11-25-fnr-020-sessao-frontend/`. Builds e 67/67 testes passaram novamente antes do arquivo; este registro não afirma commit, PR aberto, merge ou publicação.
 
 **Encaminhamento posterior:** o commit `208b152` reúne implementação, testes, documentação, specs consolidadas e arquivo; foi enviado para `feature/fnr-020-sessao-frontend`. O [PR #38](https://github.com/VictorJer/GestFinan-a/pull/38) foi aberto em rascunho contra `main`, com head `208b152` na consulta inicial. `reviews: []` e `statusCheckRollup: []` não são aprovações. A revisão documental BACKLOG 0.68 permanece pendente; não houve merge, configuração de API pública ou publicação.
+
+## FNR-021 — leitura de cartões/conexão e estado por sessão (tarefas 2.1–2.2)
+
+O [cliente de leitura](../frontend/src/app/auth/area/card-connection-api.ts) consulta somente `GET /api/cards` e `GET /api/connections/current/sync-state`, usando a base configurada e o interceptor Bearer existente. A resposta inclui a geração da sessão que iniciou a leitura; os GETs são independentes e não enviam POST. Cartões são projetados para `id`, `name`, `lastFour` e `currencyCode`: valores nulos permanecem indisponíveis e campos extras não são expostos. `200 []` é lista vazia, não prova ausência de cartões na origem; 404 e 409 permanecem condições distintas de recurso ausente e conflito.
+
+O estado da conexão preserva separadamente `updateNeeded`, `reauthorizationRequired`, os horários de sucesso/importação, origem, tentativa e próxima elegibilidade, além da execução mais recente. Timestamps nulos permanecem nulos; `coverageState: Unknown` não é promovido a cobertura completa. O [serviço de estado](../frontend/src/app/auth/area/card-connection-state.ts) distingue `idle`, `loading`, `loaded`, `empty`, `not-found`, `conflict` e `error`, mantém o snapshot confirmado da mesma geração durante nova leitura/falha e descarta/cancela respostas quando a sessão termina, expira ou muda. Erros são reduzidos a categorias fixas, sem guardar o corpo remoto.
+
+Validação local já executada com `HttpTestingController`:
+
+| Verificação | Resultado e limite |
+|---|---|
+| Suíte focada de `card-connection-api.spec.ts` | Em `frontend/`, `npm test -- --include app/auth/area/card-connection-api.spec.ts --watch=false`: 7/7 passou após a classificação de 404/409 no interceptor. |
+| Suíte focada de `card-connection-state.spec.ts` | 7/7 passou em execução anterior após a classificação de 404/409, cobrindo falha parcial/retenção do snapshot, resposta atrasada, cancelamento, logout e expiração; não foi repetida nesta validação. |
+
+As duas suítes usam `HttpTestingController`, respostas, URLs e tokens sintéticos; a execução registrada agora foi somente a suíte focada do cliente (1 arquivo, 7 testes). Não houve consulta à API real, verificação de CORS, acesso ao provedor, banco, infraestrutura hospedada ou publicação. A cobertura apresentada é somente a informada pelas execuções locais registradas, não uma declaração de histórico bancário integral.
+
+## FNR-021 — intenção idempotente e acompanhamento limitado (tarefas 3.1–3.4)
+
+O [coordenador de intenções](../frontend/src/app/auth/area/sync-intent-coordinator.ts) mantém em memória uma avaliação `/sync/on-entry` por geração de login. Retorno a `/area`, GETs e navegação não repetem esse POST; nova geração inicia outra avaliação. A chave é UUID criptográfico, não aparece no estado visual nem é persistida em browser storage. O pedido manual usa modo e chave próprios; enquanto há POST concorrente, execução ativa ou aceite indeterminado, outra intenção não é criada. Timeout/falha de rede/503 mantêm a intenção pendente e só o replay explícito reutiliza a chave original.
+
+O [interceptor](../frontend/src/app/auth/api-auth.interceptor.ts) só interpreta metadados nos dois POSTs de sincronização da API configurada. `409 SYNC_RUN_ALREADY_ACTIVE` pode fornecer somente um GUID validado; `429` preserva somente timestamp ISO válido e `Retry-After` numérico limitado; qualquer `503` ou falha de transporte nesses POSTs permanece indeterminada. Títulos, mensagens, extensões desconhecidas e corpos remotos não são projetados. 401 encerra a sessão e 403 conserva o comportamento anterior.
+
+O [acompanhamento](../frontend/src/app/auth/area/sync-run-tracker.ts) consulta `GET /api/sync-runs/{syncRunId}` sem sobreposição, a cada dois segundos e por no máximo 60 segundos. Saída da área, logout e expiração cancelam timers/requests; reentrada pode retomar o mesmo ID sem novo POST. Em estado terminal, cartões e estado da conexão são relidos somente por GET. Sucesso visual exige estado `Succeeded`, mesmo `syncRunId` no novo snapshot e `lastSuccessfulImportAtUtc` presente; qualquer divergência, timeout ou falha de leitura permanece sem confirmação. A falha de execução preserva o snapshot anterior.
+
+Validação sintética local nesta etapa:
+
+| Verificação | Resultado e limite |
+|---|---|
+| `sync-intent-coordinator.spec.ts` | 10/10; geração, decisão de entrada, chave distinta, não concorrência, replay com chave idêntica e respostas 409/429/503 sem falso sucesso. |
+| `api-auth.interceptor.spec.ts` | 24/24; allowlist, metadados ausentes/malformados, 401/403 e ausência de classificação/Bearer em URL externa. |
+| `sync-run-tracker.spec.ts` | 6/6; espera, terminal, correlação do snapshot, saída/retomada, deadline e logout. |
+
+Os testes usam `HttpTestingController`, GUIDs/respostas sintéticos e relógio simulado; não consultam a API real, CORS, provedor, banco, broker ou infraestrutura hospedada. Intervalo e limite são somente parâmetros locais de UX; não alteram a política ou os retries do backend. Não houve mudança de contrato, backend, banco ou migration.
+
+## FNR-021 — ações, fronteira visual e navegação protegida (tarefas 4.1–4.3)
+
+A visão em `/area` mostra somente `name`, `lastFour` e `currencyCode` retornados para cartões próprios, além dos horários/estado/cobertura disponíveis na conexão. A origem, última tentativa, último sucesso Finora e próxima elegibilidade têm rótulos separados; ausências permanecem textuais. Não são exibidos limite, saldo, gasto, fatura, movimento, agregados, IDs de execução ou detalhes brutos de erro. Valores de nome são interpolados como texto pelo Angular, sem renderização de HTML recebido.
+
+O botão manual envia uma única intenção distinta e fica desabilitado durante envio, execução ativa ou estado incerto. `202` é descrito como aceite, não conclusão. Timeout/rede/503 exibem replay da mesma intenção; 409 ativo e 429 intervalo não são sucesso e só metadados validados são apresentados. Erro de leitura oferece repetição por GET; atualização manual de cartões/conexão não envia POST. 401 conserva encerramento/redirecionamento de sessão e 403 mantém sessão/aviso; respostas tardias de outra geração não restauram conteúdo privado.
+
+Mensagens de carregamento/resultado usam regiões `status` com `aria-live`; falhas de leitura usam `alert`. Botões têm rótulos explícitos, área mínima de toque e foco visível, sem esconder a ação no desktop/mobile. A verificação abaixo é DOM sintético; não substitui revisão visual em navegador, leitor de tela, zoom ou dispositivo físico.
+
+| Verificação | Resultado e limite |
+|---|---|
+| `authenticated-area.spec.ts` | 11/11; carregamento, vazio/desconhecido, HTML de nome sanitizado, retenção em falha, 202 pendente, ação manual única, replay com a mesma chave, 429/reautorização, 401/403, releitura GET e cancelamento por nova geração. |
+| `app.spec.ts` + `app.routes.spec.ts` | 16/16; rótulos desktop/mobile, rotas futuras ausentes, guard, chamadas autorizadas ao abrir `/area`, 404, logout/expiração e ausência de requests financeiros em início/login. DOM e `HttpTestingController` sintéticos; sem inspeção visual ou API real. |
+| Origem das respostas | `HttpTestingController` e credenciais sintéticas; sem API real, CORS, provedor, banco, broker ou infraestrutura hospedada. |
+
+## FNR-021 — validação integrada do frontend (tarefa 5.1)
+
+| Verificação local | Resultado |
+|---|---|
+| `npm ci` | Concluído; auditoria informou 0 vulnerabilidades. O npm avisou que scripts opcionais de `@parcel/watcher`, `esbuild`, `lmdb` e `msgpackr-extract` não estão aprovados no ambiente; testes e builds abaixo ainda concluíram. |
+| `npm test -- --watch=false` | 11 arquivos e 119 testes passaram. A suíte usa respostas/credenciais sintéticas e não demonstra integração hospedada. |
+| `npm run build -- --configuration development` | Concluído. |
+| `npm run build -- --configuration production` | Concluído. |
+| OpenSpec e rastreabilidade | `openspec validate fnr-021-cartao-conexao --strict` válido; os seis links da linha FNR-021 do backlog resolvem. PRD RF08/RF09/RF16 e TDD §§6/12/13 estão referenciados pela mudança. O resumo do backlog ainda indica 3/13; esse arquivo já tinha alteração local preexistente e foi preservado, aguardando atualização após o aceite. |
+| Whitespace e segredos | `git diff --check` passou. `gitleaks` não está instalado; busca limitada por formatos de chaves/tokens conhecidos e segredos literais não encontrou credenciais operacionais. Ocorrências de Bearer/accessToken revisadas nos testes são sentinelas sintéticas; a busca não é auditoria exaustiva. |
+
+Essas verificações são locais. Não foi chamada API real nem validado CORS, provedor/Pluggy, broker, infraestrutura hospedada ou publicação; os builds não alteram essa fronteira de evidência.
+
+**Encerramento OpenSpec local FNR-021 (25/11/2026):** a pedido do titular, as delta specs `web-card-connection`, `web-authenticated-session` e `web-application-shell` foram sincronizadas com as specs principais e comparadas com os requisitos das deltas; 19/19 specs principais passaram em `openspec validate --specs`. A mudança, com 13/13 tarefas e quatro artefatos completos, foi movida para `openspec/changes/archive/2026-11-25-fnr-021-cartao-conexao/`. Na repetição da suíte frontend, 119/119 testes passaram; os builds de desenvolvimento e produção passaram. A validação estrita da mudança passou antes do arquivo; após sincronizar, o CLI mostrou aviso informativo de que um ADDED já existe na spec principal, condição esperada para uma delta já sincronizada. O arquivo não comprova integração, publicação ou aceite dos critérios dependentes de ambiente real.

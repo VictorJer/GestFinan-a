@@ -14,6 +14,33 @@ import { routes } from './app.routes';
 import { HomePage } from './home/home';
 import { NotFoundPage } from './not-found/not-found';
 
+const API_BASE = 'http://127.0.0.1:5080/api';
+
+// Responde às três chamadas permitidas ao abrir /area sem depender de uma API real.
+function flushAuthenticatedAreaStartup(http: HttpTestingController): void {
+  const cards = http.expectOne(`${API_BASE}/cards`);
+  const syncState = http.expectOne(`${API_BASE}/connections/current/sync-state`);
+  const onEntry = http.expectOne(`${API_BASE}/connections/current/sync/on-entry`);
+
+  expect(cards.request.method).toBe('GET');
+  expect(syncState.request.method).toBe('GET');
+  expect(onEntry.request.method).toBe('POST');
+  expect(cards.request.headers.get('Authorization')).toMatch(/^Bearer /);
+  expect(syncState.request.headers.get('Authorization')).toMatch(/^Bearer /);
+  expect(onEntry.request.headers.get('Authorization')).toMatch(/^Bearer /);
+  cards.flush([]);
+  syncState.flush({
+    updateNeeded: false,
+    reauthorizationRequired: false,
+    lastSuccessfulImportAtUtc: null,
+    sourceUpdatedAtUtc: null,
+    lastAttemptAtUtc: null,
+    nextAllowedAtUtc: null,
+    latestExecution: null,
+  });
+  onEntry.flush({ decision: 'not_required' });
+}
+
 // Exercita o shell real com HTTP interceptado para detectar chamadas acidentais ao montar páginas.
 describe('Página inicial pública', () => {
   beforeEach(() => {
@@ -70,7 +97,7 @@ describe('Página inicial pública', () => {
     );
   });
 
-  // Mantém só início/login em estado público e preserva foco, landmarks e breakpoints responsivos.
+  // Mantém só início/login no menu público e confirma ausência de chamadas financeiras nas duas rotas.
   it('vincula a navegação pública às rotas entregues', async () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
@@ -119,6 +146,12 @@ describe('Página inicial pública', () => {
     expect(shell.querySelectorAll('nav a[aria-current="page"]')).toHaveLength(2);
     expect(shell.textContent).toContain('Entrar');
     TestBed.inject(HttpTestingController).expectNone(() => true);
+
+    await TestBed.inject(Router).navigateByUrl('/login');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(shell.textContent).toContain('Entrar no Finora');
+    TestBed.inject(HttpTestingController).expectNone(() => true);
     fixture.destroy();
   });
 
@@ -149,6 +182,17 @@ describe('Página inicial pública', () => {
       '/',
       '/area',
     ]);
+    expect(navigation.map((link) => link.getAttribute('aria-label'))).toEqual([
+      'Início',
+      'Cartões e conexão',
+      'Início',
+      'Cartões e conexão',
+    ]);
+    expect(navigation[1]?.textContent).toContain('Cartões e conexão');
+    expect(navigation[3]?.textContent).toContain('Cartões');
+    expect(shell.querySelector('app-home a[href="/area"]')?.textContent).toContain(
+      'Abrir cartões e conexão',
+    );
     expect(shell.querySelectorAll('button[aria-label="Sair da sessão"]')).toHaveLength(1);
     expect(shell.querySelectorAll('nav button')).toHaveLength(2);
     expect(shell.querySelector('header')?.textContent).toContain('Sessão autenticada');
@@ -156,14 +200,17 @@ describe('Página inicial pública', () => {
     expect(linkTargets.some((path) => path?.includes('synthetic-shell-token'))).toBe(false);
     expect(shell.innerHTML).not.toContain('synthetic-shell-token');
     expect(TestBed.inject(Router).url).not.toContain('synthetic-shell-token');
-    expect(linkTargets.some((path) => ['/dashboard', '/card', '/transactions'].includes(path ?? '')))
-      .toBe(false);
+    expect(
+      linkTargets
+        .filter((path) => path?.startsWith('/'))
+        .every((path) => ['/', '/area', '/login'].includes(path ?? '')),
+    ).toBe(true);
     TestBed.inject(HttpTestingController).expectNone(() => true);
     fixture.destroy();
   });
 
-  // Exercita o trajeto completo com resposta simulada, sem expor token no shell ou na navegação.
-  it('percorre login, área informativa e logout confirmado', async () => {
+  // Exercita login, leituras protegidas de cartões/conexão e logout sem expor token no shell.
+  it('percorre login, área de cartões e conexão e logout confirmado', async () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     const router = TestBed.inject(Router);
@@ -186,8 +233,13 @@ describe('Página inicial pública', () => {
     fixture.detectChanges();
 
     expect(router.url).toBe('/area');
-    expect(fixture.nativeElement.textContent).toContain('Acesso protegido ativo');
+    expect(fixture.nativeElement.textContent).toContain('Cartões e conexão');
     expect(fixture.nativeElement.innerHTML).not.toContain('synthetic-flow-token');
+    flushAuthenticatedAreaStartup(TestBed.inject(HttpTestingController));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain(
+      'Não há cartões disponíveis nos dados persistidos',
+    );
 
     const exit = fixture.nativeElement.querySelector('nav.fixed button') as HTMLButtonElement;
     exit.click();
@@ -220,6 +272,8 @@ describe('Página inicial pública', () => {
     fixture.detectChanges();
     const router = TestBed.inject(Router);
     await router.navigateByUrl('/area');
+    fixture.detectChanges();
+    flushAuthenticatedAreaStartup(TestBed.inject(HttpTestingController));
     (fixture.nativeElement.querySelector('nav.fixed button') as HTMLButtonElement).click();
     fixture.detectChanges();
     TestBed.inject(HttpTestingController).expectOne('http://127.0.0.1:5080/api/auth/logout').flush(
@@ -250,6 +304,8 @@ describe('Página inicial pública', () => {
     fixture.detectChanges();
     const router = TestBed.inject(Router);
     await router.navigateByUrl('/area');
+    fixture.detectChanges();
+    flushAuthenticatedAreaStartup(TestBed.inject(HttpTestingController));
     TestBed.inject(HttpClient).get('http://127.0.0.1:5080/api/private/resource').subscribe({
       error: () => undefined,
     });
@@ -278,6 +334,8 @@ describe('Página inicial pública', () => {
     fixture.detectChanges();
     const router = TestBed.inject(Router);
     await router.navigateByUrl('/area');
+    fixture.detectChanges();
+    flushAuthenticatedAreaStartup(TestBed.inject(HttpTestingController));
     TestBed.inject(HttpClient).get('http://127.0.0.1:5080/api/private/resource').subscribe({
       error: () => undefined,
     });
@@ -310,6 +368,8 @@ describe('Página inicial pública', () => {
     fixture.detectChanges();
     const router = TestBed.inject(Router);
     await router.navigateByUrl('/area');
+    fixture.detectChanges();
+    flushAuthenticatedAreaStartup(TestBed.inject(HttpTestingController));
     clock.mockReturnValue(initialTime + 1001);
     session.currentSession();
     await fixture.whenStable();

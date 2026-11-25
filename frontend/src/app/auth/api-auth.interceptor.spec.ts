@@ -15,6 +15,7 @@ import {
 import { SessionService } from './session';
 
 const API_BASE = 'https://api.example.test/proxy/';
+const MANUAL_SYNC_URL = `${API_BASE}api/connections/current/sync`;
 
 // Fornece sessão sintética sem credenciais pessoais e configura o transporte isolado para cada teste.
 function configureHttp(apiBaseUrl: string | null = API_BASE): void {
@@ -183,6 +184,175 @@ describe('Interceptor de sessão da API', () => {
     expect((receivedError as ProtectedApiRequestError).kind).toBe(expectedKind);
     expect(session.currentSession()?.accessToken).toBe('synthetic-interceptor-token');
     expect(session.notice()).toBe(expectedKind);
+  });
+
+  // 409 só vira execução ativa com o código exato e GUID válido; texto externo nunca chega à aplicação.
+  it('classifica execução ativa e permite somente o syncRunId validado', () => {
+    startSession();
+    const client = TestBed.inject(HttpClient);
+    const backend = TestBed.inject(HttpTestingController);
+    let receivedError: unknown;
+
+    client.post(MANUAL_SYNC_URL, null, { headers: { 'Idempotency-Key': 'synthetic-intent-key' } }).subscribe({
+      error: (error: unknown) => (receivedError = error),
+    });
+    backend.expectOne(MANUAL_SYNC_URL).flush(
+      {
+        code: 'SYNC_RUN_ALREADY_ACTIVE',
+        syncRunId: '4b2eaef0-a819-45d9-b90f-dc61531985b1',
+        title: 'sentinel de mensagem externa',
+        traceId: 'synthetic-trace-secret',
+      },
+      { status: 409, statusText: 'Conflict' },
+    );
+
+    expect(receivedError).toBeInstanceOf(ProtectedApiRequestError);
+    expect((receivedError as ProtectedApiRequestError).kind).toBe('sync-active');
+    expect((receivedError as ProtectedApiRequestError).syncMetadata).toEqual({
+      syncRunId: '4b2eaef0-a819-45d9-b90f-dc61531985b1',
+      nextAllowedAtUtc: null,
+      retryAfterSeconds: null,
+    });
+    expect((receivedError as Error).message).not.toContain('sentinel');
+    expect(JSON.stringify(receivedError)).not.toContain('synthetic-trace-secret');
+  });
+
+  // 429 só expõe instante e Retry-After com formato permitido e coerente com o contrato.
+  it('classifica intervalo e valida metadados opcionais', () => {
+    startSession();
+    const client = TestBed.inject(HttpClient);
+    const backend = TestBed.inject(HttpTestingController);
+    let receivedError: unknown;
+
+    client.post(MANUAL_SYNC_URL, null, { headers: { 'Idempotency-Key': 'synthetic-intent-key' } }).subscribe({
+      error: (error: unknown) => (receivedError = error),
+    });
+    backend.expectOne(MANUAL_SYNC_URL).flush(
+      {
+        code: 'SYNC_RUN_MINIMUM_INTERVAL_ACTIVE',
+        nextAllowedAtUtc: '2026-11-25T07:10:00Z',
+        syncRunId: 'https://external.example.test/private',
+        title: 'sentinel de mensagem externa',
+      },
+      {
+        status: 429,
+        statusText: 'Too Many Requests',
+        headers: { 'Retry-After': '300' },
+      },
+    );
+
+    expect((receivedError as ProtectedApiRequestError).kind).toBe('sync-interval');
+    expect((receivedError as ProtectedApiRequestError).syncMetadata).toEqual({
+      syncRunId: null,
+      nextAllowedAtUtc: '2026-11-25T07:10:00Z',
+      retryAfterSeconds: 300,
+    });
+    expect((receivedError as Error).message).not.toContain('sentinel');
+  });
+
+  // Códigos allowlisted não tornam válidos timestamp impossível nem cabeçalho fora do formato numérico.
+  it('descarta metadados malformados e mantém apenas a categoria fixa do bloqueio', () => {
+    startSession();
+    const client = TestBed.inject(HttpClient);
+    const backend = TestBed.inject(HttpTestingController);
+    let receivedError: unknown;
+
+    client.post(MANUAL_SYNC_URL, null, { headers: { 'Idempotency-Key': 'synthetic-intent-key' } }).subscribe({
+      error: (error: unknown) => (receivedError = error),
+    });
+    backend.expectOne(MANUAL_SYNC_URL).flush(
+      {
+        code: 'SYNC_RUN_MINIMUM_INTERVAL_ACTIVE',
+        nextAllowedAtUtc: '2026-99-99T99:99:99Z',
+        title: 'malicious raw body sentinel',
+      },
+      {
+        status: 429,
+        statusText: 'Too Many Requests',
+        headers: { 'Retry-After': '999999999999999999999999' },
+      },
+    );
+
+    expect((receivedError as ProtectedApiRequestError).syncMetadata).toEqual({
+      syncRunId: null,
+      nextAllowedAtUtc: null,
+      retryAfterSeconds: null,
+    });
+    expect(JSON.stringify(receivedError)).not.toContain('malicious raw body sentinel');
+  });
+
+  // Uma extensão ausente não quebra a classificação contratual nem cria metadados presumidos.
+  it.each([
+    [409, { code: 'SYNC_RUN_ALREADY_ACTIVE' }, 'sync-active'],
+    [429, {}, 'sync-interval'],
+    [503, {}, 'acceptance-indeterminate'],
+  ] as const)('mantém categoria segura para %s sem extensões completas', (status, body, kind) => {
+    startSession();
+    const client = TestBed.inject(HttpClient);
+    const backend = TestBed.inject(HttpTestingController);
+    let receivedError: unknown;
+
+    client.post(MANUAL_SYNC_URL, null, { headers: { 'Idempotency-Key': 'synthetic-intent-key' } }).subscribe({
+      error: (error: unknown) => (receivedError = error),
+    });
+    backend.expectOne(MANUAL_SYNC_URL).flush(body, { status, statusText: 'Synthetic failure' });
+
+    expect((receivedError as ProtectedApiRequestError).kind).toBe(kind);
+    expect((receivedError as ProtectedApiRequestError).syncMetadata).toEqual(
+      kind === 'acceptance-indeterminate'
+        ? null
+        : { syncRunId: null, nextAllowedAtUtc: null, retryAfterSeconds: null },
+    );
+  });
+
+  // O transporte mantém as reações de autenticação existentes nas duas rotas que criam intenção.
+  it.each([
+    [401, 'unauthorized'],
+    [403, 'forbidden'],
+  ] as const)('preserva a classificação de autenticação HTTP %s no POST de sincronização', (status, kind) => {
+    startSession();
+    const client = TestBed.inject(HttpClient);
+    const backend = TestBed.inject(HttpTestingController);
+    let receivedError: unknown;
+
+    client.post(MANUAL_SYNC_URL, null, { headers: { 'Idempotency-Key': 'synthetic-intent-key' } }).subscribe({
+      error: (error: unknown) => (receivedError = error),
+    });
+    backend.expectOne(MANUAL_SYNC_URL).flush(
+      { code: 'external-auth-sentinel', title: 'private server text' },
+      { status, statusText: 'Authentication failure' },
+    );
+
+    expect((receivedError as ProtectedApiRequestError).kind).toBe(kind);
+    expect((receivedError as Error).message).not.toContain('private server text');
+    expect(TestBed.inject(SessionService).isAuthenticated()).toBe(status === 403);
+  });
+
+  // Metadados de sync em URL externa não são interpretados e o Bearer local continua removido.
+  it('não interpreta corpo de endpoint externo como falha de aceite', () => {
+    startSession();
+    const client = TestBed.inject(HttpClient);
+    const backend = TestBed.inject(HttpTestingController);
+    const externalUrl = 'https://external.example.test/proxy/api/connections/current/sync';
+    let receivedError: unknown;
+
+    client
+      .post(externalUrl, null, {
+        headers: {
+          Authorization: 'Bearer caller-supplied-stale-token',
+          'Idempotency-Key': 'synthetic-intent-key',
+        },
+      })
+      .subscribe({ error: (error: unknown) => (receivedError = error) });
+    const request = backend.expectOne(externalUrl);
+    expect(request.request.headers.has('Authorization')).toBe(false);
+    request.flush(
+      { code: 'ACCEPTANCE_RESULT_INDETERMINATE', title: 'external response' },
+      { status: 503, statusText: 'Service Unavailable' },
+    );
+
+    expect(receivedError).toBeInstanceOf(HttpErrorResponse);
+    expect(receivedError).not.toBeInstanceOf(ProtectedApiRequestError);
   });
 
   // Resposta de uma chamada antiga é classificada como obsoleta e não encerra login posterior.
