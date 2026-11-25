@@ -1,0 +1,130 @@
+<div class="min-h-screen bg-finora-bg text-finora-ink mobile:flex">
+  <!-- Leva o teclado direto ao conteúdo e usa foco violeta contrastante sobre a superfície clara. -->
+  <a
+    class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-finora-control focus:bg-finora-surface focus:px-4 focus:py-3 focus:text-finora-ink focus:shadow-lg focus:outline-3 focus:outline-solid focus:outline-offset-2 focus:outline-finora-brand"
+    href="#conteudo"
+  >Pular para o conteúdo</a>
+
+  <!-- Sidebar escura, completa em desktop e compacta entre 561 e 900 px; foco lavanda contrasta com o fundo. -->
+  <aside
+    aria-label="Navegação do Finora"
+    class="hidden w-[76px] shrink-0 flex-col bg-finora-nav px-3 py-6 text-white mobile:flex wide:w-[232px] wide:px-5"
+  >
+    <a
+      aria-label="Finora, página inicial"
+      class="flex items-center justify-center gap-3 rounded-finora-control focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-finora-focus wide:justify-start"
+      routerLink="/"
+    >
+      <span
+        aria-hidden="true"
+        class="grid size-11 shrink-0 place-items-center rounded-finora-control bg-finora-lavender font-finora-display text-2xl font-extrabold text-finora-brand"
+      >ƒ</span>
+      <span class="hidden font-finora-display text-xl font-bold tracking-tight wide:inline"
+        >finora<span class="text-finora-lavender">.</span></span
+      >
+    </a>
+
+    <!-- Mantém um único destino e fixa o contorno lavanda para foco imediato sobre a sidebar escura. -->
+    <nav aria-label="Navegação principal" class="mt-12 flex flex-col gap-2">
+      <a
+        aria-label="Início"
+        ariaCurrentWhenActive="page"
+        class="flex min-h-11 items-center justify-center gap-3 rounded-finora-control px-3 py-2 text-sm font-semibold text-white/80 transition-colors hover:bg-white/10 outline-finora-focus focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 wide:justify-start"
+        [routerLinkActiveOptions]="{ exact: true }"
+        routerLink="/"
+        routerLinkActive="bg-finora-nav-active text-white"
+      >
+        <svg
+          aria-hidden="true"
+          class="size-5 shrink-0"
+          fill="none"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="1.8"
+          viewBox="0 0 24 24"
+        >
+          <path d="m3 10 9-7 9 7"></path>
+          <path d="M5 9v12h14V9"></path>
+          <path d="M9 21v-8h6v8"></path>
+        </svg>
+        <span class="sr-only wide:not-sr-only">Início</span>
+      </a>
+    </nav>
+
+    <!-- Usa a assinatura visual como apoio, sem apresentar perfil ou conexão fictícios. -->
+    <p class="mt-auto hidden pt-8 text-xs leading-5 text-white/70 wide:block">
+      Clareza para o seu amanhã
+    </p>
+  </aside>
+
+  <!-- Reserva a altura da navegação fixa no mobile para não encobrir o rodapé. -->
+  <div class="flex min-h-screen min-w-0 flex-1 flex-col pb-[65px] mobile:pb-0">
+    <!-- Cabeçalho evita sugerir sessão autenticada e destaca o foco violeta sobre a superfície clara. -->
+    <header
+      class="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-finora-line bg-finora-surface px-5 sm:px-8 mobile:h-20"
+    >
+      <a
+        aria-label="Finora, início"
+        class="flex items-center gap-3 rounded-finora-control focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-finora-brand mobile:hidden"
+        routerLink="/"
+      >
+        <span
+          aria-hidden="true"
+          class="grid size-9 place-items-center rounded-finora-control bg-finora-lavender font-finora-display text-xl font-extrabold text-finora-brand"
+        >ƒ</span>
+        <span class="font-finora-display text-lg font-bold tracking-tight"
+          >finora<span class="text-finora-brand">.</span></span
+        >
+      </a>
+      <p class="hidden text-sm text-finora-muted mobile:block">Clareza para o seu amanhã</p>
+      <p class="ml-auto text-xs font-medium text-finora-muted">Aplicação pública</p>
+    </header>
+
+    <!-- Mantém uma única região principal e uma área inferior segura para a navegação móvel. -->
+    <main
+      id="conteudo"
+      class="flex-1 px-5 py-10 pb-24 outline-none sm:px-8 sm:py-12 mobile:pb-12"
+      tabindex="-1"
+    >
+      <div class="mx-auto w-full max-w-5xl">
+        <router-outlet></router-outlet>
+      </div>
+    </main>
+
+    <!-- O rodapé identifica o produto sem atribuir estado financeiro à pessoa visitante. -->
+    <footer class="px-5 pb-6 text-sm text-finora-muted sm:px-8">
+      Finora · Aplicação em preparação
+    </footer>
+  </div>
+
+  <!-- Substitui a sidebar até 560 px e fixa o contorno violeta para não atrasar o foco por transição. -->
+  <nav
+    aria-label="Navegação principal"
+    class="fixed inset-x-0 bottom-0 z-20 flex h-[65px] items-center justify-center border-t border-finora-line bg-finora-surface px-4 pb-[env(safe-area-inset-bottom)] mobile:hidden"
+  >
+    <a
+      ariaCurrentWhenActive="page"
+      class="flex min-h-11 items-center justify-center gap-2 rounded-finora-control px-5 py-2 text-sm font-semibold text-finora-muted transition-colors hover:bg-finora-lavender outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+      [routerLinkActiveOptions]="{ exact: true }"
+      routerLink="/"
+      routerLinkActive="text-finora-brand"
+    >
+      <svg
+        aria-hidden="true"
+        class="size-5 shrink-0"
+        fill="none"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="1.8"
+        viewBox="0 0 24 24"
+      >
+        <path d="m3 10 9-7 9 7"></path>
+        <path d="M5 9v12h14V9"></path>
+        <path d="M9 21v-8h6v8"></path>
+      </svg>
+      Início
+    </a>
+  </nav>
+</div>

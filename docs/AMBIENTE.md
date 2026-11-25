@@ -474,11 +474,11 @@ As versões abaixo foram aprovadas pelo autor em 14/11/2026 e consultadas nos me
 | dotnet-ef | 10.0.15 | NuGet; manifesto local | Restore e invocação local conferidos; distinto do EF global 10.0.13 observado na exploração. |
 | EF Core / MSTest.Sdk | 10.0.15 / 4.5.3 | NuGet; MSTest.Sdk com Microsoft.Testing.Platform | Metadados disponíveis; pacotes e testes reais pertencem a FNR-003. |
 | Npgsql EF | 10.0.3 | NuGet; dependência declarada aceita EF Core `>=10.0.4 <11.0.0` | Metadados disponíveis; restore integrado e migration/PostgreSQL pertencem a FNR-006. |
-| Angular CLI / build | 22.2.7 | npm; build aceita TypeScript `>=6.0 <6.1`, Vitest `^4.0.8 || ^5.0.0` e Tailwind 4 | Metadados disponíveis; instalação e build do workspace pertencem a FNR-019. |
-| Angular framework/compiler | 22.2.6 | npm; compiler-cli aceita TypeScript `>=6.0 <6.1` | Metadados disponíveis; instalar os pacotes alinhados no workspace FNR-019. |
-| TypeScript | 6.0.3 | npm; atende à faixa declarada pelo Angular 22.2.7 | Metadados disponíveis; `latest` 7.x não foi escolhido por estar fora da faixa declarada. |
-| Vitest | 5.1.0 | npm; faixa declarada pelo Angular build 22.2.7 | Metadados disponíveis; teste executável e configuração pertencem a FNR-019. |
-| Tailwind CSS / Chart.js | 4.3.5 / 4.6.1 | npm | Metadados disponíveis; instalação/integração no frontend pertencem às mudanças de frontend, começando em FNR-019. |
+| Angular CLI / build | 22.2.7 | npm; build aceita TypeScript `>=6.0 <6.1`, Vitest `^4.0.8 || ^5.0.0` e Tailwind 4 | Instalados exatamente em `frontend`; `npm ci` e build estático passaram na tarefa FNR-019 1.4. |
+| Angular framework/compiler | 22.2.6 | npm; compiler-cli aceita TypeScript `>=6.0 <6.1` | Pacotes de framework e compiler instalados exatamente em `frontend`; `npm ci` e build passaram. |
+| TypeScript | 6.0.3 | npm; atende à faixa declarada pelo Angular 22.2.7 | Instalado exatamente em `frontend`; não foi usado `latest` 7.x. |
+| Vitest | 5.1.0 | npm; faixa declarada pelo Angular build 22.2.7 | Instalado exatamente; o target Angular foi gerado, e a execução da suíte permanece para FNR-019 3.2/4.1. |
+| Tailwind CSS / Chart.js | 4.3.5 / 4.6.1 | npm | Tailwind e `@tailwindcss/postcss` 4.3.5 instalados e incluídos no build; Chart.js não foi instalado nesta mudança. |
 
 Fontes consultadas em 14/11/2026: [npm Registry](https://registry.npmjs.org/) para versões e metadados de compatibilidade; [NuGet flat container](https://api.nuget.org/v3-flatcontainer/) para MSTest.Sdk, Microsoft.EntityFrameworkCore e Npgsql.EntityFrameworkCore.PostgreSQL. Os requisitos `engines` consultados para Angular 22.2.7 e Vitest 5.1.0 incluem Node 24; os peers de Angular build/compiler-cli confirmam TypeScript 6.0.x, e Angular build declara as faixas de Vitest e Tailwind acima. Isso não substitui restore/build/test com o grafo transitivo real.
 
@@ -1075,3 +1075,88 @@ Os dois tempos integrais ficaram abaixo da referência **local** RNF-08 de até 
 `openspec validate fnr-018-resumos-descritivos --strict`, `git diff --check` e checagem de destinos locais de links foram executados após esta revisão documental. Em seguida, o titular aprovou explicitamente no harness BACKLOG 0.62/TDD 0.29 e aceitou a implementação local FNR-018. Essa aprovação é externa ao GitHub, preserva o resultado amplo 214/216 sem declará-lo verde e não autoriza commit, push, PR, merge, sync/arquivo ou publicação. O gate pré-código aprovado em 0.60/TDD 0.27 permanece preservado; UI/M-03 integrado, FNR-022/023/038 e critérios financeiros adiados não são declarados concluídos.
 
 **Encerramento local posterior — revisão documental pendente:** depois daquele aceite, o titular autorizou separadamente dois commits locais (implementação; depois sync/arquivo e documentação de encerramento) e a abertura de PR contra `main`, sem merge ou publicação. O commit de implementação `d5a4311` foi criado; a delta `card-movement-summary` foi sincronizada para `openspec/specs/card-movement-summary/spec.md` e FNR-018 foi arquivada em `openspec/changes/archive/2026-11-24-fnr-018-resumos-descritivos/`. A spec passou em `openspec validate --specs --strict` (16/16) e o arquivo em `openspec validate --archived --strict` (21/21); o segundo commit agrupa o sync/arquivo e estes registros. Esta atualização factual não altera a aprovação anterior 0.62/0.29 nem torna verde a suíte PostgreSQL ampla 214/216. A abertura do PR está autorizada, mas não há merge/publicação declarados; UI/M-03 integrado e indicadores financeiros adiados continuam pendentes.
+
+## FNR-019 — workspace Angular e shell público (tarefas 1.3–4.2)
+
+O workspace `frontend/` foi gerado como aplicação única `finora-web` com Angular CLI 22.2.7, roteamento, CSS, build de navegador e sem SSR/prerender. O manifesto fixa Angular/build/compiler nas versões aprovadas e `packageManager` em `npm@11.19.1`. `angular.json` contém somente o projeto `finora-web`, com builders de aplicação, servidor de desenvolvimento e teste do Angular; não há backend nem arquivos de servidor SSR. O comando de geração foi `npx --yes @angular/cli@22.2.7 new finora-web --directory frontend --routing --style css --package-manager npm --skip-git --skip-install --ssr=false`.
+
+| Dependência direta | Versão resolvida/instalada |
+|---|---:|
+| `@angular/cli`, `@angular/build` | 22.2.7 |
+| `@angular/common`, `@angular/compiler`, `@angular/core`, `@angular/forms`, `@angular/platform-browser`, `@angular/router`, `@angular/compiler-cli` | 22.2.6 |
+| `typescript` | 6.0.3 |
+| `vitest` | 5.1.0 |
+| `tailwindcss`, `@tailwindcss/postcss` | 4.3.5 |
+| `rxjs`, `tslib` | 7.8.2, 2.9.1 |
+| `jsdom`, `prettier` | 30.1.3, 3.10.1 |
+
+`package-lock.json` (lockfileVersion 3) foi gerado a partir deste manifesto real. `npm ls --depth=0` confirmou as versões acima. O Tailwind v4 é carregado por `frontend/.postcssrc.json`, que registra `@tailwindcss/postcss`; o JSON estrito não aceita comentários, então esta documentação explica sua finalidade. `frontend/src/styles.css` importa Tailwind e declara tokens da paleta e tipografia extraídos de [`DESING.md` §§2–4](DESING.md), aplicando fundo, cor de texto e fonte-base. Os tokens de cor e raio adicionados com o shell são referenciados pelos templates e aparecem no CSS compilado. Chart.js não está no manifesto nem no lock.
+
+Validação local em Windows 11, Node.js `v24.22.0` e npm `11.19.1`:
+
+| Comando | Resultado |
+|---|---|
+| `npm install` | Gerou lock real; 305 pacotes adicionados, auditoria npm reportou 0 vulnerabilidades. |
+| `npm ci` | Passou; 305 pacotes instalados a partir do lock. O npm avisou que scripts de instalação de `@parcel/watcher`, `esbuild`, `lmdb` e `msgpackr-extract` não estavam aprovados; não foi contornado esse controle. |
+| `npm run build` | Passou; bundle estático gerado em `frontend/dist/finora-web`, 221,90 kB iniciais (59,63 kB estimados transferidos para JavaScript e 1,54 kB para CSS). |
+
+O aviso de scripts não impediu `npm ci` nem o build observado. Na tarefa 1.4, Vitest ainda não havia sido executado; a suíte foi habilitada e validada posteriormente nas tarefas 3.2/4.1, conforme os resultados abaixo. Estes resultados são locais e não representam checks remotos.
+
+### 2.1 — página inicial sem dados simulados
+
+`src/app/home/home.html` apresenta a marca tipográfica Finora, a assinatura “Clareza para o seu amanhã” e o texto “Em preparação”. O conteúdo declara que as funcionalidades financeiras ainda não estão disponíveis e não carrega cartão, movimentações, sessão, estado de conexão ou dados de demonstração. A rota inicial é estática e a prova não registra provedores HTTP/autenticação nem depende de backend.
+
+Na etapa 2.1, `npm test -- --watch=false` passou **2/2 testes** em um arquivo. A regressão navegou para `/` com `RouterTestingHarness`, verificou a marca/texto e rejeitou valores formatados, saldos/receitas/gastos e estados de conexão; o `TestBed` forneceu somente o roteador. Isso comprova o DOM testado, não a apresentação visual no navegador; a inspeção visual e por teclado foi realizada separadamente na tarefa 2.3.
+
+### 2.2 — rotas e destinos disponíveis
+
+`app.routes.ts` declara somente a rota inicial (`path: ''`) e o curinga de não encontrado (`path: '**'`). A navegação da página inicial oferece apenas “Início”; o 404 informa que o caminho não existe e fornece “Voltar ao início” com `RouterLink` para `/`. As regressões também conferem que ambos não incluem formulários/botões nem destinos de login, dados ou integração.
+
+Na etapa 2.2, `npm test -- --watch=false` passou **4/4 testes** em um arquivo, incluindo acesso direto a caminho inexistente, link de retorno e navegação de volta à página inicial. A primeira execução identificou somente uma asserção com capitalização diferente do texto real do link; após ajustar a expectativa, a suíte repetida passou 4/4. Os testes verificam DOM/roteador; a interação manual por teclado foi conferida separadamente na tarefa 2.3.
+
+### 2.3 — layout responsivo, foco e legibilidade
+
+O shell mantém `header`, `main#conteudo`, `footer`, `aside` nomeado e navegação principal nomeada. O primeiro Tab revela “Pular para o conteúdo”; Enter move o foco ao `main` e define `#conteudo`. Os links das barras desktop/mobile e o retorno do 404 têm indicador de foco sólido, sem depender de hover; o violeta escuro é usado sobre superfícies claras e o lavanda sobre a sidebar escura. A composição adiciona 65 px de espaço inferior no mobile para a barra fixa não encobrir o rodapé.
+
+Verificação manual no Chromium local em `http://127.0.0.1:4300`, altura de 900 px: em 559/560 px a sidebar está oculta e a navegação inferior de 65 px aparece; em 562 px (largura medida ao solicitar 561) a sidebar compacta de 76 px aparece; em 899/900 px ela permanece compacta; em 902 px (medida ao solicitar 901) passa a 232 px. Nas larguras verificadas, `document.documentElement.scrollWidth` igualou a largura real do viewport, conteúdo permaneceu dentro da área visível e não houve sobreposição entre rodapé e barra inferior. A variação de 1 px nas solicitações 561/901 decorre do redimensionamento da janela do navegador; os breakpoints são avaliados pela largura CSS efetivamente reportada.
+
+Com Tab/Shift+Tab/Enter, foi possível revelar o atalho, percorrer marca e navegação e ativar links no shell compacto e mobile. A rota `/rota-inexistente` foi aberta diretamente; o link “Voltar ao início” recebeu foco visível e Enter retornou a `/`. A regressão Vitest, `npm test -- --watch=false`, passou **4/4 testes** após incluir verificações das classes de foco, landmarks, rotas e retorno do 404; o teste confirma semântica/DOM, não substitui a verificação de layout no browser.
+
+O token auxiliar foi ajustado de `#7D8192` para `#626879`, pois o valor da referência alcançava somente 3,87:1 no branco. A nova cor resulta em **5,56:1** no branco e **5,20:1** no fundo `#F6F7FB`; o roxo `#7850CF` no lavanda `#F0EAFA` resulta em 4,64:1. A checagem de contraste usa os valores CSS calculados e a fórmula WCAG; não equivale a uma auditoria completa de acessibilidade.
+
+Limites: a referência visual `Finora-prototipo.html` não está no repositório, portanto não foi alegada fidelidade pixel a pixel. A inspeção foi feita em navegador desktop redimensionado; não incluiu leitor de tela, dispositivo físico, zoom ampliado ou auditoria completa de alto contraste/redução de movimento. Resultados são locais, sem checks remotos.
+
+### 3.1 — origem pública e composição HTTP sem consumo
+
+`src/environments/environment.ts` define somente `apiBaseUrl: "http://127.0.0.1:5080"`, endereço loopback do perfil de desenvolvimento da API em `backend/Finora.Api/Properties/launchSettings.json`. `src/environments/environment.production.ts` mantém `apiBaseUrl: null` até que exista uma origem pública aprovada para publicação. O `fileReplacements` da configuração `production` em `angular.json` seleciona esse arquivo; a configuração `development` usa o arquivo local padrão. Como `angular.json` é JSON estrito, a finalidade da substituição fica documentada aqui, sem comentário inválido no arquivo.
+
+`app.config.ts` registra `provideHttpClient()` e fornece a origem pública pelo token DI `API_BASE_URL`. Isso compõe o cliente para futuras funcionalidades, mas não adiciona serviço, interceptor de autenticação, token de sessão ou request automática. A injeção do `HttpClient` e do valor local no teste Vitest não dispara rede.
+
+| Comando/verificação local | Resultado |
+|---|---|
+| `npm test -- --watch=false` | Passou **5/5 testes** em um arquivo, incluindo composição de `HttpClient` e origem local. |
+| `npm run build -- --configuration development --output-path=dist/finora-web-development` | Passou; o bundle de desenvolvimento contém a origem loopback esperada. |
+| `npm run build -- --configuration production` | Passou; bundle estático de 259,49 kB iniciais (69,25 kB estimados transferidos); contém `apiBaseUrl: null` e não contém a origem local. |
+| Inspeção de rede em contexto Chromium isolado, na página `/` e em `/rota-inexistente` | Nenhuma requisição para origem API, autenticação, importação, cartões, movimentos, dashboard ou sincronização; somente recursos estáticos do servidor local. Console: 0 erros e 0 avisos. |
+
+Os dois builds comprovam as substituições locais, não uma conexão real com a API, CORS, hospedagem ou configuração de produção. `null` é intencional até aprovação do endpoint hospedado; não publicar nem iniciar chamadas financeiras por esta tarefa. Estes resultados são locais, não checks remotos.
+
+### 3.2 — regressões Vitest do shell e dos limites funcionais
+
+O target `test` em `angular.json` usa o builder `@angular/build:unit-test`; o script `npm test` executa `ng test`, com `--watch=false` para uma execução finita. `src/app/app.spec.ts` cobre a página inicial sem dados financeiros, as únicas rotas (`''` e `**`), o 404 e retorno ao início, os landmarks e o atalho para o conteúdo, classes de foco visível, composição da origem/`HttpClient`, e a ausência de links para `/login`, `/dashboard`, `/card`, `/transactions`, `/investments`, `/simulator` e `/sync` ou controles de ação ainda não entregues.
+
+Após essas regressões, `npm test -- --watch=false` passou **5/5 testes** em um arquivo, sem modo watch. As asserções de Angular/Vitest comprovam o DOM, roteador e composição de dependências; não são prova de layout, foco real ou ausência de requests no browser. Essas verificações manuais e de rede permanecem registradas separadamente em 2.3 e 3.1. Resultado local, não check remoto.
+
+### 4.1 — validação integrada após as alterações
+
+A primeira repetição de `npm ci` encontrou `EPERM` ao remover `node_modules/lightningcss-win32-x64-msvc/lightningcss.win32-x64-msvc.node`, que estava carregado pelo `ng serve` local na porta 4300; durante a instalação parcial, o watcher também reportou dependências temporariamente ausentes. Após identificar e parar somente esse servidor desta aplicação, uma nova execução de `npm ci` passou: **305 pacotes adicionados**, 312 auditados e zero vulnerabilidades reportadas. O npm manteve avisos de scripts não aprovados para `@parcel/watcher`, `esbuild`, `lmdb` e `msgpackr-extract`; a aprovação desses scripts não foi contornada.
+
+Após a instalação limpa, `npm run build` passou em configuração de produção com bundle inicial de 259,49 kB (69,25 kB estimados transferidos), e `npm test -- --watch=false` passou **5/5 testes** em um arquivo. As builds explícitas de desenvolvimento e produção e a conferência de substituição de ambiente também passaram conforme 3.1. Todos são resultados locais; checks ou revisões remotas não foram consultados nem inferidos.
+
+### 4.2 — validação estrita, links e revisão do escopo
+
+`openspec validate fnr-019-base-angular-tailwind --strict` passou **1/1 mudança**, sem issues. A checagem de destinos Markdown locais em `README.md`, `docs/BACKLOG.md`, `docs/AMBIENTE.md` e nos quatro artefatos FNR-019 encontrou **93 links locais, nenhum destino ausente**. `git diff --check` passou sem erros de whitespace; o Git emitiu somente avisos de conversão LF/CRLF nos documentos existentes.
+
+A revisão do status e do diff confirmou alterações limitadas aos registros documentais da seleção FNR-019/reconciliação FNR-018, ao workspace `frontend/` e aos quatro artefatos OpenSpec FNR-019. Não há alteração em `backend/`, migrations, endpoints, credenciais ou publicação; também não há implementação de FNR-020–023 ou FNR-038. A configuração da API contém apenas a origem loopback de desenvolvimento e `null` em produção; a inspeção do código não encontrou chamadas de negócio. Esta inspeção não é uma auditoria exaustiva de segredos ou dependências. Arquivos de instalação e saída de build não aparecem no status Git.
+
+As **11/11 tarefas foram executadas localmente**. Após apresentação das evidências e limites, o titular aceitou explicitamente a implementação e aprovou a revisão documental BACKLOG 0.65 no harness, autorizando commits locais pelo committer, sincronização/arquivamento OpenSpec e abertura de PR; isso não é check remoto nem integração. No momento deste registro, as alterações ainda não tinham sido commitadas, sincronizadas, arquivadas ou publicadas; merge e publicação não foram autorizados.

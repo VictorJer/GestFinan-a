@@ -1,0 +1,37 @@
+/* Centraliza o Tailwind e os estilos globais usados pelo shell público. */
+@import "tailwindcss";
+
+/* Preserva a identidade visual e escurece o texto auxiliar para contraste AA em superfícies claras. */
+@theme {
+  --color-finora-bg: #f6f7fb;
+  --color-finora-ink: #202431;
+  --color-finora-muted: #626879;
+  --color-finora-line: #eaecf2;
+  --color-finora-brand: #7850cf;
+  --color-finora-brand-hover: #6640b9;
+  --color-finora-lavender: #f0eafa;
+  --color-finora-nav: #20222f;
+  --color-finora-nav-active: #8060cf;
+  --color-finora-surface: #ffffff;
+  --color-finora-focus: #b2a1ed;
+  --font-finora-sans: "DM Sans", system-ui, sans-serif;
+  --font-finora-display: "Manrope", system-ui, sans-serif;
+  --radius-finora-panel: 18px;
+  --radius-finora-control: 9px;
+  /* Transiciona depois dos limites documentados de 560 px e 900 px. */
+  --breakpoint-mobile: 35.0625rem;
+  --breakpoint-wide: 56.3125rem;
+}
+
+/* Aplica a paleta e a fonte-base da referência sem carregar telas ou dados demonstrativos. */
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-finora-bg);
+  color: var(--color-finora-ink);
+  font-family: var(--font-finora-sans);
+}
