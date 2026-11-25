@@ -1,0 +1,105 @@
+<!-- Reúne a entrada em um cartão responsivo e mantém erros próximos dos campos correspondentes. -->
+<section
+  aria-labelledby="login-title"
+  class="mx-auto max-w-xl rounded-finora-panel border border-finora-line bg-finora-surface p-6 shadow-sm sm:p-10"
+>
+  <div class="mb-8">
+    <p class="mb-3 text-sm font-semibold text-finora-brand">Acesso do titular</p>
+    <h1 id="login-title" class="font-finora-display text-3xl font-bold tracking-tight sm:text-4xl">
+      Entrar no Finora
+    </h1>
+    <p class="mt-3 text-base leading-7 text-finora-muted">
+      Use seu e-mail e sua senha para acessar a área informativa.
+    </p>
+  </div>
+
+  <!-- Preserva a senha digitada e deixa toda normalização do e-mail para o envio à API. -->
+  <form [formGroup]="form" (ngSubmit)="submit()" [attr.aria-busy]="isSubmitting()">
+    <div class="mb-6">
+      <label for="login-email" class="mb-2 block text-sm font-semibold text-finora-ink">E-mail</label>
+      <input
+        id="login-email"
+        type="email"
+        autocomplete="username"
+        inputmode="email"
+        maxlength="256"
+        required
+        formControlName="email"
+        [attr.aria-invalid]="emailControl.touched && emailControl.invalid ? 'true' : null"
+        [attr.aria-describedby]="
+          emailControl.touched && emailControl.invalid
+            ? 'login-email-help login-email-error'
+            : 'login-email-help'
+        "
+        (input)="clearMessage()"
+        class="min-h-12 w-full rounded-finora-control border border-finora-line bg-white px-4 py-3 text-finora-ink outline-none transition focus-visible:border-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-finora-brand"
+      />
+      <p id="login-email-help" class="mt-2 text-sm text-finora-muted">Até 256 caracteres.</p>
+      @if (emailControl.touched && emailControl.hasError('required')) {
+        <p id="login-email-error" class="mt-2 text-sm font-medium text-red-800" role="alert">
+          Informe um e-mail válido.
+        </p>
+      } @else if (emailControl.touched && emailControl.hasError('email')) {
+        <p id="login-email-error" class="mt-2 text-sm font-medium text-red-800" role="alert">
+          Confira o formato do e-mail.
+        </p>
+      } @else if (emailControl.touched && emailControl.hasError('maxlength')) {
+        <p id="login-email-error" class="mt-2 text-sm font-medium text-red-800" role="alert">
+          O e-mail excede o limite de 256 caracteres.
+        </p>
+      }
+    </div>
+
+    <div class="mb-6">
+      <label for="login-password" class="mb-2 block text-sm font-semibold text-finora-ink">Senha</label>
+      <input
+        id="login-password"
+        type="password"
+        autocomplete="current-password"
+        maxlength="1024"
+        required
+        formControlName="password"
+        [attr.aria-invalid]="passwordControl.touched && passwordControl.invalid ? 'true' : null"
+        [attr.aria-describedby]="
+          passwordControl.touched && passwordControl.invalid
+            ? 'login-password-help login-password-error'
+            : 'login-password-help'
+        "
+        (input)="clearMessage()"
+        class="min-h-12 w-full rounded-finora-control border border-finora-line bg-white px-4 py-3 text-finora-ink outline-none transition focus-visible:border-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-finora-brand"
+      />
+      <p id="login-password-help" class="mt-2 text-sm text-finora-muted">Até 1024 caracteres.</p>
+      @if (passwordControl.touched && passwordControl.hasError('required')) {
+        <p id="login-password-error" class="mt-2 text-sm font-medium text-red-800" role="alert">
+          Informe sua senha.
+        </p>
+      } @else if (passwordControl.touched && passwordControl.hasError('maxlength')) {
+        <p id="login-password-error" class="mt-2 text-sm font-medium text-red-800" role="alert">
+          A senha excede o limite de 1024 caracteres.
+        </p>
+      }
+    </div>
+
+    @if (message(); as statusMessage) {
+      <p class="mb-6 rounded-finora-control border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-900" role="alert" aria-live="polite">
+        {{ statusMessage }}
+      </p>
+    }
+
+    <button
+      type="submit"
+      [disabled]="form.invalid || isSubmitting()"
+      class="min-h-12 w-full rounded-finora-control bg-finora-brand px-5 py-3 font-semibold text-white transition hover:bg-finora-brand/90 focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-finora-brand disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      {{ isSubmitting() ? 'Entrando…' : 'Entrar' }}
+    </button>
+  </form>
+
+  <!-- Mantém um retorno público acionável por teclado sem oferecer cadastro ou recuperação não entregues. -->
+  <p class="mt-6 text-center text-sm text-finora-muted">
+    <a
+      class="rounded-finora-control font-semibold text-finora-brand underline underline-offset-4 focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-finora-brand"
+      routerLink="/"
+    >Voltar ao início</a>
+  </p>
+</section>
