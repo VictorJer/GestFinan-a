@@ -1,0 +1,576 @@
+<!-- Mantém a lista descritiva protegida, sem criar totais ou transformar a consulta em sincronização. -->
+<section aria-labelledby="transaction-list-title" class="space-y-6">
+  <header
+    class="rounded-finora-panel border border-finora-line bg-finora-surface px-6 py-8 sm:px-10 sm:py-10"
+  >
+    <p class="mb-3 text-sm font-semibold text-finora-brand">Área protegida</p>
+    <h1
+      id="transaction-list-title"
+      class="font-finora-display text-3xl font-bold tracking-tight sm:text-4xl"
+    >
+      Movimentos
+    </h1>
+    <p class="mt-4 max-w-3xl text-base leading-7 text-finora-muted">
+      Consulte movimentos persistidos da sua sessão. Datas, situação e cobertura são apresentadas
+      separadamente; valores permanecem individuais e não representam um total.
+    </p>
+  </header>
+
+  <!-- Filtros aplicam-se juntos; “Sem categoria” não aparece porque a API não oferece esse filtro. -->
+  <section
+    aria-labelledby="transaction-filters-title"
+    class="rounded-finora-panel border border-finora-line bg-finora-surface p-5 sm:p-7"
+  >
+    <h2
+      id="transaction-filters-title"
+      class="font-finora-display text-2xl font-bold tracking-tight"
+    >
+      Filtros
+    </h2>
+    <form class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" (submit)="submitFilters($event)">
+      <div>
+        <label for="movement-card-filter" class="mb-1 block text-sm font-semibold">Cartão</label>
+        <select
+          id="movement-card-filter"
+          name="cardId"
+          class="min-h-11 w-full rounded-finora-control border border-finora-line bg-white px-3 py-2 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+          [value]="draft().cardId"
+          (change)="updateFilter('cardId', $event)"
+        >
+          <option value="">Todos os cartões</option>
+          @for (card of cardOptions(); track card.id) {
+            <option [value]="card.id">{{ cardLabel(card) }}</option>
+          }
+        </select>
+      </div>
+
+      <div>
+        <label for="movement-category-filter" class="mb-1 block text-sm font-semibold"
+          >Categoria atribuída</label
+        >
+        <select
+          id="movement-category-filter"
+          name="categoryId"
+          class="min-h-11 w-full rounded-finora-control border border-finora-line bg-white px-3 py-2 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+          [value]="draft().categoryId"
+          (change)="updateFilter('categoryId', $event)"
+        >
+          <option value="">Todas as categorias</option>
+          @for (category of categoryFilterOptions(); track category.id) {
+            <option [value]="category.id">{{ category.name }}</option>
+          }
+        </select>
+      </div>
+
+      <div>
+        <label for="movement-situation-filter" class="mb-1 block text-sm font-semibold"
+          >Situação</label
+        >
+        <select
+          id="movement-situation-filter"
+          name="situation"
+          class="min-h-11 w-full rounded-finora-control border border-finora-line bg-white px-3 py-2 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+          [value]="draft().situation"
+          (change)="updateFilter('situation', $event)"
+        >
+          <option value="">Todas as situações</option>
+          <option value="Effective">Efetivado</option>
+          <option value="Pending">Pendente</option>
+          <option value="FutureInstallment">Parcela futura</option>
+          <option value="Unknown">Não reconhecida</option>
+        </select>
+      </div>
+
+      <div>
+        <label for="movement-from-filter" class="mb-1 block text-sm font-semibold"
+          >De (dia técnico, inclusivo)</label
+        >
+        <input
+          id="movement-from-filter"
+          name="from"
+          type="date"
+          class="min-h-11 w-full rounded-finora-control border border-finora-line bg-white px-3 py-2 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+          [value]="draft().from"
+          (input)="updateFilter('from', $event)"
+        />
+      </div>
+
+      <div>
+        <label for="movement-to-filter" class="mb-1 block text-sm font-semibold"
+          >Até (dia técnico, exclusivo)</label
+        >
+        <input
+          id="movement-to-filter"
+          name="toExclusive"
+          type="date"
+          aria-describedby="movement-date-help"
+          class="min-h-11 w-full rounded-finora-control border border-finora-line bg-white px-3 py-2 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+          [value]="draft().toExclusive"
+          (input)="updateFilter('toExclusive', $event)"
+        />
+      </div>
+
+      <div>
+        <label for="movement-search-filter" class="mb-1 block text-sm font-semibold"
+          >Descrição</label
+        >
+        <input
+          id="movement-search-filter"
+          name="search"
+          type="search"
+          maxlength="200"
+          aria-describedby="movement-search-help"
+          class="min-h-11 w-full rounded-finora-control border border-finora-line bg-white px-3 py-2 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+          [value]="draft().search"
+          (input)="updateFilter('search', $event)"
+        />
+      </div>
+
+      <p
+        id="movement-date-help"
+        class="text-xs leading-5 text-finora-muted sm:col-span-2 lg:col-span-3"
+      >
+        O intervalo usa o dia técnico de <code>TransactionDate</code>, com início inclusivo e fim
+        exclusivo; o fim precisa ser posterior ao início.
+      </p>
+      <p
+        id="movement-search-help"
+        class="text-xs leading-5 text-finora-muted sm:col-span-2 lg:col-span-3"
+      >
+        Busca literal de até 200 caracteres; símbolos como % e _ não são curinga.
+      </p>
+
+      @if (state().validationMessage; as validationMessage) {
+        <p
+          class="rounded-finora-control border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 sm:col-span-2 lg:col-span-3"
+          role="alert"
+        >
+          {{ validationMessage }}
+        </p>
+      }
+
+      @if (cardsStatus() === 'error' || categoriesStatus() === 'error') {
+        <div
+          class="flex flex-wrap items-center justify-between gap-3 rounded-finora-control border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950 sm:col-span-2 lg:col-span-3"
+          role="alert"
+        >
+          <p>
+            Não foi possível carregar todas as opções de filtro. A consulta continua disponível sem
+            essas opções.
+          </p>
+          <button
+            type="button"
+            class="min-h-11 rounded-finora-control px-3 font-semibold underline underline-offset-4 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+            (click)="retryFilterOptions()"
+          >
+            Recarregar opções
+          </button>
+        </div>
+      }
+
+      <button
+        type="submit"
+        class="inline-flex min-h-11 items-center justify-center rounded-finora-control bg-finora-brand px-5 py-3 text-sm font-semibold text-white transition hover:bg-finora-brand-hover outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 sm:col-span-2 lg:col-span-3 lg:justify-self-start"
+      >
+        Aplicar filtros
+      </button>
+    </form>
+  </section>
+
+  <!-- A criação altera o catálogo visível somente depois do 201 confirmado pela API. -->
+  <section
+    aria-labelledby="personal-categories-title"
+    class="rounded-finora-panel border border-finora-line bg-finora-surface p-5 sm:p-7"
+  >
+    <h2
+      id="personal-categories-title"
+      class="font-finora-display text-2xl font-bold tracking-tight"
+    >
+      Categorias pessoais
+    </h2>
+    <p class="mt-2 max-w-3xl text-sm leading-6 text-finora-muted">
+      Crie uma categoria pelo nome. Ela só ficará disponível para os movimentos após a confirmação
+      da API.
+    </p>
+    @if (categoriesStatus() === 'loading') {
+      <p class="mt-3 text-sm text-finora-muted" role="status" aria-live="polite">
+        Carregando o catálogo de categorias antes de habilitar a criação…
+      </p>
+    }
+    <form
+      id="personal-category-form"
+      class="mt-4 flex flex-wrap items-end gap-3"
+      (submit)="submitCategoryCreation($event)"
+    >
+      <div class="min-w-0 flex-1">
+        <label for="personal-category-name" class="mb-1 block text-sm font-semibold"
+          >Nome da categoria</label
+        >
+        <input
+          id="personal-category-name"
+          name="categoryName"
+          type="text"
+          maxlength="60"
+          required
+          autocomplete="off"
+          [value]="categoryNameDraft()"
+          [disabled]="categoryCreationStatus() === 'saving' || categoriesStatus() === 'loading'"
+          (input)="updateCategoryName($event)"
+          class="min-h-11 w-full rounded-finora-control border border-finora-line bg-white px-3 py-2 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:opacity-60"
+        />
+      </div>
+      <button
+        type="submit"
+        [disabled]="categoryCreationStatus() === 'saving' || categoriesStatus() === 'loading'"
+        class="min-h-11 rounded-finora-control border border-finora-line bg-white px-4 py-2 text-sm font-semibold outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {{ categoryCreationStatus() === 'saving' ? 'Criando…' : 'Criar categoria' }}
+      </button>
+    </form>
+    @if (categoryCreationMessage(); as creationMessage) {
+      <p
+        class="mt-3 rounded-finora-control border border-finora-line bg-finora-bg px-4 py-3 text-sm leading-6"
+        [attr.role]="categoryCreationStatus() === 'error' ? 'alert' : 'status'"
+        aria-live="polite"
+      >
+        {{ creationMessage }}
+      </p>
+    }
+  </section>
+
+  <!-- Estados de leitura e recuperação nunca ecoam resposta, URL ou código bruto do servidor. -->
+  <section
+    aria-labelledby="movement-results-title"
+    class="rounded-finora-panel border border-finora-line bg-finora-surface p-5 sm:p-7"
+  >
+    <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <p class="text-sm font-semibold text-finora-brand">Dados persistidos</p>
+        <h2
+          id="movement-results-title"
+          class="mt-1 font-finora-display text-2xl font-bold tracking-tight"
+        >
+          Resultado da consulta
+        </h2>
+      </div>
+      @if (state().snapshot; as snapshot) {
+        <p
+          class="rounded-finora-control bg-finora-lavender px-3 py-1.5 text-sm font-semibold text-finora-brand"
+        >
+          {{ snapshot.response.filteredCount }}
+          {{ snapshot.response.filteredCount === 1 ? 'movimento' : 'movimentos' }} no conjunto
+          filtrado
+        </p>
+      }
+    </div>
+
+    @if (state().status === 'loading') {
+      <p class="py-4 text-sm text-finora-muted" role="status" aria-live="polite">
+        @if (state().snapshot === null) {
+          Carregando movimentos…
+        } @else {
+          Atualizando a consulta de movimentos…
+        }
+      </p>
+    }
+
+    @if (state().snapshotIsPrevious) {
+      <p
+        class="mb-5 rounded-finora-control border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"
+        role="status"
+        aria-live="polite"
+      >
+        {{ previousSnapshotMessage() }}
+      </p>
+    }
+
+    @if (state().status === 'error') {
+      <div
+        class="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-finora-control border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"
+        role="alert"
+        aria-live="polite"
+      >
+        <p>{{ readFailureMessage(state().failure) }}</p>
+        <button
+          type="button"
+          aria-label="Tentar consulta novamente"
+          class="min-h-11 rounded-finora-control px-3 font-semibold underline underline-offset-4 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+          (click)="retryListRead()"
+        >
+          Tentar consulta novamente
+        </button>
+      </div>
+    }
+
+    @if (state().snapshot; as snapshot) {
+      @if (snapshot.response.items.length === 0) {
+        @if (snapshot.response.filteredCount === 0) {
+          <p
+            class="rounded-finora-control border border-finora-line bg-finora-bg px-4 py-4 text-sm leading-6 text-finora-muted"
+            role="status"
+          >
+            Não há movimentos persistidos para esta consulta. Isso não confirma ausência de
+            movimentos na origem nem gasto zero.
+          </p>
+        } @else {
+          <p
+            class="rounded-finora-control border border-finora-line bg-finora-bg px-4 py-4 text-sm leading-6 text-finora-muted"
+            role="status"
+          >
+            Não há movimentos nesta página. O conjunto filtrado contém
+            {{ snapshot.response.filteredCount }} movimentos; volte a uma página anterior.
+          </p>
+        }
+      } @else {
+        <!-- Cada cartão descreve um movimento; nenhum campo é somado, convertido em agregado ou preenchido com zero. -->
+        <ul class="space-y-4">
+          @for (movement of snapshot.response.items; track movement.id) {
+            <li>
+              <article
+                class="min-w-0 rounded-finora-control border border-finora-line bg-finora-bg p-4 sm:p-5"
+              >
+                <h3 class="break-words text-lg font-semibold">{{ movement.description }}</h3>
+                <dl class="mt-4 grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <div class="min-w-0">
+                    <dt class="text-sm text-finora-muted">Cartão</dt>
+                    <dd class="mt-1 break-words">{{ movementCardLabel(movement.cardId) }}</dd>
+                  </div>
+                  <div class="min-w-0">
+                    <dt class="text-sm text-finora-muted">Valor individual e moeda</dt>
+                    <dd class="mt-1 break-words font-semibold">{{ amountLabel(movement) }}</dd>
+                  </div>
+                  <div class="min-w-0">
+                    <dt class="text-sm text-finora-muted">Data original informada</dt>
+                    <dd class="mt-1 break-words">{{ movement.originalDate }}</dd>
+                  </div>
+                  <div class="min-w-0">
+                    <dt class="text-sm text-finora-muted">Dia técnico usado nos filtros</dt>
+                    <dd class="mt-1 break-words">
+                      {{ movement.transactionDate ?? 'Não informado' }}
+                    </dd>
+                  </div>
+                  <div class="min-w-0">
+                    <dt class="text-sm text-finora-muted">Natureza</dt>
+                    <dd class="mt-1 break-words">{{ natureLabel(movement.nature) }}</dd>
+                  </div>
+                  @if (movement.natureReason !== null) {
+                    <div class="min-w-0">
+                      <dt class="text-sm text-finora-muted">Motivo da natureza</dt>
+                      <dd class="mt-1 break-words">{{ reasonLabel(movement.natureReason) }}</dd>
+                    </div>
+                  }
+                  <div class="min-w-0">
+                    <dt class="text-sm text-finora-muted">Situação</dt>
+                    <dd class="mt-1 break-words">{{ situationLabel(movement.situation) }}</dd>
+                  </div>
+                  @if (movement.situationReason !== null) {
+                    <div class="min-w-0">
+                      <dt class="text-sm text-finora-muted">Motivo da situação</dt>
+                      <dd class="mt-1 break-words">{{ reasonLabel(movement.situationReason) }}</dd>
+                    </div>
+                  }
+                  @if (movement.dateReason !== null) {
+                    <div class="min-w-0">
+                      <dt class="text-sm text-finora-muted">Motivo da data técnica</dt>
+                      <dd class="mt-1 break-words">{{ reasonLabel(movement.dateReason) }}</dd>
+                    </div>
+                  }
+                  <div class="min-w-0">
+                    <dt class="text-sm text-finora-muted">Parcelas</dt>
+                    <dd class="mt-1 break-words">{{ installmentLabel(movement) }}</dd>
+                  </div>
+                  <div class="min-w-0">
+                    <dt class="text-sm text-finora-muted">Categoria confirmada</dt>
+                    <dd class="mt-1 break-words">{{ movementCategoryLabel(movement) }}</dd>
+                    <!-- A opção nula só existe quando a resposta do catálogo a fornece explicitamente. -->
+                    <label
+                      for="movement-category-editor-{{ movement.id }}"
+                      class="mt-3 block text-sm font-semibold"
+                    >
+                      Alterar categoria
+                    </label>
+                    <select
+                      id="movement-category-editor-{{ movement.id }}"
+                      data-category-editor
+                      [value]="movementCategorySelection(movement)"
+                      [disabled]="
+                        categoriesStatus() !== 'loaded' || isMovementCategoryLocked(movement.id)
+                      "
+                      (change)="updateMovementCategory(movement, $event)"
+                      class="mt-1 min-h-11 w-full rounded-finora-control border border-finora-line bg-white px-3 py-2 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <option value="" disabled>Selecione uma categoria</option>
+                      @for (category of categoryOptions(); track category.id ?? 'unassigned') {
+                        <option [value]="categorySelectionValue(category)">
+                          {{ category.name }}
+                        </option>
+                      }
+                    </select>
+                    @if (movementCategoryMessage(movement.id); as categoryMessage) {
+                      <p
+                        class="mt-2 text-sm leading-6"
+                        [attr.role]="movementCategoryHasError(movement.id) ? 'alert' : 'status'"
+                        aria-live="polite"
+                      >
+                        {{ categoryMessage }}
+                      </p>
+                    }
+                    <button
+                      id="save-movement-category-{{ movement.id }}"
+                      type="button"
+                      [disabled]="!canSaveMovementCategory(movement)"
+                      (click)="saveMovementCategory(movement)"
+                      class="mt-2 min-h-11 rounded-finora-control border border-finora-line bg-white px-4 py-2 text-sm font-semibold outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Salvar categoria
+                    </button>
+                  </div>
+                  <div class="min-w-0 sm:col-span-2 lg:col-span-3">
+                    <dt class="text-sm text-finora-muted">Observação</dt>
+                    <dd class="mt-1 break-words whitespace-pre-wrap">
+                      {{ movementNoteLabel(movement) || 'Sem observação' }}
+                    </dd>
+                    <!-- A área de texto preserva conteúdo simples, limite do contrato e limpeza explícita. -->
+                    <label
+                      for="movement-note-editor-{{ movement.id }}"
+                      class="mt-3 block text-sm font-semibold"
+                    >
+                      Editar observação
+                    </label>
+                    <textarea
+                      id="movement-note-editor-{{ movement.id }}"
+                      name="note-{{ movement.id }}"
+                      rows="3"
+                      maxlength="500"
+                      [value]="movementNoteValue(movement)"
+                      [disabled]="isMovementNoteLocked(movement.id)"
+                      [attr.aria-describedby]="'movement-note-help-' + movement.id"
+                      (input)="updateMovementNote(movement, $event)"
+                      class="mt-1 min-h-20 w-full rounded-finora-control border border-finora-line bg-white px-3 py-2 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:opacity-60"
+                    ></textarea>
+                    <p
+                      id="movement-note-help-{{ movement.id }}"
+                      class="mt-1 text-xs leading-5 text-finora-muted"
+                    >
+                      Texto simples, até 500 caracteres. Deixe vazio para limpar a observação.
+                    </p>
+                    @if (movementNoteMessage(movement.id); as noteMessage) {
+                      <p
+                        class="mt-2 text-sm leading-6"
+                        [attr.role]="movementNoteHasError(movement.id) ? 'alert' : 'status'"
+                        aria-live="polite"
+                      >
+                        {{ noteMessage }}
+                      </p>
+                    }
+                    <button
+                      id="save-movement-note-{{ movement.id }}"
+                      type="button"
+                      [disabled]="!canSaveMovementNote(movement)"
+                      (click)="saveMovementNote(movement)"
+                      class="mt-2 min-h-11 rounded-finora-control border border-finora-line bg-white px-4 py-2 text-sm font-semibold outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Salvar observação
+                    </button>
+                  </div>
+                </dl>
+              </article>
+            </li>
+          }
+        </ul>
+      }
+
+      <nav
+        aria-label="Paginação dos movimentos"
+        class="mt-6 flex flex-wrap items-center justify-between gap-3"
+      >
+        <p class="text-sm text-finora-muted">Página {{ snapshot.page }}</p>
+        <div class="flex flex-wrap gap-3">
+          <button
+            type="button"
+            aria-label="Página anterior"
+            class="min-h-11 rounded-finora-control border border-finora-line bg-white px-4 py-2 text-sm font-semibold outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            [disabled]="
+              snapshot.page <= 1 || state().status === 'loading' || state().snapshotIsPrevious
+            "
+            (click)="goToPage(snapshot.page - 1)"
+          >
+            Anterior
+          </button>
+          @if (hasNextPage()) {
+            <button
+              type="button"
+              aria-label="Próxima página"
+              class="min-h-11 rounded-finora-control border border-finora-line bg-white px-4 py-2 text-sm font-semibold outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              [disabled]="state().status === 'loading' || state().snapshotIsPrevious"
+              (click)="goToPage(snapshot.page + 1)"
+            >
+              Próxima
+            </button>
+          }
+        </div>
+      </nav>
+    }
+
+    @if (state().status === 'idle' && state().snapshot === null) {
+      <p class="py-4 text-sm text-finora-muted" role="status">
+        A consulta de movimentos ainda não começou.
+      </p>
+    }
+  </section>
+
+  <!-- Cobertura, sucesso anterior e execução recente são dimensões independentes da lista de valores. -->
+  <section
+    aria-labelledby="movement-coverage-title"
+    class="rounded-finora-panel border border-finora-line bg-finora-surface p-5 sm:p-7"
+  >
+    <h2 id="movement-coverage-title" class="font-finora-display text-2xl font-bold tracking-tight">
+      Cobertura consultada
+    </h2>
+    @if (state().snapshot; as snapshot) {
+      <p class="mt-4 rounded-finora-control bg-finora-bg px-4 py-3 text-sm leading-6">
+        {{ coverageSummary(snapshot.response.coverage) }}
+      </p>
+      @if (snapshot.response.coverage.lastSuccessfulImportAtUtc; as lastSuccess) {
+        <p class="mt-3 text-sm leading-6">
+          Último sucesso informado: <strong>{{ timestampLabel(lastSuccess) }}</strong>.
+        </p>
+      }
+      @if (snapshot.response.coverage.lastSuccessfulWindow; as window) {
+        <p class="mt-3 text-sm leading-6">
+          Período observado: {{ window.observedFrom ?? 'início não informado' }} até
+          {{ window.observedTo ?? 'fim não informado' }}. Cobertura da janela solicitada:
+          {{ coverageLabel(window.coverageState) }}.
+        </p>
+      }
+      @if (snapshot.response.coverage.latestExecution; as execution) {
+        <div class="mt-4 rounded-finora-control border border-finora-line p-4">
+          <h3 class="font-semibold">Execução mais recente</h3>
+          <dl class="mt-3 grid gap-3 sm:grid-cols-2">
+            <div>
+              <dt class="text-sm text-finora-muted">Situação da execução</dt>
+              <dd class="mt-1 text-sm font-medium">{{ executionLabel(execution.state) }}</dd>
+            </div>
+            <div>
+              <dt class="text-sm text-finora-muted">Cobertura reportada na execução</dt>
+              <dd class="mt-1 text-sm font-medium">{{ coverageLabel(execution.coverageState) }}</dd>
+            </div>
+            @if (execution.failureCode !== null) {
+              <div class="sm:col-span-2">
+                <dt class="text-sm text-finora-muted">Resultado</dt>
+                <dd class="mt-1 text-sm font-medium">
+                  A execução recente reportou uma falha; o código interno não é exibido.
+                </dd>
+              </div>
+            }
+          </dl>
+        </div>
+      }
+    } @else {
+      <p class="mt-4 text-sm leading-6 text-finora-muted" role="status">
+        A cobertura ainda não foi consultada; nenhum valor derivado ou histórico integral é
+        presumido.
+      </p>
+    }
+  </section>
+</section>

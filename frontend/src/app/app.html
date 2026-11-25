@@ -24,7 +24,7 @@
       >
     </a>
 
-    <!-- Mantém destinos disponíveis conforme a sessão e fixa o foco lavanda sobre a sidebar escura. -->
+    <!-- Mantém destinos protegidos condicionais à sessão e foco lavanda sobre a sidebar escura. -->
     <nav aria-label="Navegação principal" class="mt-12 flex flex-col gap-2">
       <a
         aria-label="Início"
@@ -55,6 +55,7 @@
           aria-label="Cartões e conexão"
           ariaCurrentWhenActive="page"
           class="flex min-h-11 items-center justify-center gap-3 rounded-finora-control px-3 py-2 text-sm font-semibold text-white/80 transition-colors hover:bg-white/10 outline-finora-focus focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 wide:justify-start"
+          [routerLinkActiveOptions]="{ exact: true }"
           routerLink="/area"
           routerLinkActive="bg-finora-nav-active text-white"
         >
@@ -63,6 +64,21 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="m9 12 2 2 4-4"></path>
           </svg>
           <span class="sr-only wide:not-sr-only">Cartões e conexão</span>
+        </a>
+        <a
+          aria-label="Movimentos"
+          ariaCurrentWhenActive="page"
+          class="flex min-h-11 items-center justify-center gap-3 rounded-finora-control px-3 py-2 text-sm font-semibold text-white/80 transition-colors hover:bg-white/10 outline-finora-focus focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 wide:justify-start"
+          routerLink="/area/movimentos"
+          routerLinkActive="bg-finora-nav-active text-white"
+        >
+          <svg aria-hidden="true" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8" viewBox="0 0 24 24">
+            <path d="M9 6h11M9 12h11M9 18h11"></path>
+            <circle cx="4" cy="6" r="1"></circle>
+            <circle cx="4" cy="12" r="1"></circle>
+            <circle cx="4" cy="18" r="1"></circle>
+          </svg>
+          <span class="sr-only wide:not-sr-only">Movimentos</span>
         </a>
         <button
           type="button"
@@ -163,14 +179,14 @@
     <!-- O rodapé identifica o produto sem atribuir estado financeiro à pessoa visitante. -->
     <footer class="px-5 pb-6 text-sm text-finora-muted sm:px-8">
       @if (isAuthenticated()) {
-        Finora · Cartões e conexão
+        Finora · Área protegida
       } @else {
         Finora · Aplicação pública
       }
     </footer>
   </div>
 
-  <!-- No mobile, expõe início e cartões/conexão para a sessão ativa sem ocultar estado ou foco. -->
+  <!-- No mobile, expõe início e destinos protegidos sem ocultar estado ou foco. -->
   <nav
     aria-label="Navegação principal"
     class="fixed inset-x-0 bottom-0 z-20 flex h-[65px] items-center justify-center gap-1 border-t border-finora-line bg-finora-surface px-2 pb-[env(safe-area-inset-bottom)] mobile:hidden"
@@ -204,9 +220,17 @@
         ariaCurrentWhenActive="page"
         class="flex min-h-11 min-w-0 flex-1 items-center justify-center rounded-finora-control px-2 py-2 text-xs font-semibold text-finora-muted transition-colors hover:bg-finora-lavender outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
         aria-label="Cartões e conexão"
+        [routerLinkActiveOptions]="{ exact: true }"
         routerLink="/area"
         routerLinkActive="text-finora-brand"
       >Cartões</a>
+      <a
+        aria-label="Movimentos"
+        ariaCurrentWhenActive="page"
+        class="flex min-h-11 min-w-0 flex-1 items-center justify-center rounded-finora-control px-1 py-2 text-[11px] font-semibold text-finora-muted transition-colors hover:bg-finora-lavender outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+        routerLink="/area/movimentos"
+        routerLinkActive="text-finora-brand"
+      >Movimentos</a>
       <button
         type="button"
         class="flex min-h-11 min-w-0 flex-1 items-center justify-center rounded-finora-control px-2 py-2 text-xs font-semibold text-finora-muted transition-colors hover:bg-finora-lavender outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:cursor-wait disabled:opacity-60"
