@@ -115,12 +115,19 @@ describe('Página inicial pública', () => {
       '/dashboard',
       '/card',
       '/transactions',
+      '/area/movimentos',
       '/investments',
       '/simulator',
       '/sync',
     ];
 
-    expect(routes.map((route) => route.path)).toEqual(['', 'login', 'area', '**']);
+    expect(routes.map((route) => route.path)).toEqual([
+      '',
+      'login',
+      'area',
+      'area/movimentos',
+      '**',
+    ]);
     expect(navigation.map((link) => link.getAttribute('href'))).toEqual([
       '/',
       '/login',
@@ -179,17 +186,23 @@ describe('Página inicial pública', () => {
     expect(navigation.map((link) => link.getAttribute('href'))).toEqual([
       '/',
       '/area',
+      '/area/movimentos',
       '/',
       '/area',
+      '/area/movimentos',
     ]);
     expect(navigation.map((link) => link.getAttribute('aria-label'))).toEqual([
       'Início',
       'Cartões e conexão',
+      'Movimentos',
       'Início',
       'Cartões e conexão',
+      'Movimentos',
     ]);
     expect(navigation[1]?.textContent).toContain('Cartões e conexão');
-    expect(navigation[3]?.textContent).toContain('Cartões');
+    expect(navigation[2]?.textContent).toContain('Movimentos');
+    expect(navigation[4]?.textContent).toContain('Cartões');
+    expect(navigation[5]?.textContent).toContain('Movimentos');
     expect(shell.querySelector('app-home a[href="/area"]')?.textContent).toContain(
       'Abrir cartões e conexão',
     );
@@ -203,7 +216,7 @@ describe('Página inicial pública', () => {
     expect(
       linkTargets
         .filter((path) => path?.startsWith('/'))
-        .every((path) => ['/', '/area', '/login'].includes(path ?? '')),
+        .every((path) => ['/', '/area', '/area/movimentos', '/login'].includes(path ?? '')),
     ).toBe(true);
     TestBed.inject(HttpTestingController).expectNone(() => true);
     fixture.destroy();
@@ -234,6 +247,7 @@ describe('Página inicial pública', () => {
 
     expect(router.url).toBe('/area');
     expect(fixture.nativeElement.textContent).toContain('Cartões e conexão');
+    expect(fixture.nativeElement.querySelectorAll('nav a[href="/area/movimentos"]')).toHaveLength(2);
     expect(fixture.nativeElement.innerHTML).not.toContain('synthetic-flow-token');
     flushAuthenticatedAreaStartup(TestBed.inject(HttpTestingController));
     fixture.detectChanges();
@@ -251,6 +265,7 @@ describe('Página inicial pública', () => {
     fixture.detectChanges();
 
     expect(router.url).toBe('/login');
+    expect(fixture.nativeElement.querySelectorAll('nav a[href="/area/movimentos"]')).toHaveLength(0);
     expect(fixture.nativeElement.textContent).toContain('Saída confirmada pelo servidor');
     expect(fixture.nativeElement.querySelector('[role="status"]')?.textContent).toContain(
       'Saída confirmada',
