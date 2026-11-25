@@ -22,7 +22,7 @@ export const routes: Routes = [
     path: 'area',
     component: AuthenticatedAreaPage,
     canActivate: [authenticatedSessionGuard],
-    title: 'Área autenticada — Finora',
+    title: 'Cartões e conexão — Finora',
   },
   {
     path: '**',

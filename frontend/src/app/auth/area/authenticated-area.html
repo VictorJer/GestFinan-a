@@ -1,14 +1,217 @@
-<!-- Explica com clareza o limite da área autenticada sem sugerir dados ou recursos inexistentes. -->
-<section
-  aria-labelledby="area-title"
-  class="rounded-finora-panel border border-finora-line bg-finora-surface px-6 py-10 sm:px-10 sm:py-12"
->
-  <p class="mb-3 text-sm font-semibold text-finora-brand">Área autenticada</p>
-  <h1 id="area-title" class="font-finora-display text-3xl font-bold tracking-tight sm:text-4xl">
-    Acesso protegido ativo.
-  </h1>
-  <p class="mt-5 max-w-2xl text-base leading-7 text-finora-muted">
-    Sua sessão local está válida. Esta área é apenas informativa: cartões, movimentações e outras
-    informações financeiras ainda não estão disponíveis.
-  </p>
+<!-- Apresenta apenas dados próprios confirmados pela API, sem métricas ou conteúdo demonstrativo. -->
+<section aria-labelledby="area-title" class="space-y-6">
+  <header class="rounded-finora-panel border border-finora-line bg-finora-surface px-6 py-8 sm:px-10 sm:py-10">
+    <p class="mb-3 text-sm font-semibold text-finora-brand">Área protegida</p>
+    <h1 id="area-title" class="font-finora-display text-3xl font-bold tracking-tight sm:text-4xl">
+      Cartões e conexão
+    </h1>
+    <p class="mt-4 max-w-3xl text-base leading-7 text-finora-muted">
+      Consulte somente os cartões e o estado persistido disponíveis para sua sessão. Uma lista vazia,
+      uma cobertura desconhecida ou uma solicitação aceita não comprovam histórico integral nem
+      importação concluída.
+    </p>
+
+    @if (updateMessage(); as message) {
+      <p
+        class="mt-6 rounded-finora-control border border-finora-line bg-finora-bg px-4 py-3 text-sm leading-6"
+        role="status"
+        aria-live="polite"
+      >{{ message }}</p>
+    }
+
+    <!-- Controles têm nomes explícitos, foco visível e não expõem chave idempotente ou resposta remota. -->
+    <div class="mt-5 flex flex-wrap gap-3">
+      <button
+        type="button"
+        class="inline-flex min-h-11 items-center justify-center rounded-finora-control bg-finora-brand px-5 py-3 text-sm font-semibold text-white transition hover:bg-finora-brand-hover outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+        [disabled]="!canRequestManual()"
+        (click)="requestManualUpdate()"
+      >{{ canRequestManual() ? 'Solicitar atualização manual' : 'Aguardando a solicitação atual' }}</button>
+
+      @if (canRetryPending()) {
+        <button
+          type="button"
+          class="inline-flex min-h-11 items-center justify-center rounded-finora-control border border-finora-line bg-white px-4 py-3 text-sm font-semibold text-finora-brand outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+          (click)="retryPendingIntent()"
+        >Repetir a mesma solicitação</button>
+      }
+
+      @if (tracking().status === 'unconfirmed') {
+        <button
+          type="button"
+          class="inline-flex min-h-11 items-center justify-center rounded-finora-control border border-finora-line bg-white px-4 py-3 text-sm font-semibold text-finora-brand outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+          (click)="refreshSnapshots()"
+        >Reconsultar cartões e estado (somente leitura)</button>
+      }
+    </div>
+    <p class="mt-3 text-xs leading-5 text-finora-muted">
+      A atualização manual é uma solicitação ao servidor. A resposta de aceite não significa que a importação terminou.
+    </p>
+  </header>
+
+  <!-- GET de cartões é independente do estado da conexão e nunca cria execução de sincronização. -->
+  <section
+    aria-labelledby="cards-title"
+    class="rounded-finora-panel border border-finora-line bg-finora-surface p-5 sm:p-7"
+  >
+    <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <p class="text-sm font-semibold text-finora-brand">Dados disponíveis</p>
+        <h2 id="cards-title" class="mt-1 font-finora-display text-2xl font-bold tracking-tight">
+          Seus cartões
+        </h2>
+      </div>
+      <span class="rounded-finora-control bg-finora-lavender px-3 py-1.5 text-xs font-semibold text-finora-brand">
+        Consulta protegida
+      </span>
+    </div>
+
+    @if (cards().status === 'loading') {
+      <p class="py-4 text-sm text-finora-muted" role="status" aria-live="polite">Carregando cartões disponíveis…</p>
+    }
+
+    @if (cards().status === 'empty') {
+      <p class="rounded-finora-control border border-finora-line bg-finora-bg px-4 py-4 text-sm leading-6 text-finora-muted" role="status">
+        Não há cartões disponíveis nos dados persistidos. Isso não confirma ausência de cartões na origem.
+      </p>
+    }
+
+    @if (cards().status === 'not-found' || cards().status === 'conflict' || cards().status === 'error') {
+      <div class="flex flex-wrap items-center justify-between gap-3 rounded-finora-control border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950" role="alert" aria-live="polite">
+        <p>{{ readFailureMessage(cards().failure) }}</p>
+        <button
+          type="button"
+          class="min-h-11 rounded-finora-control px-3 font-semibold underline underline-offset-4 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+          (click)="refreshSnapshots()"
+        >Tentar consulta novamente</button>
+      </div>
+    }
+
+    @if (cards().snapshot; as cardList) {
+      @if (cardList.length > 0) {
+        <ul class="grid gap-3 sm:grid-cols-2">
+          @for (card of cardList; track card.id) {
+            <li class="min-w-0 rounded-finora-control border border-finora-line bg-finora-bg p-4 sm:p-5">
+              <p class="break-words text-base font-semibold text-finora-ink">
+                {{ card.name?.trim() || 'Nome não disponível' }}
+              </p>
+              <dl class="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                <div>
+                  <dt class="text-finora-muted">Final mascarado</dt>
+                  <dd class="mt-1 font-medium">{{ card.lastFour?.trim() || 'Não disponível' }}</dd>
+                </div>
+                <div>
+                  <dt class="text-finora-muted">Moeda informada</dt>
+                  <dd class="mt-1 font-medium">{{ card.currencyCode }}</dd>
+                </div>
+              </dl>
+            </li>
+          }
+        </ul>
+      }
+    } @else if (cards().status === 'idle') {
+      <p class="py-4 text-sm text-finora-muted" role="status">A consulta de cartões ainda não começou.</p>
+    }
+  </section>
+
+  <!-- Horários, tentativa, política e cobertura permanecem dimensões separadas e sem preenchimento presumido. -->
+  <section
+    aria-labelledby="connection-title"
+    class="rounded-finora-panel border border-finora-line bg-finora-surface p-5 sm:p-7"
+  >
+    <p class="text-sm font-semibold text-finora-brand">Estado persistido</p>
+    <h2 id="connection-title" class="mt-1 font-finora-display text-2xl font-bold tracking-tight">
+      Conexão e atualização
+    </h2>
+
+    @if (connection().status === 'loading') {
+      <p class="mt-5 text-sm text-finora-muted" role="status" aria-live="polite">Carregando estado da conexão…</p>
+    }
+
+    @if (connection().status === 'not-found' || connection().status === 'conflict' || connection().status === 'error') {
+      <div class="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-finora-control border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950" role="alert" aria-live="polite">
+        <p>{{ readFailureMessage(connection().failure, 'connection') }}</p>
+        <button
+          type="button"
+          class="min-h-11 rounded-finora-control px-3 font-semibold underline underline-offset-4 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+          (click)="refreshSnapshots()"
+        >Atualizar estado novamente</button>
+      </div>
+    }
+
+    @if (connection().snapshot; as sync) {
+      <div class="mt-6 space-y-6">
+        <p class="rounded-finora-control bg-finora-bg px-4 py-3 text-sm leading-6">
+          @if (sync.reauthorizationRequired) {
+            É necessário renovar o acesso no provedor antes de solicitar nova atualização.
+          } @else if (sync.updateNeeded) {
+            O servidor indicou que uma atualização pode ser necessária; a elegibilidade é decidida no servidor.
+          } @else {
+            O estado consultado não indicou necessidade de atualização automática neste momento.
+          }
+        </p>
+
+        <dl class="grid gap-4 sm:grid-cols-2">
+          <div class="rounded-finora-control border border-finora-line p-4">
+            <dt class="text-sm text-finora-muted">Último sucesso no Finora</dt>
+            <dd class="mt-2 text-sm font-semibold">{{ formatTimestamp(sync.lastSuccessfulImportAtUtc) }}</dd>
+          </div>
+          <div class="rounded-finora-control border border-finora-line p-4">
+            <dt class="text-sm text-finora-muted">Última tentativa</dt>
+            <dd class="mt-2 text-sm font-semibold">{{ formatTimestamp(sync.lastAttemptAtUtc) }}</dd>
+          </div>
+          <div class="rounded-finora-control border border-finora-line p-4">
+            <dt class="text-sm text-finora-muted">Última atualização informada pela origem</dt>
+            <dd class="mt-2 text-sm font-semibold">
+              {{ formatTimestamp(sync.sourceUpdatedAtUtc, 'Não informada pela origem') }}
+            </dd>
+          </div>
+          <div class="rounded-finora-control border border-finora-line p-4">
+            <dt class="text-sm text-finora-muted">Próxima elegibilidade informada</dt>
+            <dd class="mt-2 text-sm font-semibold">{{ formatTimestamp(sync.nextAllowedAtUtc) }}</dd>
+          </div>
+        </dl>
+
+        @if (sync.latestExecution; as execution) {
+          <section aria-labelledby="latest-run-title" class="rounded-finora-control border border-finora-line bg-finora-bg p-4 sm:p-5">
+            <h3 id="latest-run-title" class="font-semibold">Execução mais recente</h3>
+            <dl class="mt-4 grid gap-4 sm:grid-cols-2">
+              <div>
+                <dt class="text-sm text-finora-muted">Estado</dt>
+                <dd class="mt-1 text-sm font-medium">{{ executionStateLabel(execution.state) }}</dd>
+              </div>
+              <div>
+                <dt class="text-sm text-finora-muted">Criada em (UTC)</dt>
+                <dd class="mt-1 text-sm font-medium">{{ formatTimestamp(execution.createdAtUtc) }}</dd>
+              </div>
+              <div>
+                <dt class="text-sm text-finora-muted">Tentativa da execução</dt>
+                <dd class="mt-1 text-sm font-medium">{{ formatTimestamp(execution.lastAttemptAtUtc) }}</dd>
+              </div>
+              <div>
+                <dt class="text-sm text-finora-muted">Encerrada em</dt>
+                <dd class="mt-1 text-sm font-medium">{{ formatTimestamp(execution.finishedAtUtc) }}</dd>
+              </div>
+              <div class="sm:col-span-2">
+                <dt class="text-sm text-finora-muted">Cobertura conhecida da execução</dt>
+                <dd class="mt-1 text-sm font-medium">{{ coverageLabel(execution.coverageState) }}</dd>
+              </div>
+              @if (execution.failureCode !== null) {
+                <div class="sm:col-span-2">
+                  <dt class="text-sm text-finora-muted">Resultado</dt>
+                  <dd class="mt-1 text-sm font-medium">A execução não foi concluída; o código interno não é exibido.</dd>
+                </div>
+              }
+            </dl>
+          </section>
+        } @else {
+          <p class="text-sm text-finora-muted">
+            Nenhuma execução recente foi informada pelo servidor. Cobertura conhecida: desconhecida.
+          </p>
+        }
+      </div>
+    } @else if (connection().status === 'idle') {
+      <p class="mt-5 text-sm text-finora-muted" role="status">O estado da conexão ainda não foi consultado.</p>
+    }
+  </section>
 </section>

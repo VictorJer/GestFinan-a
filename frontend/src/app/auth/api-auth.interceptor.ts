@@ -7,17 +7,36 @@ import { SessionService } from './session';
 export type ProtectedApiErrorKind =
   | 'unauthorized'
   | 'forbidden'
+  | 'not-found'
+  | 'conflict'
+  | 'sync-active'
+  | 'sync-interval'
+  | 'acceptance-indeterminate'
   | 'network'
   | 'unavailable'
   | 'request-failed'
   | 'stale';
 
+export interface SyncAcceptanceErrorMetadata {
+  readonly syncRunId: string | null;
+  readonly nextAllowedAtUtc: string | null;
+  readonly retryAfterSeconds: number | null;
+}
+
 // Converte falhas protegidas em estados seguros, sem repassar payloads potencialmente sensíveis.
 export class ProtectedApiRequestError extends Error {
-  constructor(readonly kind: ProtectedApiErrorKind) {
+  constructor(
+    readonly kind: ProtectedApiErrorKind,
+    readonly syncMetadata: SyncAcceptanceErrorMetadata | null = null,
+  ) {
     const messages: Record<ProtectedApiErrorKind, string> = {
       unauthorized: 'A sessão não está mais válida. Entre novamente.',
       forbidden: 'Sua sessão não tem permissão para esta operação.',
+      'not-found': 'O recurso solicitado não está disponível.',
+      conflict: 'O recurso solicitado não pode ser selecionado sem resolver uma ambiguidade.',
+      'sync-active': 'Já existe uma atualização em andamento para esta conexão.',
+      'sync-interval': 'A conexão recebeu uma solicitação recentemente; aguarde antes de tentar novamente.',
+      'acceptance-indeterminate': 'Não foi possível confirmar se a solicitação foi aceita.',
       network: 'Não foi possível conectar à API.',
       unavailable: 'A API está temporariamente indisponível.',
       'request-failed': 'Não foi possível concluir a operação.',
@@ -79,6 +98,61 @@ export const apiAuthInterceptor: HttpInterceptorFn = (request, next) => {
         return throwError(() => new ProtectedApiRequestError('forbidden'));
       }
 
+      const isSyncAcceptance = isSyncAcceptanceRequest(request, target, apiBase);
+
+      // Uma falha de transporte após POST não prova se o commit da intenção ocorreu; preserve a chave para replay.
+      if (isSyncAcceptance && error.status === 0) {
+        return throwError(() => new ProtectedApiRequestError('acceptance-indeterminate'));
+      }
+
+      // Só o código allowlisted distingue execução ativa de conexão ambígua, e o ID é validado antes da projeção.
+      if (isSyncAcceptance && error.status === 409) {
+        const problem = asRecord(error.error);
+        if (problem?.['code'] === 'SYNC_RUN_ALREADY_ACTIVE') {
+          return throwError(
+            () =>
+              new ProtectedApiRequestError('sync-active', {
+                syncRunId: isGuid(problem['syncRunId']) ? problem['syncRunId'] : null,
+                nextAllowedAtUtc: null,
+                retryAfterSeconds: null,
+              }),
+          );
+        }
+      }
+
+      // 429 na rota de intenção significa intervalo; campos auxiliares só são usados com o código esperado.
+      if (isSyncAcceptance && error.status === 429) {
+        const problem = asRecord(error.error);
+        const hasExpectedCode = problem?.['code'] === 'SYNC_RUN_MINIMUM_INTERVAL_ACTIVE';
+        return throwError(
+          () =>
+            new ProtectedApiRequestError(
+              'sync-interval',
+              hasExpectedCode
+                ? {
+                    syncRunId: null,
+                    nextAllowedAtUtc: parseUtcTimestamp(problem['nextAllowedAtUtc']),
+                    retryAfterSeconds: parseRetryAfter(error.headers.get('Retry-After')),
+                  }
+                : { syncRunId: null, nextAllowedAtUtc: null, retryAfterSeconds: null },
+            ),
+        );
+      }
+
+      // Qualquer 503 na aceitação permanece incerto, inclusive sem código; disponibilidade não comprova rollback.
+      if (isSyncAcceptance && error.status === 503) {
+        return throwError(() => new ProtectedApiRequestError('acceptance-indeterminate'));
+      }
+
+      // Ausência e ambiguidade são condições de domínio para a tela, não avisos globais de sessão.
+      if (error.status === 404) {
+        return throwError(() => new ProtectedApiRequestError('not-found'));
+      }
+
+      if (error.status === 409) {
+        return throwError(() => new ProtectedApiRequestError('conflict'));
+      }
+
       if (error.status === 0) {
         sessionService.setNoticeForGeneration(session.generation, 'network');
         return throwError(() => new ProtectedApiRequestError('network'));
@@ -133,6 +207,67 @@ function isProtectedApiRequest(
 
   const normalizedPath = target.pathname.replace(/\/+$/, '').toLowerCase();
   return normalizedPath !== `${apiPath}/auth/login`.toLowerCase();
+}
+
+// Restringe a leitura de metadados de aceite aos dois POSTs próprios da API configurada.
+function isSyncAcceptanceRequest(
+  request: HttpRequest<unknown>,
+  target: URL,
+  base: NormalizedApiBaseUrl,
+): boolean {
+  if (request.method.toUpperCase() !== 'POST' || target.origin !== base.origin) {
+    return false;
+  }
+
+  const apiPath = base.pathPrefix.endsWith('/api')
+    ? base.pathPrefix
+    : `${base.pathPrefix}/api`;
+  const normalizedApiPath = apiPath.replace(/\/+$/, '').toLowerCase();
+  const normalizedRequestPath = target.pathname.replace(/\/+$/, '').toLowerCase();
+  return [
+    `${normalizedApiPath}/connections/current/sync`,
+    `${normalizedApiPath}/connections/current/sync/on-entry`,
+  ].includes(normalizedRequestPath);
+}
+
+// Lê somente objetos simples de ProblemDetails e ignora string, array e payloads inesperados.
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+// Limita IDs encaminhados para acompanhamento ao formato GUID; não armazena texto livre do problema.
+function isGuid(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+  );
+}
+
+// Preserva somente timestamps ISO válidos com fuso explícito para apresentar a próxima elegibilidade.
+function parseUtcTimestamp(value: unknown): string | null {
+  if (
+    typeof value !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/i.test(value) ||
+    !Number.isFinite(Date.parse(value))
+  ) {
+    return null;
+  }
+
+  return value;
+}
+
+// Aceita Retry-After somente como segundos decimais não negativos e limita valores absurdos da resposta.
+function parseRetryAfter(value: string | null): number | null {
+  if (value === null || !/^(0|[1-9]\d*)$/.test(value)) {
+    return null;
+  }
+
+  const seconds = Number(value);
+  return Number.isSafeInteger(seconds) && seconds <= 86_400 ? seconds : null;
 }
 
 // Impede que um Bearer previamente definido pelo chamador escape para login, URL externa ou página pública.

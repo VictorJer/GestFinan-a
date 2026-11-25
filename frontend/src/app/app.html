@@ -52,7 +52,7 @@
       </a>
       @if (isAuthenticated()) {
         <a
-          aria-label="Área informativa"
+          aria-label="Cartões e conexão"
           ariaCurrentWhenActive="page"
           class="flex min-h-11 items-center justify-center gap-3 rounded-finora-control px-3 py-2 text-sm font-semibold text-white/80 transition-colors hover:bg-white/10 outline-finora-focus focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 wide:justify-start"
           routerLink="/area"
@@ -62,7 +62,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 3 4.5 6v5c0 5 3.2 8.3 7.5 10 4.3-1.7 7.5-5 7.5-10V6L12 3Z"></path>
             <path stroke-linecap="round" stroke-linejoin="round" d="m9 12 2 2 4-4"></path>
           </svg>
-          <span class="sr-only wide:not-sr-only">Área</span>
+          <span class="sr-only wide:not-sr-only">Cartões e conexão</span>
         </a>
         <button
           type="button"
@@ -163,19 +163,20 @@
     <!-- O rodapé identifica o produto sem atribuir estado financeiro à pessoa visitante. -->
     <footer class="px-5 pb-6 text-sm text-finora-muted sm:px-8">
       @if (isAuthenticated()) {
-        Finora · Área informativa
+        Finora · Cartões e conexão
       } @else {
         Finora · Aplicação pública
       }
     </footer>
   </div>
 
-  <!-- No mobile, expõe início e a ação coerente com sessão sem ocultar estado ou foco. -->
+  <!-- No mobile, expõe início e cartões/conexão para a sessão ativa sem ocultar estado ou foco. -->
   <nav
     aria-label="Navegação principal"
     class="fixed inset-x-0 bottom-0 z-20 flex h-[65px] items-center justify-center gap-1 border-t border-finora-line bg-finora-surface px-2 pb-[env(safe-area-inset-bottom)] mobile:hidden"
   >
     <a
+      aria-label="Início"
       ariaCurrentWhenActive="page"
       class="flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-finora-control px-2 py-2 text-xs font-semibold text-finora-muted transition-colors hover:bg-finora-lavender outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
       [routerLinkActiveOptions]="{ exact: true }"
@@ -202,9 +203,10 @@
       <a
         ariaCurrentWhenActive="page"
         class="flex min-h-11 min-w-0 flex-1 items-center justify-center rounded-finora-control px-2 py-2 text-xs font-semibold text-finora-muted transition-colors hover:bg-finora-lavender outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+        aria-label="Cartões e conexão"
         routerLink="/area"
         routerLinkActive="text-finora-brand"
-      >Área</a>
+      >Cartões</a>
       <button
         type="button"
         class="flex min-h-11 min-w-0 flex-1 items-center justify-center rounded-finora-control px-2 py-2 text-xs font-semibold text-finora-muted transition-colors hover:bg-finora-lavender outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:cursor-wait disabled:opacity-60"
