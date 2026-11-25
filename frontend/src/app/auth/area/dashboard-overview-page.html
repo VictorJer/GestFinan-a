@@ -1,0 +1,208 @@
+<section aria-labelledby="dashboard-overview-title" class="space-y-6">
+  <!-- O cabeçalho identifica uma leitura descritiva e não promete indicadores financeiros derivados. -->
+  <header
+    class="rounded-finora-panel border border-finora-line bg-finora-surface px-6 py-8 sm:px-10 sm:py-10"
+  >
+    <p class="mb-3 text-sm font-semibold text-finora-brand">Área protegida</p>
+    <h1
+      id="dashboard-overview-title"
+      class="font-finora-display text-3xl font-bold tracking-tight sm:text-4xl"
+    >
+      Visão descritiva
+    </h1>
+    <p class="mt-4 max-w-3xl text-base leading-7 text-finora-muted">
+      Consulte contagens de movimentos persistidos e a cobertura informada pela API. Esta visão não
+      calcula totais monetários nem substitui a lista.
+    </p>
+  </header>
+
+  <!-- Os filtros são somente leitura; a lista existente permanece como lugar único para alterá-los. -->
+  <app-dashboard-applied-filters [filters]="state().filters" />
+
+  <!-- O resumo usa filteredCount da resposta completa, nunca o tamanho de uma página da lista. -->
+  <section
+    aria-labelledby="dashboard-overview-summary-title"
+    class="rounded-finora-panel border border-finora-line bg-finora-surface p-5 sm:p-7"
+  >
+    <h2
+      id="dashboard-overview-summary-title"
+      class="font-finora-display text-2xl font-bold tracking-tight"
+    >
+      Conjunto filtrado
+    </h2>
+    <!-- Lista e visão fazem GETs independentes; não prometemos snapshot atômico entre as duas telas. -->
+    <p class="mt-2 text-sm leading-6 text-finora-muted">
+      A lista e a visão são consultas separadas; se os dados mudarem entre as leituras, as contagens
+      podem diferir.
+    </p>
+    @if (state().status === 'loading') {
+      <p class="mt-4 text-sm text-finora-muted" role="status" aria-live="polite">
+        Carregando resumo dos movimentos…
+      </p>
+    }
+    @if (state().snapshot; as snapshot) {
+      <p class="mt-4 text-3xl font-semibold" aria-live="polite">
+        {{ snapshot.summary.filteredCount }}
+        {{ snapshot.summary.filteredCount === 1 ? 'movimento' : 'movimentos' }} no conjunto filtrado
+      </p>
+      @if (snapshot.summary.filteredCount === 0) {
+        <p class="mt-3 text-sm leading-6 text-finora-muted" role="status">
+          Não há movimentos persistidos para estes filtros; isso não confirma ausência na origem nem
+          gasto zero.
+        </p>
+      }
+      @if (state().snapshotIsPrevious) {
+        <p class="mt-3 text-sm leading-6 text-finora-muted" role="status">
+          O número exibido é da resposta anterior da mesma sessão e dos mesmos filtros.
+        </p>
+      }
+    }
+    @if (state().status === 'error') {
+      <!-- Erro continua visível mesmo quando uma falha transitória mantém snapshot autorizado anterior. -->
+      <div class="mt-4 space-y-3">
+        <p class="text-sm leading-6 text-amber-900" role="alert">
+          {{ readFailureMessage(state().failure) }}
+        </p>
+        <button
+          class="inline-flex min-h-11 w-full items-center justify-center rounded-finora-control border border-finora-line bg-finora-surface px-4 py-2 text-sm font-semibold outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 sm:w-auto"
+          type="button"
+          (click)="retry()"
+        >
+          Tentar carregar novamente
+        </button>
+      </div>
+    }
+  </section>
+
+  @if (state().snapshot; as snapshot) {
+    <!-- Cada distribuição é um eixo independente; desconhecidos permanecem visíveis sem inferência. -->
+    <section
+      aria-labelledby="dashboard-overview-distributions-title"
+      class="space-y-4 rounded-finora-panel border border-finora-line bg-finora-surface p-5 sm:p-7"
+    >
+      <div>
+        <h2
+          id="dashboard-overview-distributions-title"
+          class="font-finora-display text-2xl font-bold tracking-tight"
+        >
+          Distribuições independentes
+        </h2>
+        <p class="mt-2 text-sm leading-6 text-finora-muted">
+          Natureza e situação são dimensões distintas. Uma situação efetivada ou pendente não
+          comprova uma compra.
+        </p>
+      </div>
+
+      <div class="grid gap-5 lg:grid-cols-2">
+        <section
+          aria-labelledby="dashboard-overview-nature-title"
+          class="rounded-lg border border-finora-line p-4"
+        >
+          <h3 id="dashboard-overview-nature-title" class="text-lg font-semibold">
+            Natureza do movimento
+          </h3>
+          <dl class="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">
+            @for (bucket of snapshot.summary.countsByNature; track bucket.nature) {
+              <div>
+                <dt class="text-sm text-finora-muted">{{ natureLabel(bucket.nature) }}</dt>
+                <dd class="text-lg font-semibold">{{ bucket.count }}</dd>
+              </div>
+            }
+          </dl>
+        </section>
+
+        <section
+          aria-labelledby="dashboard-overview-situation-title"
+          class="rounded-lg border border-finora-line p-4"
+        >
+          <h3 id="dashboard-overview-situation-title" class="text-lg font-semibold">
+            Situação do movimento
+          </h3>
+          <dl class="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">
+            @for (bucket of snapshot.summary.countsBySituation; track bucket.situation) {
+              <div>
+                <dt class="text-sm text-finora-muted">{{ situationLabel(bucket.situation) }}</dt>
+                <dd class="text-lg font-semibold">{{ bucket.count }}</dd>
+              </div>
+            }
+          </dl>
+        </section>
+      </div>
+
+      <p class="text-sm leading-6 text-finora-muted">
+        Data de referência: {{ snapshot.summary.dateBasis }} — dia técnico do movimento, não
+        competência nem ciclo de fatura.
+      </p>
+    </section>
+
+    <!-- Sucesso histórico, janela confirmada e execução recente não se substituem entre si. -->
+    <section
+      aria-labelledby="dashboard-overview-coverage-title"
+      class="space-y-4 rounded-finora-panel border border-finora-line bg-finora-surface p-5 sm:p-7"
+    >
+      <div>
+        <h2
+          id="dashboard-overview-coverage-title"
+          class="font-finora-display text-2xl font-bold tracking-tight"
+        >
+          Cobertura e execução informadas
+        </h2>
+        <p class="mt-2 text-sm leading-6 text-finora-muted">
+          A conclusão de cobertura vale somente para a janela solicitada e não comprova histórico
+          completo na origem.
+        </p>
+      </div>
+
+      <dl class="grid gap-4 sm:grid-cols-2">
+        <div class="rounded-lg border border-finora-line p-4">
+          <dt class="font-semibold">Último sucesso confirmado</dt>
+          <dd class="mt-1 break-words text-sm leading-6">
+            @if (snapshot.summary.coverage.lastSuccessfulImportAtUtc; as lastSuccess) {
+              <time [attr.datetime]="lastSuccess">{{ timestampLabel(lastSuccess) }}</time>
+            } @else {
+              Nenhuma importação bem-sucedida foi confirmada.
+            }
+          </dd>
+        </div>
+
+        <div class="rounded-lg border border-finora-line p-4">
+          <dt class="font-semibold">Janela do último sucesso</dt>
+          @if (snapshot.summary.coverage.lastSuccessfulWindow; as window) {
+            <dd class="mt-1 text-sm leading-6">Solicitada: {{ requestedWindowLabel(window) }}</dd>
+            <dd class="text-sm leading-6">Observada: {{ observedWindowLabel(window) }}</dd>
+            <dd class="text-sm leading-6">
+              Cobertura declarada para a janela: {{ coverageLabel(window.coverageState) }}
+            </dd>
+          } @else {
+            <dd class="mt-1 text-sm leading-6">
+              Nenhuma janela de sucesso é conhecida; a cobertura permanece desconhecida.
+            </dd>
+          }
+        </div>
+
+        <div class="rounded-lg border border-finora-line p-4 sm:col-span-2">
+          <dt class="font-semibold">Execução mais recente</dt>
+          @if (snapshot.summary.coverage.latestExecution; as execution) {
+            <dd class="mt-1 text-sm leading-6">Estado: {{ executionLabel(execution.state) }}</dd>
+            <dd class="text-sm leading-6">
+              Cobertura informada nesta execução: {{ coverageLabel(execution.coverageState) }}
+            </dd>
+            @if (execution.failureCode; as failureCode) {
+              <dd class="text-sm leading-6">Motivo informado: {{ failureLabel(failureCode) }}</dd>
+            }
+          } @else {
+            <dd class="mt-1 text-sm leading-6">Nenhuma execução recente foi informada.</dd>
+          }
+        </div>
+      </dl>
+    </section>
+  }
+
+  <!-- A única lista continua responsável por filtros, paginação, categorias e anotações. -->
+  <a
+    class="inline-flex min-h-11 items-center rounded-finora-control border border-finora-line bg-finora-surface px-4 py-2 text-sm font-semibold outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+    routerLink="/area/movimentos"
+  >
+    Abrir lista de movimentos
+  </a>
+</section>
