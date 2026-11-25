@@ -23,9 +23,42 @@ produção podem ser gerados com `npm run build` e `npm run build -- --configura
 
 - `/` apresenta o estado público do produto e oferece somente o próximo acesso disponível.
 - `/login` recebe e-mail e senha; não há cadastro público nem recuperação por e-mail.
-- `/area` exige uma sessão local válida e contém somente informação sobre o estado da entrega. Não
-  carrega cartões, movimentações ou dados de demonstração.
+- `/area` exige uma sessão local válida e consulta cartões e estado da conexão dessa sessão.
+- `/area/movimentos` usa a mesma guarda e apresenta a lista paginada, filtros e cobertura dos movimentos
+  persistidos, com organização pessoal por categoria e observação.
 - Caminhos desconhecidos mostram a página 404 e o retorno ao início.
+
+## Consulta e organização de movimentos (FNR-022 — implementação local aceita; integração pendente)
+
+O cliente `TransactionListApi` usa a URL pública configurada e o interceptor Bearer da sessão em
+memória. Ele consome `GET /api/transactions` com filtros/paginação e `GET /api/categories`; as
+respostas são lidas como dados desconhecidos e reduzidas a allowlists. O `filteredCount` descreve o
+conjunto filtrado inteiro e `coverage` permanece separado: `CompleteForRequestedWindow` cobre somente
+a janela solicitada, não prova histórico bancário integral nem gasto zero.
+
+O cliente também envia `POST /api/categories` somente com `{ name }`; a nova opção só aparece após a
+resposta 201 allowlisted. Conflito 409 é informado separadamente de uma rejeição de validação, e falha
+de catálogo não cria opções artificiais. O seletor usa somente categorias recebidas do catálogo,
+inclusive sua opção virtual de ID nulo quando fornecida. “Sem categoria” envia `categoryId: null` para
+limpar a associação; a API não oferece filtro para movimentos sem categoria.
+
+Cada movimento permite editar categoria ou observação em ações separadas. O `PATCH
+/api/transactions/{id}/annotation` contém somente o campo alterado; propriedade omitida preserva o
+valor anterior e `null` limpa explicitamente a categoria ou a observação. A observação é texto simples,
+limitado a 500 caracteres; campo vazio limpa pelo valor nulo. A interface só sinaliza a escrita depois
+da confirmação HTTP 200 e relê a página/filtros ativos para refletir o resultado e as contagens da API.
+Rejeições, 404 e falhas transitórias não transformam rascunhos em valores salvos nem exibem o corpo
+remoto. Categoria e observação organizam dados pessoais: não alteram natureza, situação, fatos de
+origem ou competência.
+
+Nenhuma leitura ou escrita desta tela solicita sincronização. Valores permanecem individuais por
+movimento, sem soma, conversão ou agregado monetário. O estado aceita filtros combináveis de cartão,
+categoria atribuída, situação e intervalo técnico, além de busca literal por descrição. A busca
+preserva `%`, `_` e demais caracteres, não é aparada nem expandida localmente e tem limite de 200
+caracteres. Datas devem ser dias reais em `AAAA-MM-DD`; quando ambas são informadas, `toExclusive`
+precisa ser posterior a `from`. Aplicar filtros diferentes volta à página 1; paginação conserva os
+filtros aplicados, e `filteredCount` e `coverage` pertencem somente à resposta atual da API. Consulte
+os contratos da [API](../README.md) e as decisões em [TDD §§11/15](../docs/TDD.md).
 
 ## Sessão e saída
 
