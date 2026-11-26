@@ -88,6 +88,84 @@ public sealed class FinancialDataRelationalModelTests
             required: false);
     }
 
+    // O trio de movimentos e a decisão vigente usam FKs compostas para provar o mesmo titular no banco.
+    [TestMethod]
+    public void RecurrenceCandidateAndDecisionModelEnforceOwnerBoundOccurrences()
+    {
+        using var context = CreateContext();
+        var model = context.Model;
+        var candidate = model.FindEntityType(typeof(RecurrenceCandidate))!;
+        var decision = model.FindEntityType(typeof(RecurrenceDecision))!;
+
+        AssertKeyProperties(candidate, isPrimary: true, nameof(RecurrenceCandidate.Id));
+        AssertKeyProperties(candidate, isPrimary: false,
+            nameof(RecurrenceCandidate.Id), nameof(RecurrenceCandidate.UserId));
+        AssertKeyProperties(decision, isPrimary: true,
+            nameof(RecurrenceDecision.CandidateId), nameof(RecurrenceDecision.UserId));
+
+        AssertForeignKey(candidate, typeof(FinancialTransaction),
+            [nameof(RecurrenceCandidate.FirstOccurrenceTransactionId), nameof(RecurrenceCandidate.UserId)],
+            [nameof(FinancialTransaction.Id), nameof(FinancialTransaction.UserId)], required: true);
+        AssertForeignKey(candidate, typeof(FinancialTransaction),
+            [nameof(RecurrenceCandidate.SecondOccurrenceTransactionId), nameof(RecurrenceCandidate.UserId)],
+            [nameof(FinancialTransaction.Id), nameof(FinancialTransaction.UserId)], required: true);
+        AssertForeignKey(candidate, typeof(FinancialTransaction),
+            [nameof(RecurrenceCandidate.ThirdOccurrenceTransactionId), nameof(RecurrenceCandidate.UserId)],
+            [nameof(FinancialTransaction.Id), nameof(FinancialTransaction.UserId)], required: true);
+        AssertForeignKey(decision, typeof(RecurrenceCandidate),
+            [nameof(RecurrenceDecision.CandidateId), nameof(RecurrenceDecision.UserId)],
+            [nameof(RecurrenceCandidate.Id), nameof(RecurrenceCandidate.UserId)], required: true);
+
+        AssertIndex(candidate, isUnique: true,
+            nameof(RecurrenceCandidate.UserId), nameof(RecurrenceCandidate.PolicyVersion),
+            nameof(RecurrenceCandidate.FirstOccurrenceTransactionId),
+            nameof(RecurrenceCandidate.SecondOccurrenceTransactionId),
+            nameof(RecurrenceCandidate.ThirdOccurrenceTransactionId));
+        AssertIndex(candidate, isUnique: false,
+            nameof(RecurrenceCandidate.FirstOccurrenceTransactionId), nameof(RecurrenceCandidate.UserId));
+        AssertIndex(candidate, isUnique: false,
+            nameof(RecurrenceCandidate.SecondOccurrenceTransactionId), nameof(RecurrenceCandidate.UserId));
+        AssertIndex(candidate, isUnique: false,
+            nameof(RecurrenceCandidate.ThirdOccurrenceTransactionId), nameof(RecurrenceCandidate.UserId));
+        AssertIndex(decision, isUnique: false,
+            nameof(RecurrenceDecision.UserId), nameof(RecurrenceDecision.CandidateId));
+
+        var activeCandidateIndex = candidate.GetIndexes().Single(index =>
+            index.GetDatabaseName() == "IX_RecurrenceCandidate_CurrentOwnerPolicyCreated");
+        Assert.AreEqual("\"IsCurrent\" = TRUE", activeCandidateIndex.GetFilter());
+    }
+
+    // Constraints relacionais recusam candidato parcial e decisão fora dos valores suportados.
+    [TestMethod]
+    public void RecurrencePersistenceChecksAndPostgresTypesAreExplicit()
+    {
+        using var context = CreateContext();
+        var model = context.GetService<IDesignTimeModel>().Model;
+        var candidate = model.FindEntityType(typeof(RecurrenceCandidate))!;
+        var decision = model.FindEntityType(typeof(RecurrenceDecision))!;
+
+        AssertCheckConstraint(candidate, "CK_RecurrenceCandidate_IdsNotEmpty",
+            nameof(RecurrenceCandidate.FirstOccurrenceTransactionId),
+            nameof(RecurrenceCandidate.SecondOccurrenceTransactionId),
+            nameof(RecurrenceCandidate.ThirdOccurrenceTransactionId));
+        AssertCheckConstraint(candidate, "CK_RecurrenceCandidate_OccurrencesDistinct",
+            nameof(RecurrenceCandidate.FirstOccurrenceTransactionId),
+            nameof(RecurrenceCandidate.SecondOccurrenceTransactionId),
+            nameof(RecurrenceCandidate.ThirdOccurrenceTransactionId));
+        AssertCheckConstraint(candidate, "CK_RecurrenceCandidate_PolicyVersionRequired", "length(btrim");
+        AssertCheckConstraint(candidate, "CK_RecurrenceCandidate_EvaluationRange",
+            nameof(RecurrenceCandidate.LastEvaluatedAtUtc), nameof(RecurrenceCandidate.CreatedAtUtc));
+        AssertCheckConstraint(decision, "CK_RecurrenceDecision_Kind",
+            "Subscription", "Installment", "IndependentPurchases", "Rejected");
+
+        AssertColumnType(model, typeof(RecurrenceCandidate), nameof(RecurrenceCandidate.PolicyVersion), "character varying(64)");
+        AssertColumnType(model, typeof(RecurrenceCandidate), nameof(RecurrenceCandidate.CreatedAtUtc), "timestamp with time zone");
+        AssertColumnType(model, typeof(RecurrenceCandidate), nameof(RecurrenceCandidate.LastEvaluatedAtUtc), "timestamp with time zone");
+        AssertColumnType(model, typeof(RecurrenceDecision), nameof(RecurrenceDecision.Kind), "text");
+        AssertColumnType(model, typeof(RecurrenceDecision), nameof(RecurrenceDecision.UpdatedAtUtc), "timestamp with time zone");
+        AssertPropertyCollation(model, typeof(RecurrenceCandidate), nameof(RecurrenceCandidate.PolicyVersion), "C");
+    }
+
     // CHECKs tornam nulos, titular vazio e escopo de categoria invariantes mesmo em SQL direto.
     [TestMethod]
     public void OwnershipAndCategoryScopeCheckConstraintsArePresent()

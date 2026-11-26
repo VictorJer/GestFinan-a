@@ -18,7 +18,7 @@ namespace Finora.Api.Tests;
 [DoNotParallelize]
 public sealed class AuthenticationAvailabilityTests
 {
-    // A rota de prova pertence somente ao assembly de testes; somente login e logout são expostos em auth.
+    // A rota de prova pertence somente ao assembly de testes; o documento lista as rotas HTTP protegidas esperadas.
     [TestMethod]
     public async Task NormalApiSurfaceContainsHealthLoginAndProtectedLogout()
     {
@@ -34,6 +34,9 @@ public sealed class AuthenticationAvailabilityTests
                 "/api/transactions",
                 "/api/dashboard",
                 "/api/transactions/{id}/annotation",
+                "/api/transactions/recurrence-candidates",
+                "/api/transactions/recurrence-candidates/evaluate",
+                "/api/transactions/recurrence-candidates/{candidateId}/decision",
                 "/api/categories",
                 "/api/connections/current/sync",
                 "/api/connections/current/sync/on-entry",
