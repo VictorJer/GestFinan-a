@@ -1292,3 +1292,31 @@ A fixture de integração da página usa `TransactionListStateService`, a lista 
 | Links e inspeção limitada de segredos | O verificador local conferiu **170 links Markdown locais em 8 documentos/artefatos**, sem destinos ausentes. Busca por padrões conhecidos nos arquivos frontend FNR-023 não encontrou credenciais operacionais; os valores `synthetic-*` são sentinelas de teste documentadas nos próprios testes. `gitleaks` não está instalado, portanto a busca não é auditoria exaustiva. `git diff --check` passou sem erros de whitespace, com avisos informativos LF/CRLF em arquivos existentes. |
 
 Nenhuma migration, endpoint, integração com provedor ou configuração de publicação foi criada ou exercitada nesta validação. Os resultados são checks locais e não constituem checks/review do GitHub ou prova de publicação. O titular aceitou a implementação local e aprovou BACKLOG 0.77/TDD 0.33, depois aprovando BACKLOG 0.78/TDD 0.34, no harness em 25/11/2026; isso não comprova API/CORS/provedor reais nem autoriza commits, PR, sync/arquivo, merge ou publicação. O M-03 do produto permanece sem aceite integrado.
+
+## FNR-038 — preservação e validação integrada local
+
+### Imutabilidade das transações e ausência de agregados (tarefas 4.3 e 5.1)
+
+`FinancialTransactionSnapshotAssertions` captura sem tracking todas as colunas persistidas de cada movimento do titular e compara os snapshots ordenados por ID. O conjunto inclui identidade, descrição, valor/moeda, `OriginalDate`, `TransactionDate`, `NormalizationReferenceDate`, natureza/motivos, `Status`, `Situation`, classificação técnica e metadados de parcela/fatura. Não existe propriedade separada de competência financeira em `FinancialTransaction`; os testes comparam todas as datas técnicas/originais existentes, sem inventar uma coluna de competência.
+
+No teste HTTP PostgreSQL, o snapshot foi capturado antes da avaliação e conferido após reavaliar candidatos; no endpoint de decisão, foi comparado após rejeição e correção. A lista de candidato também confere uma allowlist exata de propriedades, sem valor, descrição ou `UserId`. No store PostgreSQL, rejeitar/confirmar/corrigir e reimportar fatos idênticos mantêm o snapshot integral; quando a sincronização sintética atualiza descrição e valor, cada outro campo é comparado com o valor anterior; após reconexão, cartão e IDs internos são preservados e todos os campos permanecem iguais. Os testes usam somente dados sintéticos.
+
+O teste alterado de `TransactionListPage` verifica que a interface continua exibindo descrição, data original e valor individual, e rejeita texto de soma/média/total monetário e elementos `canvas`, `svg` ou `table` que pudessem representar agregados. A última validação direcionada passou em **1 arquivo / 16 casos filtrados**. A suíte frontend completa passou **203/203 antes desta asserção adicional** e não foi repetida; o teste direcionado é a evidência posterior da alteração. HTTP Angular usa `HttpTestingController`, sem chamada ao servidor.
+
+### Integração local por fixtures e limites
+
+A seleção focal final, com build fresco em diretório temporário, passou **19/19**: `TransactionRecurrenceEvaluatorTests` **14/14**, `PostgreSqlTransactionRecurrenceStoreTests` **2/2** e `PostgreSqlTransactionRecurrenceApiTests` **3/3**. A validação de migration da tarefa 3.1 foi executada separadamente e permanece **2/2**; não é somada à seleção 19/19. A cobertura inclui sequência positiva e falsos positivos sintéticos, limites da política, mês/data técnica ausente, situações não elegíveis e projeções, isolamento por titular/sessão, decisão/rejeição/correção, atualização de fatos e reconexão. A API foi exercitada por host ASP.NET Core em processo de teste com sessão Identity e PostgreSQL; isso é evidência local do pipeline, não teste de serviço hospedado ou CORS.
+
+O PostgreSQL 18 de validação usou container exclusivo `finora-fnr038-validation-*`, database `finora_integration_test`, porta dinâmica publicada somente em `127.0.0.1` (`62081`) e diretório de dados em tmpfs. Antes da conexão, destino e isolamento foram conferidos. O container foi removido ao fim; `FINORA_TEST_CONNECTION_STRING` voltou ao estado anterior/ausente. Nenhum container/serviço preexistente, PostgreSQL de desenvolvimento, banco pessoal, Neon ou Pluggy real foi usado. Builds/outputs temporários foram removidos e o processo `Finora.Api (12364)` não foi encerrado.
+
+Na tentativa inicial que reutilizou outputs antigos, três dos cinco testes HTTP falharam com `NotFound`; esse resultado não foi tratado como aprovação. A validação final foi refeita com referências compiladas em output temporário fresco, sem interromper a API em execução, e passou 19/19. Uma tentativa de build padrão não conseguiu copiar DLLs em uso pelo processo da API; por isso a construção isolada foi usada para a rodada final. Isso não equivale a uma execução integral da solução nem a uma suíte backend completa.
+
+| Verificação | Resultado observado | Limite |
+|---|---|---|
+| Avaliador + store/API PostgreSQL | **19/19** na seleção focal final | Somente as três classes indicadas; não é suíte backend integral. |
+| Migration PostgreSQL (tarefa 3.1) | **2/2**, registrada separadamente | PostgreSQL descartável, fixtures sintéticas; sem migration em ambiente de destino. |
+| Teste Angular de preservação/ausência de agregados | **1 arquivo / 16 casos filtrados**, passou após a alteração | HTTP simulado por `HttpTestingController`; sem API/CORS/provedor reais. |
+| Suíte frontend ampla | **203/203 antes da asserção adicional** | Não repetida; não usar como prova da nova asserção, que tem teste direcionado próprio. |
+| `git diff --check` | Sem erros de whitespace na conferência final | Git pode emitir avisos informativos de conversão LF/CRLF. |
+
+Em 26/11/2026, após a apresentação destas evidências, o titular aceitou explicitamente no harness a implementação local FNR-038 e aprovou PRD 0.5/TDD 0.35. Esse aceite não se estende à FNR-020, cujo aceite explícito não foi encontrado, nem representa review/check formal do GitHub. Não houve consulta real à Pluggy, integração entre navegador/API hospedada, verificação de CORS, migration em destino ou deploy; integração Git e publicação permanecem pendentes.

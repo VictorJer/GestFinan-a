@@ -1,13 +1,18 @@
-# Spec Delta
+# transaction-recurrence-assistance Specification
 
 ## Purpose
 
 Permite ao titular revisar padrões mensais como possíveis recorrências e registrar uma decisão corrigível, sem transformar heurísticas ou dados da origem em natureza financeira, status ou competência.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Sugestão de possível recorrência
-O backend SHALL sugerir somente “possível recorrência” quando houver um movimento observado distinto em cada um de três meses consecutivos, na mesma conta e moeda, e todas as ocorrências atenderem à política aprovada de valor, data e descrição. Valor igual isoladamente SHALL NOT ser suficiente. Duplicatas e parcelas explicitamente futuras SHALL NOT contar como ocorrências mensais observadas.
+O backend SHALL sugerir “possível recorrência” somente para três movimentos elegíveis e distintos em meses-calendário consecutivos, do mesmo titular, `CardAccountId` e moeda, quando todos atenderem à política versionada `recurrence-v1`. Igualdade de valor isolada SHALL NOT bastar nem confirmar a natureza financeira.
+
+#### Scenario: Predicados obrigatórios da política recurrence-v1
+- **GIVEN** há exatamente um movimento distinto por mês em três meses-calendário consecutivos, para o mesmo titular, cartão/conta e moeda
+- **WHEN** a política avalia valores não zero e de mesmo sinal, cada magnitude com desvio relativo de até 1% da mediana; meses derivados somente de `TransactionDate`, último dia do mês representado por 31 e dias normalizados a até três dias da mediana; e descrições iguais após Unicode NFC, caixa invariável, pontuação convertida em espaço, espaços reduzidos/aparados, preservando números, acentos e símbolos
+- **THEN** somente `Situation=Effective` pode formar o trio; `TransactionDate` nula, valor zero, sinal diferente, conta/cartão ou moeda diferente, duplicatas e parcelas futuras/projetadas não o formam, e valor igual isoladamente não basta
 
 #### Scenario: Padrão mensal atende à política aprovada
 - **GIVEN** existem movimentos observados distintos em três meses consecutivos, na mesma conta e moeda, e a política de tolerâncias foi aprovada
@@ -24,10 +29,40 @@ O backend SHALL sugerir somente “possível recorrência” quando houver um mo
 - **WHEN** o backend avalia a sequência
 - **THEN** esses dados não completam três meses consecutivos de ocorrências observadas e nenhum candidato é emitido com base neles
 
-#### Scenario: Tolerâncias ainda não aprovadas
-- **GIVEN** não existe política de correspondência de valor, data e descrição aprovada para o detector
+#### Scenario: Política aprovada indisponível
+- **GIVEN** a versão aprovada `recurrence-v1` não está disponível para avaliação
 - **WHEN** o backend tenta avaliar o histórico
 - **THEN** não aplica limites implícitos nem emite candidatos usando valores padrão não aprovados
+
+#### Scenario: Limites inclusivos de valor e data
+- **GIVEN** três movimentos `Effective` em meses consecutivos, com mesma conta/moeda, sinal e descrição normalizada
+- **WHEN** as magnitudes são 99,00/100,00/101,00 e os dias normalizados são 5/6/8
+- **THEN** os desvios de valor (até 1%) e de dia (até 3) são aceitos, inclusive na fronteira
+
+#### Scenario: Valor ou data excede o limite
+- **GIVEN** três movimentos que atendem às demais condições da versão `recurrence-v1`
+- **WHEN** o desvio relativo de uma magnitude ultrapassa 1% ou um dia normalizado fica a mais de três dias da mediana
+- **THEN** o backend não emite candidato
+
+#### Scenario: Fim de mês, data nula e meses consecutivos
+- **GIVEN** `TransactionDate` é 31/jan, 28/fev e 31/mar para um trio, ou falta uma data técnica em outro trio
+- **WHEN** o backend determina os meses e dias para a política
+- **THEN** 31/28/31 é comparado como dia 31 em três meses consecutivos, enquanto a data nula não é substituída por vencimento, data de fatura ou projeção e não completa o trio
+
+#### Scenario: Descrição normalizada preserva números
+- **GIVEN** descrições diferem somente por caixa, pontuação e espaços, mas uma quarta descrição fictícia difere por número ou acento
+- **WHEN** as descrições são normalizadas pela versão `recurrence-v1`
+- **THEN** somente as descrições normalizadas exatamente iguais correspondem; não há similaridade aproximada
+
+#### Scenario: Conta, moeda, sinal e situação elegível
+- **GIVEN** movimentos têm valores próximos, mas diferem em `CardAccountId`, moeda, sinal ou `Situation` (`Pending`, `FutureInstallment` ou `Unknown`)
+- **WHEN** o backend avalia o trio
+- **THEN** as ocorrências incompatíveis não formam candidato, sem alterar `Status` da origem ou `Situation`
+
+#### Scenario: Política nova não substitui decisão anterior
+- **GIVEN** um candidato/decisão está vinculado à versão `recurrence-v1`
+- **WHEN** outra versão de política reavalia o histórico
+- **THEN** o sistema não reclassifica nem sobrescreve silenciosamente a decisão já registrada
 
 ### Requirement: Decisão explícita e corrigível pelo titular
 O sistema SHALL permitir ao titular autorizado registrar para um candidato uma decisão de assinatura, parcela, compras independentes ou rejeição do padrão, e SHALL permitir corrigir posteriormente essa decisão. A sugestão não SHALL ser tratada como confirmação automática.
