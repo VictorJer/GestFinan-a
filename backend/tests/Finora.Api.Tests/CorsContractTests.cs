@@ -12,6 +12,11 @@ namespace Finora.Api.Tests;
 public sealed class CorsContractTests
 {
     private const string AllowedOrigin = "https://finora.example";
+    private static readonly string[] SyncIntentPaths =
+    [
+        "/api/connections/current/sync",
+        "/api/connections/current/sync/on-entry"
+    ];
 
     // Preflight permitido encerra antes da autenticação e autoriza somente o método/cabeçalho contratados.
     [TestMethod]
@@ -33,47 +38,129 @@ public sealed class CorsContractTests
         Assert.IsFalse(response.Headers.Contains("WWW-Authenticate"));
     }
 
+    // A política base preserva os métodos e cabeçalhos anteriores sem herdar a exceção de Idempotency-Key.
+    [TestMethod]
+    public async Task BasePolicyPreservesPreviouslyAllowedMethodsAndHeaders()
+    {
+        await using var factory = new AuthenticationApiFactory(WithOrigins(AllowedOrigin));
+        using var client = factory.CreateClient();
+
+        foreach (var method in new[] { "GET", "POST", "PATCH" })
+        {
+            using var response = await client.SendAsync(Preflight(
+                AllowedOrigin, method, "authorization,content-type", "/_tests/fallback-authentication-probe"));
+
+            Assert.AreEqual(HttpStatusCode.NoContent, response.StatusCode);
+            Assert.AreEqual(AllowedOrigin, response.Headers.GetValues("Access-Control-Allow-Origin").Single());
+            Assert.IsTrue(response.Headers.GetValues("Access-Control-Allow-Methods").Single()
+                .Split(',').Any(value => value.Trim().Equals(method, StringComparison.OrdinalIgnoreCase)));
+            CollectionAssert.AreEquivalent(
+                new[] { "authorization", "content-type" }, ReadAllowedHeaders(response));
+            Assert.IsFalse(response.Headers.Contains("Access-Control-Allow-Credentials"));
+        }
+    }
+
+    // Os dois POSTs contratados recebem a chave no preflight sem Bearer e sem ampliar outras permissões.
+    [TestMethod]
+    public async Task SyncIntentPreflightsGrantIdempotencyKeyOnlyForTheExactPostRoutes()
+    {
+        await using var factory = new AuthenticationApiFactory(WithOrigins(AllowedOrigin));
+        using var client = factory.CreateClient();
+
+        foreach (var path in SyncIntentPaths)
+        {
+            using var response = await client.SendAsync(
+                Preflight(AllowedOrigin, "POST", "authorization,idempotency-key", path));
+
+            Assert.AreEqual(HttpStatusCode.NoContent, response.StatusCode);
+            Assert.AreEqual(AllowedOrigin, response.Headers.GetValues("Access-Control-Allow-Origin").Single());
+            Assert.IsTrue(response.Headers.GetValues("Access-Control-Allow-Methods").Single()
+                .Split(',').Any(method => method.Trim().Equals("POST", StringComparison.OrdinalIgnoreCase)));
+            var allowedHeaders = ReadAllowedHeaders(response);
+            CollectionAssert.AreEquivalent(
+                new[] { "authorization", "content-type", "idempotency-key" }, allowedHeaders);
+            Assert.IsFalse(response.Headers.Contains("Access-Control-Allow-Credentials"));
+            Assert.IsFalse(response.Headers.Contains("WWW-Authenticate"));
+        }
+    }
+
     // Origem não listada recebe resposta sem permissão CORS em vez de eco ou wildcard.
     [TestMethod]
     public async Task UnlistedOriginAndEmptyAllowlistDoNotGrantCorsAccess()
     {
         await using var configuredFactory = new AuthenticationApiFactory(WithOrigins(AllowedOrigin));
         using var configuredClient = configuredFactory.CreateClient();
-        using var denied = await configuredClient.SendAsync(Preflight("https://attacker.example", "POST", "content-type"));
+        using var denied = await configuredClient.SendAsync(Preflight(
+            "https://attacker.example", "POST", "authorization,idempotency-key", SyncIntentPaths[0]));
         Assert.AreEqual(HttpStatusCode.NoContent, denied.StatusCode);
         Assert.IsFalse(denied.Headers.Contains("Access-Control-Allow-Origin"));
 
         await using var closedFactory = new AuthenticationApiFactory();
         using var closedClient = closedFactory.CreateClient();
-        using var closed = await closedClient.SendAsync(Preflight(AllowedOrigin, "POST", "content-type"));
+        using var closed = await closedClient.SendAsync(Preflight(
+            AllowedOrigin, "POST", "authorization,idempotency-key", SyncIntentPaths[1]));
         Assert.AreEqual(HttpStatusCode.NoContent, closed.StatusCode);
         Assert.IsFalse(closed.Headers.Contains("Access-Control-Allow-Origin"));
     }
 
-    // O preflight não autoriza cabeçalhos fora da allowlist mesmo quando a origem é válida.
+    // A exceção admite somente cabeçalhos contratados e não transforma a política em AllowAnyHeader.
     [TestMethod]
-    public async Task PreflightWithUnlistedHeaderDoesNotGrantCorsAccess()
+    public async Task SyncIntentPreflightDoesNotGrantAnAdditionalUnknownHeader()
     {
         await using var factory = new AuthenticationApiFactory(WithOrigins(AllowedOrigin));
         using var client = factory.CreateClient();
-        using var response = await client.SendAsync(Preflight(AllowedOrigin, "POST", "x-unapproved-header"));
+        using var response = await client.SendAsync(Preflight(
+            AllowedOrigin, "POST", "authorization,idempotency-key,x-unapproved-header", SyncIntentPaths[1]));
 
         Assert.AreEqual(HttpStatusCode.NoContent, response.StatusCode);
-        Assert.IsFalse(response.Headers.GetValues("Access-Control-Allow-Headers")
-            .Any(value => value.Contains("x-unapproved-header", StringComparison.OrdinalIgnoreCase)));
+        CollectionAssert.AreEquivalent(
+            new[] { "authorization", "content-type", "idempotency-key" }, ReadAllowedHeaders(response));
+        Assert.IsFalse(ReadAllowedHeaders(response).Contains("x-unapproved-header", StringComparer.OrdinalIgnoreCase));
     }
 
-    // Métodos fora do contrato não aparecem como autorizados no preflight, mesmo para uma origem allowlisted.
+    // Métodos não listados continuam negados mesmo quando o caminho coincide com uma intenção de sincronização.
     [TestMethod]
     public async Task PreflightWithUnlistedMethodDoesNotGrantCorsAccess()
     {
         await using var factory = new AuthenticationApiFactory(WithOrigins(AllowedOrigin));
         using var client = factory.CreateClient();
-        using var response = await client.SendAsync(Preflight(AllowedOrigin, "DELETE", "content-type"));
+        using var response = await client.SendAsync(Preflight(
+            AllowedOrigin, "DELETE", "authorization,idempotency-key", SyncIntentPaths[0]));
 
         Assert.AreEqual(HttpStatusCode.NoContent, response.StatusCode);
         Assert.IsFalse(response.Headers.GetValues("Access-Control-Allow-Methods")
             .Any(value => value.Split(',').Any(method => method.Trim().Equals("DELETE", StringComparison.OrdinalIgnoreCase))));
+        Assert.IsFalse(ReadAllowedHeaders(response).Contains("idempotency-key", StringComparer.OrdinalIgnoreCase));
+    }
+
+    // Rotas vizinhas e métodos permitidos pela base não herdam a exceção específica de Idempotency-Key.
+    [TestMethod]
+    public async Task IdempotencyHeaderIsNotGrantedForSimilarRoutesOrOtherAllowedMethods()
+    {
+        await using var factory = new AuthenticationApiFactory(WithOrigins(AllowedOrigin));
+        using var client = factory.CreateClient();
+
+        foreach (var path in new[]
+                 {
+                     "/api/connections/current/sync-state",
+                     "/api/connections/current/sync/on-entry-extra",
+                     "/api/connections/current/sync/"
+                 })
+        {
+            using var response = await client.SendAsync(
+                Preflight(AllowedOrigin, "POST", "authorization,idempotency-key", path));
+
+            Assert.AreEqual(HttpStatusCode.NoContent, response.StatusCode);
+            Assert.IsFalse(ReadAllowedHeaders(response).Contains("idempotency-key", StringComparer.OrdinalIgnoreCase));
+        }
+
+        using var patchResponse = await client.SendAsync(
+            Preflight(AllowedOrigin, "PATCH", "authorization,idempotency-key", SyncIntentPaths[0]));
+
+        Assert.AreEqual(HttpStatusCode.NoContent, patchResponse.StatusCode);
+        Assert.IsTrue(patchResponse.Headers.GetValues("Access-Control-Allow-Methods").Single()
+            .Split(',').Any(method => method.Trim().Equals("PATCH", StringComparison.OrdinalIgnoreCase)));
+        Assert.IsFalse(ReadAllowedHeaders(patchResponse).Contains("idempotency-key", StringComparer.OrdinalIgnoreCase));
     }
 
     // Origin nunca substitui Bearer: cliente sem Origin continua desafiado pela autorização fallback.
@@ -202,13 +289,26 @@ public sealed class CorsContractTests
         Assert.IsFalse(response.Headers.Contains("Access-Control-Allow-Credentials"));
     }
 
-    // Monta preflight sem credenciais, simulando apenas os metadados enviados pelo navegador.
-    private static HttpRequestMessage Preflight(string origin, string method, string headers)
+    // Monta preflight sem credenciais e permite variar a rota para provar o despacho exato da política.
+    private static HttpRequestMessage Preflight(
+        string origin,
+        string method,
+        string headers,
+        string path = "/api/auth/login")
     {
-        var request = new HttpRequestMessage(HttpMethod.Options, "/api/auth/login");
+        var request = new HttpRequestMessage(HttpMethod.Options, path);
         request.Headers.TryAddWithoutValidation("Origin", origin);
         request.Headers.TryAddWithoutValidation("Access-Control-Request-Method", method);
         request.Headers.TryAddWithoutValidation("Access-Control-Request-Headers", headers);
         return request;
     }
+
+    // Normaliza os cabeçalhos concedidos para comparar o conjunto, sem depender de ordem/capitalização.
+    private static string[] ReadAllowedHeaders(HttpResponseMessage response) =>
+        response.Headers.TryGetValues("Access-Control-Allow-Headers", out var values)
+            ? values.SelectMany(value => value.Split(','))
+                .Select(header => header.Trim().ToLowerInvariant())
+                .Where(header => header.Length > 0)
+                .ToArray()
+            : [];
 }
