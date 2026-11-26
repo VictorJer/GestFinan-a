@@ -37,7 +37,7 @@ A API SHALL verificar a propriedade antes de retornar ou alterar um recurso fina
 - **THEN** recebe 403 sanitizado, sem sugerir que um recurso alheio exista
 
 ### Requirement: CORS de origem explícita
-A API SHALL conceder acesso CORS somente a origens exatas configuradas, com métodos e cabeçalhos necessários às chamadas previstas; SHALL não conceder origem curinga, ecoar origem arbitrária ou usar CORS em lugar de autenticação. Sem origens configuradas, SHALL não conceder acesso CORS.
+A API SHALL conceder acesso CORS somente a origens exatas configuradas, com métodos e cabeçalhos necessários às chamadas previstas; SHALL conceder `Idempotency-Key` apenas no preflight de `POST` às duas operações autenticadas de solicitação de sincronização da conexão atual. SHALL não conceder origem curinga, ecoar origem arbitrária ou usar CORS em lugar de autenticação. Sem origens configuradas, SHALL não conceder acesso CORS.
 
 #### Scenario: Preflight de origem autorizada
 - **WHEN** um navegador envia preflight de origem configurada para método e cabeçalhos permitidos
@@ -50,6 +50,18 @@ A API SHALL conceder acesso CORS somente a origens exatas configuradas, com mét
 #### Scenario: Cliente sem Origin
 - **WHEN** uma chamada sem cabeçalho Origin acessa rota protegida
 - **THEN** CORS não é tratado como autenticação nem como impedimento independente para um cliente HTTP autorizado
+
+#### Scenario: Preflight dos pedidos de sincronização
+- **WHEN** uma origem configurada solicita preflight com método `POST` e cabeçalhos `Authorization` e `Idempotency-Key` para `/api/connections/current/sync` ou `/api/connections/current/sync/on-entry`
+- **THEN** a API concede origem, método e os dois cabeçalhos solicitados sem exigir Bearer no preflight; a chamada efetiva continua sujeita à autenticação, autorização e validação da chave
+
+#### Scenario: Chave não é autorizada em outra operação
+- **WHEN** uma origem configurada solicita `Idempotency-Key` no preflight de outra rota ou de método diferente de `POST`
+- **THEN** a resposta não concede esse cabeçalho para essa operação, preservando os cabeçalhos e métodos previamente permitidos no respectivo contrato
+
+#### Scenario: Resposta efetiva da sincronização
+- **WHEN** uma origem configurada envia o `POST` de sincronização com `Origin`, Bearer e chave de idempotência válidos
+- **THEN** a resposta HTTP, inclusive erros tratados da operação, contém a permissão CORS de origem aplicável sem tornar a operação anônima nem criar nova intenção numa repetição com a mesma chave
 
 ### Requirement: Erros HTTP sanitizados e rastreáveis
 A API SHALL usar `application/problem+json` nos erros tratados, com status, título/código estáveis e traceId não sensível. SHALL distinguir entrada inválida (400), sessão inválida (401), permissão insuficiente (403), recurso inacessível (404), conflito (409), excesso de solicitações (429), falha inesperada (500) e dependência indisponível (503), sem refletir valores recebidos ou exceções brutas.
