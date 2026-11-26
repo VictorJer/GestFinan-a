@@ -1319,4 +1319,8 @@ Na tentativa inicial que reutilizou outputs antigos, três dos cinco testes HTTP
 | Suíte frontend ampla | **203/203 antes da asserção adicional** | Não repetida; não usar como prova da nova asserção, que tem teste direcionado próprio. |
 | `git diff --check` | Sem erros de whitespace na conferência final | Git pode emitir avisos informativos de conversão LF/CRLF. |
 
-Em 26/11/2026, após a apresentação destas evidências, o titular aceitou explicitamente no harness a implementação local FNR-038 e aprovou PRD 0.5/TDD 0.35. Esse aceite não se estende à FNR-020, cujo aceite explícito não foi encontrado, nem representa review/check formal do GitHub. Não houve consulta real à Pluggy, integração entre navegador/API hospedada, verificação de CORS, migration em destino ou deploy; integração Git e publicação permanecem pendentes.
+Em 26/11/2026, após a apresentação destas evidências, o titular aceitou explicitamente no harness a implementação local FNR-038 e aprovou PRD 0.5/TDD 0.35. Esse aceite não se estende à FNR-020, cujo aceite explícito não foi encontrado, nem representa review/check formal do GitHub. Não houve consulta real à Pluggy, integração entre navegador/API hospedada, verificação de CORS, migration em destino ou deploy.
+
+### Encaminhamento Git e PR
+
+Os commits `787ff24` (testes de imutabilidade) e `458c663` (registros, capability e arquivo OpenSpec) foram criados depois dos commits-base `90a19a9` e `07e270c`, preservados no histórico. A branch `feature/fnr-038-deteccao-assistida-recorrencia` foi enviada ao origin e o [PR #42](https://github.com/VictorJer/GestFinan-a/pull/42) foi aberto contra `main`. Na consulta após a abertura, o PR estava `OPEN`, com `reviews: []`, `statusCheckRollup: []` e `gh pr checks` sem checks reportados; ausência de review/check não é aprovação. O merge permanece não autorizado e não foi realizado; publicação, validação hospedada, CORS/provedor reais e migration em destino continuam pendentes.
