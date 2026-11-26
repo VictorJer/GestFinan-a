@@ -92,6 +92,27 @@ export interface TransactionAnnotation {
   readonly note: string | null;
 }
 
+/** Limita a decisão do titular às quatro interpretações aceitas pelo contrato protegido. */
+export type TransactionRecurrenceDecision =
+  'Subscription' | 'Installment' | 'IndependentPurchases' | 'Rejected';
+
+/** Projeta somente a referência interna e o estado da sugestão, sem fatos financeiros ou da origem. */
+export interface TransactionRecurrenceCandidate {
+  readonly candidateId: string;
+  readonly policyVersion: string;
+  readonly occurrenceTransactionIds: readonly string[];
+  readonly isCurrent: boolean;
+  readonly decision: TransactionRecurrenceDecision | null;
+  readonly decisionUpdatedAtUtc: string | null;
+}
+
+/** Resposta confirmada de decisão/correção, sem repetir movimentos ou dados do titular. */
+export interface TransactionRecurrenceDecisionResponse {
+  readonly candidateId: string;
+  readonly decision: TransactionRecurrenceDecision;
+  readonly decisionUpdatedAtUtc: string;
+}
+
 // Erro fixo para resposta incompatível; o corpo remoto nunca é incluído na mensagem.
 export class TransactionListPayloadError extends Error {
   constructor() {
@@ -116,7 +137,7 @@ export class TransactionListApiConfigurationError extends Error {
   }
 }
 
-// Centraliza somente leituras allowlist da lista e do catálogo, sem criar intenção de sincronização.
+// Centraliza contratos allowlist da lista, anotações e recorrência sem reutilizar rotas de sincronização.
 @Injectable({ providedIn: 'root' })
 export class TransactionListApi {
   private readonly http = inject(HttpClient);
@@ -141,7 +162,7 @@ export class TransactionListApi {
       return throwError(() => new TransactionListRequestError());
     }
 
-    return this.write('POST', 'categories', { name }, parseCreatedCategory);
+    return this.write('POST', 'categories', { name }, parseCreatedCategory, 201);
   }
 
   // Atualiza somente os campos próprios presentes no PATCH, preservando null como limpeza explícita.
@@ -165,6 +186,45 @@ export class TransactionListApi {
       `transactions/${transactionId}/annotation`,
       body,
       parseAnnotationResponse,
+      200,
+    );
+  }
+
+  // Consulta somente a projeção própria; GET não reavalia histórico nem dispara sincronização.
+  getRecurrenceCandidates(): Observable<
+    SessionScopedResponse<readonly TransactionRecurrenceCandidate[]>
+  > {
+    return this.get('transactions/recurrence-candidates', parseRecurrenceCandidates);
+  }
+
+  // Reavaliação é uma ação explícita e recebe a lista persistida atualizada pelo backend.
+  evaluateRecurrenceCandidates(): Observable<
+    SessionScopedResponse<readonly TransactionRecurrenceCandidate[]>
+  > {
+    return this.write(
+      'POST',
+      'transactions/recurrence-candidates/evaluate',
+      null,
+      parseRecurrenceCandidates,
+      200,
+    );
+  }
+
+  // A decisão usa PUT dedicado e aceita somente os quatro valores publicados pelo backend.
+  updateRecurrenceDecision(
+    candidateId: string,
+    decision: TransactionRecurrenceDecision,
+  ): Observable<SessionScopedResponse<TransactionRecurrenceDecisionResponse>> {
+    if (!isNonEmptyGuid(candidateId) || !isRecurrenceDecision(decision)) {
+      return throwError(() => new TransactionListRequestError());
+    }
+
+    return this.write(
+      'PUT',
+      `transactions/recurrence-candidates/${candidateId}/decision`,
+      { decision },
+      parseRecurrenceDecisionResponse,
+      200,
     );
   }
 
@@ -194,12 +254,13 @@ export class TransactionListApi {
     });
   }
 
-  // Exige os status contratuais 201/200 e vincula a resposta allowlist à geração iniciadora.
+  // Exige o status explícito da rota e vincula a resposta allowlist à geração que iniciou a escrita.
   private write<T>(
-    method: 'POST' | 'PATCH',
+    method: 'POST' | 'PATCH' | 'PUT',
     route: string,
     body: unknown,
     decode: (payload: unknown) => T,
+    expectedStatus: number,
   ): Observable<SessionScopedResponse<T>> {
     return defer(() => {
       const activeSession = this.session.currentSession();
@@ -212,13 +273,9 @@ export class TransactionListApi {
       }
 
       const url = buildApiUrl(this.apiBase, route);
-      const response =
-        method === 'POST'
-          ? this.http.post<unknown>(url, body, { observe: 'response' })
-          : this.http.patch<unknown>(url, body, { observe: 'response' });
+      const response = this.sendWrite(method, url, body);
       return response.pipe(
         map((result) => {
-          const expectedStatus = method === 'POST' ? 201 : 200;
           if (result.status !== expectedStatus) {
             throw new TransactionListPayloadError();
           }
@@ -230,6 +287,18 @@ export class TransactionListApi {
         }),
       );
     });
+  }
+
+  // Mantém a escolha do verbo explícita para cada rota protegida sem ampliar o corpo permitido.
+  private sendWrite(method: 'POST' | 'PATCH' | 'PUT', url: string, body: unknown) {
+    switch (method) {
+      case 'POST':
+        return this.http.post<unknown>(url, body, { observe: 'response' });
+      case 'PATCH':
+        return this.http.patch<unknown>(url, body, { observe: 'response' });
+      case 'PUT':
+        return this.http.put<unknown>(url, body, { observe: 'response' });
+    }
   }
 }
 
@@ -332,10 +401,7 @@ function parseTransactionPage(payload: unknown): TransactionPage {
 // Mantém sucesso, janela confirmada e execução recente como fontes independentes de cobertura.
 function parseTransactionCoverage(payload: unknown): TransactionCoverage {
   const coverage = asRecord(payload);
-  if (
-    coverage === null ||
-    !isNullableString(coverage['lastSuccessfulImportAtUtc'])
-  ) {
+  if (coverage === null || !isNullableString(coverage['lastSuccessfulImportAtUtc'])) {
     throw new TransactionListPayloadError();
   }
 
@@ -421,7 +487,7 @@ function parseCategoryOption(payload: unknown): CategoryOption {
     !isNullableGuid(id) ||
     typeof option['name'] !== 'string' ||
     !isCategoryKind(kind) ||
-    ((kind === 'unassigned') !== (id === null))
+    (kind === 'unassigned') !== (id === null)
   ) {
     throw new TransactionListPayloadError();
   }
@@ -443,6 +509,66 @@ function parseAnnotationResponse(payload: unknown): TransactionAnnotation {
   return {
     categoryId: annotation['categoryId'],
     note: annotation['note'],
+  };
+}
+
+// Valida a lista sem copiar propriedades desconhecidas ou detalhes internos para o estado da tela.
+function parseRecurrenceCandidates(payload: unknown): readonly TransactionRecurrenceCandidate[] {
+  if (!Array.isArray(payload)) {
+    throw new TransactionListPayloadError();
+  }
+
+  return payload.map(parseRecurrenceCandidate);
+}
+
+// Exige exatamente três referências distintas e estados coerentes com o DTO revisado da API.
+function parseRecurrenceCandidate(payload: unknown): TransactionRecurrenceCandidate {
+  const candidate = asRecord(payload);
+  const occurrenceIds = candidate?.['occurrenceTransactionIds'];
+  const decision = candidate?.['decision'];
+  if (
+    candidate === null ||
+    !isNonEmptyGuid(candidate['candidateId']) ||
+    typeof candidate['policyVersion'] !== 'string' ||
+    candidate['policyVersion'].length === 0 ||
+    !Array.isArray(occurrenceIds) ||
+    occurrenceIds.length !== 3 ||
+    !occurrenceIds.every(isNonEmptyGuid) ||
+    new Set(occurrenceIds).size !== 3 ||
+    typeof candidate['isCurrent'] !== 'boolean' ||
+    !(decision === null || isRecurrenceDecision(decision)) ||
+    !isNullableString(candidate['decisionUpdatedAtUtc'])
+  ) {
+    throw new TransactionListPayloadError();
+  }
+
+  return {
+    candidateId: candidate['candidateId'],
+    policyVersion: candidate['policyVersion'],
+    occurrenceTransactionIds: occurrenceIds,
+    isCurrent: candidate['isCurrent'],
+    decision,
+    decisionUpdatedAtUtc: candidate['decisionUpdatedAtUtc'],
+  };
+}
+
+// A gravação só é refletida localmente quando ID, decisão allowlisted e instante são reconhecidos.
+function parseRecurrenceDecisionResponse(payload: unknown): TransactionRecurrenceDecisionResponse {
+  const response = asRecord(payload);
+  if (
+    response === null ||
+    !isNonEmptyGuid(response['candidateId']) ||
+    !isRecurrenceDecision(response['decision']) ||
+    typeof response['decisionUpdatedAtUtc'] !== 'string' ||
+    response['decisionUpdatedAtUtc'].length === 0
+  ) {
+    throw new TransactionListPayloadError();
+  }
+
+  return {
+    candidateId: response['candidateId'],
+    decision: response['decision'],
+    decisionUpdatedAtUtc: response['decisionUpdatedAtUtc'],
   };
 }
 
@@ -528,4 +654,14 @@ function isNonNegativeInteger(value: unknown): value is number {
 // Limita o tipo do catálogo às três opções previstas, sem interpolar novos códigos como texto de UI.
 function isCategoryKind(value: unknown): value is CategoryKind {
   return value === 'system' || value === 'personal' || value === 'unassigned';
+}
+
+// A allowlist impede que códigos futuros ou strings remotas apareçam como decisões válidas.
+function isRecurrenceDecision(value: unknown): value is TransactionRecurrenceDecision {
+  return (
+    value === 'Subscription' ||
+    value === 'Installment' ||
+    value === 'IndependentPurchases' ||
+    value === 'Rejected'
+  );
 }

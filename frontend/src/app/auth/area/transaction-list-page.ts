@@ -12,6 +12,11 @@ import {
   TransactionMovement,
 } from './transaction-list-api';
 import { TransactionListFilterDraft, TransactionListStateService } from './transaction-list-state';
+import {
+  RecurrenceCandidateReview,
+  RecurrenceRequestFailure,
+  TransactionRecurrenceStateService,
+} from './transaction-recurrence-state';
 
 type FilterOptionsStatus = 'idle' | 'loading' | 'loaded' | 'error';
 type AnnotationEditStatus = 'dirty' | 'saving' | 'saved' | 'error';
@@ -42,6 +47,7 @@ export class TransactionListPage implements OnInit, OnDestroy {
   private readonly cardsApi = inject(CardConnectionApi);
   private readonly listApi = inject(TransactionListApi);
   private readonly listState = inject(TransactionListStateService);
+  private readonly recurrenceReviewState = inject(TransactionRecurrenceStateService);
   private optionRequests = new Subscription();
   private activeOptionsGeneration: number | null | undefined;
   private readonly cardOptionsState = signal<readonly CardSummary[]>([]);
@@ -50,6 +56,22 @@ export class TransactionListPage implements OnInit, OnDestroy {
   private readonly noteEdits = signal<Readonly<Record<string, NoteEditState>>>({});
 
   readonly state = this.listState.view;
+  // A projeção de recorrência é lida separadamente e vinculada à mesma geração de sessão.
+  readonly recurrence = this.recurrenceReviewState.view;
+  // Associa cada candidato ao primeiro movimento relacionado presente no snapshot visível.
+  readonly recurrenceReviewsByMovement = computed(() => {
+    const visibleIds = new Set(
+      this.state().snapshot?.response.items.map((movement) => movement.id) ?? [],
+    );
+    const reviewsByMovement: Record<string, RecurrenceCandidateReview[]> = {};
+    for (const review of this.recurrence().candidates) {
+      const anchorId = review.candidate.occurrenceTransactionIds.find((id) => visibleIds.has(id));
+      if (anchorId !== undefined) {
+        (reviewsByMovement[anchorId] ??= []).push(review);
+      }
+    }
+    return reviewsByMovement;
+  });
   readonly draft = this.listState.draft;
   readonly categoryNameDraft = signal('');
   readonly categoryCreationStatus = signal<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -178,6 +200,101 @@ export class TransactionListPage implements OnInit, OnDestroy {
   // Repete somente a leitura atual após erro ou pedido explícito da pessoa titular.
   retryListRead(): void {
     this.listState.retry();
+  }
+
+  // Repete somente a leitura de candidatos; não solicita reavaliação nem sincronização do histórico.
+  retryRecurrenceRead(): void {
+    this.recurrenceReviewState.load();
+  }
+
+  // Bloqueia a releitura enquanto avaliação ou decisão estiver pendente.
+  canRetryRecurrenceRead(): boolean {
+    return this.recurrenceReviewState.canLoad();
+  }
+
+  // Inicia a avaliação de recorrência somente após o acionamento explícito da pessoa titular.
+  evaluateRecurrences(): void {
+    this.recurrenceReviewState.evaluate();
+  }
+
+  // Evita avaliação concorrente com leitura ou gravação de decisão.
+  canEvaluateRecurrences(): boolean {
+    return this.recurrenceReviewState.canEvaluate();
+  }
+
+  // Coloca cada revisão junto ao primeiro movimento relacionado que está visível nesta página.
+  recurrenceCandidatesForMovement(movementId: string): readonly RecurrenceCandidateReview[] {
+    return this.recurrenceReviewsByMovement()[movementId] ?? [];
+  }
+
+  // Encaminha apenas escolhas que correspondem às opções nativas do controle de decisão.
+  updateRecurrenceDecision(candidateId: string, event: Event): void {
+    const target = event.target as { value?: unknown } | null;
+    if (target !== null && typeof target.value === 'string') {
+      this.recurrenceReviewState.updateDecision(candidateId, target.value);
+    }
+  }
+
+  // Registra a escolha allowlisted no endpoint próprio de recorrência, sem reutilizar anotações.
+  saveRecurrenceDecision(candidateId: string): void {
+    this.recurrenceReviewState.saveDecision(candidateId);
+  }
+
+  // Expõe o bloqueio de gravação sem dar acesso do template ao serviço de estado interno.
+  canSaveRecurrenceDecision(review: RecurrenceCandidateReview): boolean {
+    return this.recurrenceReviewState.canSaveDecision(review);
+  }
+
+  // Traduz somente códigos fixos de falha e não expõe mensagens ou corpos remotos.
+  recurrenceFailureMessage(failure: RecurrenceRequestFailure | null): string {
+    switch (failure) {
+      case 'forbidden':
+        return 'Esta sessão não tem permissão para consultar ou decidir sugestões.';
+      case 'not-found':
+        return 'O candidato não está mais disponível. Recarregue as sugestões.';
+      case 'conflict':
+        return 'A operação não pode ser concluída agora. Recarregue as sugestões e tente novamente.';
+      case 'network':
+        return 'Não foi possível conectar à API.';
+      case 'unavailable':
+        return 'A API está temporariamente indisponível.';
+      case 'invalid-response':
+        return 'A resposta da API não pôde ser reconhecida.';
+      case 'configuration':
+        return 'A API não está configurada neste ambiente.';
+      case 'stale':
+        return 'A sessão mudou ou expirou. Entre novamente para consultar sugestões.';
+      default:
+        return 'Não foi possível concluir a operação. Tente novamente.';
+    }
+  }
+
+  // Mantém os nomes das escolhas explícitos e não converte a decisão em natureza financeira.
+  recurrenceDecisionLabel(decision: string | null): string {
+    switch (decision) {
+      case 'Subscription':
+        return 'Assinatura';
+      case 'Installment':
+        return 'Parcelamento';
+      case 'IndependentPurchases':
+        return 'Compras independentes';
+      case 'Rejected':
+        return 'Padrão rejeitado';
+      default:
+        return 'Sem decisão do titular';
+    }
+  }
+
+  // Separa sugestão atual de registro histórico sem ocultar decisões corrigíveis já confirmadas.
+  recurrenceCandidateHeading(review: RecurrenceCandidateReview): string {
+    return review.candidate.isCurrent
+      ? 'Sugestão: possível recorrência'
+      : 'Candidato histórico, não sugerido atualmente';
+  }
+
+  // O texto do botão diferencia a primeira confirmação de uma correção explícita posterior.
+  recurrenceDecisionButtonLabel(review: RecurrenceCandidateReview): string {
+    return review.candidate.decision === null ? 'Salvar decisão' : 'Corrigir decisão';
   }
 
   // Reconsulta as opções sem alterar filtros, lista ou estado de atualização da conexão.

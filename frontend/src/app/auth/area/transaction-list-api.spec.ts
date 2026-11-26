@@ -15,6 +15,7 @@ import {
   TransactionListPayloadError,
   TransactionListRequestError,
   TransactionPage,
+  TransactionRecurrenceCandidate,
 } from './transaction-list-api';
 
 const API_BASE = 'https://api.example.test/proxy/';
@@ -24,6 +25,11 @@ const TRANSACTION_ID = '5b76333c-6d8e-4d9e-aac6-3a6096f97ab1';
 const CARD_ID = '2a990192-cb59-43eb-8520-cfef6a0e3e40';
 const CATEGORY_ID = '6e209084-7488-4d97-930f-10f52df4b116';
 const ANNOTATION_URL = `${TRANSACTIONS_URL}/${TRANSACTION_ID}/annotation`;
+const RECURRENCE_CANDIDATES_URL = `${TRANSACTIONS_URL}/recurrence-candidates`;
+const RECURRENCE_EVALUATE_URL = `${RECURRENCE_CANDIDATES_URL}/evaluate`;
+const RECURRENCE_CANDIDATE_ID = 'f2ea634d-9f08-4bc0-9319-521b773844e3';
+const SECOND_TRANSACTION_ID = '64965e38-e2e3-4b52-afd2-6bb1cfcf2450';
+const THIRD_TRANSACTION_ID = '9a0cc19d-c360-4a93-8ba1-6f5353c8871d';
 
 let backend: HttpTestingController;
 let api: TransactionListApi;
@@ -106,6 +112,19 @@ function pageResponse(
   };
 }
 
+// Mantém a projeção sintética sem fatos financeiros e permite injetar campos que a allowlist deve ignorar.
+function recurrenceCandidate(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    candidateId: RECURRENCE_CANDIDATE_ID,
+    policyVersion: 'recurrence-v1',
+    occurrenceTransactionIds: [TRANSACTION_ID, SECOND_TRANSACTION_ID, THIRD_TRANSACTION_ID],
+    isCurrent: true,
+    decision: null,
+    decisionUpdatedAtUtc: null,
+    ...overrides,
+  };
+}
+
 // Cada caso deve permanecer somente em GET e não pode alcançar nenhuma rota de sincronização.
 describe('Cliente da lista de movimentos', () => {
   beforeEach(() => configureApi());
@@ -139,7 +158,16 @@ describe('Cliente da lista de movimentos', () => {
       'Bearer synthetic-transaction-list-token',
     );
     expect(request.request.params.keys().sort()).toEqual(
-      ['cardId', 'categoryId', 'situation', 'from', 'toExclusive', 'search', 'page', 'pageSize'].sort(),
+      [
+        'cardId',
+        'categoryId',
+        'situation',
+        'from',
+        'toExclusive',
+        'search',
+        'page',
+        'pageSize',
+      ].sort(),
     );
     for (const [name, value] of Object.entries(filters)) {
       expect(request.request.params.get(name)).toBe(String(value));
@@ -147,7 +175,12 @@ describe('Cliente da lista de movimentos', () => {
 
     request.flush(
       pageResponse(
-        [movement({ externalTransactionId: 'must-not-escape', providerPayload: { secret: 'synthetic' } })],
+        [
+          movement({
+            externalTransactionId: 'must-not-escape',
+            providerPayload: { secret: 'synthetic' },
+          }),
+        ],
         {
           page: 3,
           pageSize: 50,
@@ -267,17 +300,146 @@ describe('Cliente da lista de movimentos', () => {
       expect(Object.keys(request.request.body).sort()).toEqual(
         Object.keys(current.expectedBody).sort(),
       );
-      request.flush({
-        ...current.response,
-        transactionId: 'must-not-escape',
-        ownerId: 'must-not-escape',
-      }, { status: 200, statusText: 'OK' });
+      request.flush(
+        {
+          ...current.response,
+          transactionId: 'must-not-escape',
+          ownerId: 'must-not-escape',
+        },
+        { status: 200, statusText: 'OK' },
+      );
     }
 
-    expect(results).toEqual(
-      cases.map((current) => ({ generation, value: current.response })),
-    );
+    expect(results).toEqual(cases.map((current) => ({ generation, value: current.response })));
     expect(JSON.stringify(results)).not.toContain('must-not-escape');
+  });
+
+  // GET permanece somente leitura; a avaliação exige POST explícito e projeta apenas IDs internos.
+  it('consulta e avalia candidatos por operações separadas com resposta sanitizada', () => {
+    const generation = startSession();
+    let readResult: unknown;
+    api.getRecurrenceCandidates().subscribe((response) => (readResult = response));
+    const readRequest = backend.expectOne(RECURRENCE_CANDIDATES_URL);
+    expect(readRequest.request.method).toBe('GET');
+    expect(readRequest.request.headers.get('Authorization')).toBe(
+      'Bearer synthetic-transaction-list-token',
+    );
+    readRequest.flush([
+      recurrenceCandidate({
+        ownerId: 'must-not-escape',
+        transactionDescription: 'private synthetic description',
+      }),
+    ]);
+
+    expect(readResult).toEqual({
+      generation,
+      value: [
+        {
+          candidateId: RECURRENCE_CANDIDATE_ID,
+          policyVersion: 'recurrence-v1',
+          occurrenceTransactionIds: [TRANSACTION_ID, SECOND_TRANSACTION_ID, THIRD_TRANSACTION_ID],
+          isCurrent: true,
+          decision: null,
+          decisionUpdatedAtUtc: null,
+        } satisfies TransactionRecurrenceCandidate,
+      ],
+    });
+    expect(JSON.stringify(readResult)).not.toContain('private synthetic description');
+
+    let evaluationResult: unknown;
+    api.evaluateRecurrenceCandidates().subscribe((response) => (evaluationResult = response));
+    const evaluationRequest = backend.expectOne(RECURRENCE_EVALUATE_URL);
+    expect(evaluationRequest.request.method).toBe('POST');
+    expect(evaluationRequest.request.body).toBeNull();
+    evaluationRequest.flush([recurrenceCandidate({ decision: 'IndependentPurchases' })], {
+      status: 200,
+      statusText: 'OK',
+    });
+
+    expect(evaluationResult).toEqual({
+      generation,
+      value: [
+        expect.objectContaining({
+          candidateId: RECURRENCE_CANDIDATE_ID,
+          decision: 'IndependentPurchases',
+        }),
+      ],
+    });
+  });
+
+  // PUT permite confirmar, rejeitar e corrigir sem reutilizar PATCH de anotação ou enviar fatos financeiros.
+  it('registra e corrige decisão somente com corpo allowlisted e resposta confirmada', () => {
+    const generation = startSession();
+    const updatedAt = '2026-11-25T12:30:00Z';
+    let firstResult: unknown;
+    api
+      .updateRecurrenceDecision(RECURRENCE_CANDIDATE_ID, 'Subscription')
+      .subscribe((response) => (firstResult = response));
+    const firstRequest = backend.expectOne(
+      `${RECURRENCE_CANDIDATES_URL}/${RECURRENCE_CANDIDATE_ID}/decision`,
+    );
+    expect(firstRequest.request.method).toBe('PUT');
+    expect(firstRequest.request.headers.get('Authorization')).toBe(
+      'Bearer synthetic-transaction-list-token',
+    );
+    expect(firstRequest.request.body).toEqual({ decision: 'Subscription' });
+    expect(Object.keys(firstRequest.request.body)).toEqual(['decision']);
+    firstRequest.flush(
+      {
+        candidateId: RECURRENCE_CANDIDATE_ID,
+        decision: 'Subscription',
+        decisionUpdatedAtUtc: updatedAt,
+        ownerId: 'must-not-escape',
+      },
+      { status: 200, statusText: 'OK' },
+    );
+    expect(firstResult).toEqual({
+      generation,
+      value: {
+        candidateId: RECURRENCE_CANDIDATE_ID,
+        decision: 'Subscription',
+        decisionUpdatedAtUtc: updatedAt,
+      },
+    });
+
+    api.updateRecurrenceDecision(RECURRENCE_CANDIDATE_ID, 'Rejected').subscribe();
+    const correctionRequest = backend.expectOne(
+      `${RECURRENCE_CANDIDATES_URL}/${RECURRENCE_CANDIDATE_ID}/decision`,
+    );
+    expect(correctionRequest.request.method).toBe('PUT');
+    expect(correctionRequest.request.body).toEqual({ decision: 'Rejected' });
+    correctionRequest.flush(
+      {
+        candidateId: RECURRENCE_CANDIDATE_ID,
+        decision: 'Rejected',
+        decisionUpdatedAtUtc: updatedAt,
+      },
+      { status: 200, statusText: 'OK' },
+    );
+  });
+
+  // IDs e decisões fora da allowlist falham antes do transporte, e trios incompletos falham fechados.
+  it('recusa requisições inválidas e candidatos com ocorrências incompletas', () => {
+    startSession();
+    const errors: unknown[] = [];
+    api.updateRecurrenceDecision('../candidate', 'Rejected').subscribe({
+      error: (error: unknown) => errors.push(error),
+    });
+    api
+      .updateRecurrenceDecision(RECURRENCE_CANDIDATE_ID, 'Unclassified' as never)
+      .subscribe({ error: (error: unknown) => errors.push(error) });
+    expect(errors).toHaveLength(2);
+    expect(errors.every((error) => error instanceof TransactionListRequestError)).toBe(true);
+    backend.expectNone((request) => request.url.startsWith(RECURRENCE_CANDIDATES_URL));
+
+    let receivedError: unknown;
+    api.getRecurrenceCandidates().subscribe({ error: (error: unknown) => (receivedError = error) });
+    backend
+      .expectOne(RECURRENCE_CANDIDATES_URL)
+      .flush([
+        recurrenceCandidate({ occurrenceTransactionIds: [TRANSACTION_ID, SECOND_TRANSACTION_ID] }),
+      ]);
+    expect(receivedError).toBeInstanceOf(TransactionListPayloadError);
   });
 
   // IDs/corpos inválidos ou propriedades extras são recusados antes de qualquer escrita HTTP.
@@ -285,7 +447,9 @@ describe('Cliente da lista de movimentos', () => {
     startSession();
     const errors: unknown[] = [];
 
-    api.updateAnnotation(TRANSACTION_ID, {}).subscribe({ error: (error: unknown) => errors.push(error) });
+    api
+      .updateAnnotation(TRANSACTION_ID, {})
+      .subscribe({ error: (error: unknown) => errors.push(error) });
     api.updateAnnotation('../external', { note: 'texto' }).subscribe({
       error: (error: unknown) => errors.push(error),
     });
@@ -353,7 +517,9 @@ describe('Cliente da lista de movimentos', () => {
     startSession();
     let receivedError: unknown;
 
-    api.createCategory('Projetos').subscribe({ error: (error: unknown) => (receivedError = error) });
+    api
+      .createCategory('Projetos')
+      .subscribe({ error: (error: unknown) => (receivedError = error) });
     backend.expectOne(CATEGORIES_URL).flush({
       id: CATEGORY_ID,
       name: 'Projetos',
@@ -371,17 +537,18 @@ describe('Cliente da lista de movimentos', () => {
     const errors: unknown[] = [];
 
     api.createCategory('Projetos').subscribe({ error: (error: unknown) => errors.push(error) });
-    backend.expectOne(CATEGORIES_URL).flush(
-      { id: CATEGORY_ID, name: 'Projetos', kind: 'personal' },
-      { status: 200, statusText: 'OK' },
-    );
+    backend
+      .expectOne(CATEGORIES_URL)
+      .flush(
+        { id: CATEGORY_ID, name: 'Projetos', kind: 'personal' },
+        { status: 200, statusText: 'OK' },
+      );
     api.updateAnnotation(TRANSACTION_ID, { note: 'texto' }).subscribe({
       error: (error: unknown) => errors.push(error),
     });
-    backend.expectOne(ANNOTATION_URL).flush(
-      { categoryId: null, note: 'texto' },
-      { status: 201, statusText: 'Created' },
-    );
+    backend
+      .expectOne(ANNOTATION_URL)
+      .flush({ categoryId: null, note: 'texto' }, { status: 201, statusText: 'Created' });
 
     expect(errors).toHaveLength(2);
     expect(errors.every((error) => error instanceof TransactionListPayloadError)).toBe(true);
@@ -429,7 +596,9 @@ describe('Cliente da lista de movimentos', () => {
     startSession();
     let receivedError: unknown;
 
-    api.createCategory('Projetos').subscribe({ error: (error: unknown) => (receivedError = error) });
+    api
+      .createCategory('Projetos')
+      .subscribe({ error: (error: unknown) => (receivedError = error) });
     backend.expectOne(CATEGORIES_URL).error(new ProgressEvent('error'));
 
     expect(receivedError).toBeInstanceOf(ProtectedApiRequestError);
@@ -444,8 +613,8 @@ describe('Pré-condições do cliente da lista', () => {
 
   afterEach(() => backend.verify());
 
-  // Nem a lista nem o catálogo enviam requests sem uma geração autenticada em memória.
-  it('recusa movimentos e categorias quando não existe sessão local', () => {
+  // Lista, catálogo e recorrência recusam leituras/escritas sem uma geração autenticada em memória.
+  it('recusa operações financeiras e de recorrência quando não existe sessão local', () => {
     const errors: unknown[] = [];
     api.getTransactions({}).subscribe({ error: (error: unknown) => errors.push(error) });
     api.getCategories().subscribe({ error: (error: unknown) => errors.push(error) });
@@ -453,8 +622,13 @@ describe('Pré-condições do cliente da lista', () => {
     api
       .updateAnnotation(TRANSACTION_ID, { note: 'texto' })
       .subscribe({ error: (error: unknown) => errors.push(error) });
+    api.getRecurrenceCandidates().subscribe({ error: (error: unknown) => errors.push(error) });
+    api.evaluateRecurrenceCandidates().subscribe({ error: (error: unknown) => errors.push(error) });
+    api.updateRecurrenceDecision(RECURRENCE_CANDIDATE_ID, 'Rejected').subscribe({
+      error: (error: unknown) => errors.push(error),
+    });
 
-    expect(errors).toHaveLength(4);
+    expect(errors).toHaveLength(7);
     expect(errors.every((error) => error instanceof LocalSessionRequiredError)).toBe(true);
     backend.expectNone(() => true);
   });
