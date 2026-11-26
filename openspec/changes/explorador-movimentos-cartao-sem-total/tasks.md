@@ -19,7 +19,7 @@ Direção de escopo e conteúdo documental revisado aprovados pelo titular em 16
 
 ## 3. Construir a visão de movimentos
 
-- [ ] 3.1 Após aceites da base Angular/sessão, da consulta protegida, da lista FNR-022 e dos resumos FNR-018 conforme dependências revisadas no backlog, integrar a lista existente à visão descritiva de FNR-023, sem reconstruí-la; testes de integração verificam apresentação de valor individual, moeda, data de origem, natureza e situação a partir dos DTOs do backend.
+- [ ] 3.1 Conferir os gates próprios da base Angular/sessão, consulta protegida, lista FNR-022 e resumos FNR-018 conforme o backlog; verificar que a visão geral FNR-023 apresenta resumos, cobertura e filtros aplicados e leva à lista **única** FNR-022 preservando esses filtros, sem reproduzir nela os movimentos. Verificar com evidência de integração que valor individual, moeda, data de origem, natureza e situação vindos dos DTOs do backend aparecem na lista, não na visão geral; registrar o limite de GETs independentes sem snapshot atômico. A ausência de aceite explícito da FNR-020 permanece uma pendência separada, não uma reprovação retroativa das demais entregas.
 - [ ] 3.2 Exibir cobertura/completude e rótulo explicativo para naturezas desconhecidas; testes de componente cobrem carga, ausência, falha, consulta parcial e conjunto com ambiguidades.
 - [ ] 3.3 Não calcular, retornar nem renderizar qualquer agregado monetário (incluindo total, subtotal, bruto/líquido, média, série, gráfico ou agrupamento por período/status/natureza/categoria); teste de API e UI comprova a proibição mesmo sob rótulos como “parcial” ou “informativo”.
 - [ ] 3.4 Fornecer resumo HTML acessível e documentar a diferença entre movimentos observados, natureza identificada e gasto financeiro não validado; verificar teclado e leitura sem gráficos enganadores.
@@ -29,6 +29,8 @@ Direção de escopo e conteúdo documental revisado aprovados pelo titular em 16
 - [ ] 4.1 Usar fixtures inteiramente sintéticas para estados, naturezas conhecidas/desconhecidas, ausências e paginação incompleta; verificar que nenhuma fixture é apresentada como evidência real.
 - [ ] 4.2 Executar testes e builds afetados, revisar segurança/propriedade e confirmar que nenhum caminho de dashboard agrega valores ou transforma ausências em zero.
 - [ ] 4.3 Validar OpenSpec e diff, conferir PRD/TDD/backlog/spec/API/UI coerentes e preservar sem alteração as observações existentes da FNR-005; não realizar coleta real nem reclassificar os 319 resultados históricos.
+
+As caixas 2.1–4.3 permanecem abertas: a matriz da revisão 0.81 em `docs/BACKLOG.md` identifica implementações existentes e evidências locais, mas não executa as verificações restantes nem transfere aceite das FNRs ao explorador. O titular aprovou os quatro artefatos revisados e a versão 0.81 documentalmente, com ressalva para a referência antiga no TDD §13; isso não é aceite global. Antes de marcar cada tarefa, conferir o critério integral, a evidência e seus limites; tratar separadamente a correção/prova das duas falhas PostgreSQL históricas como encaminhamento **proposto** à FNR-024, sem declarar a suíte ampla aprovada. O ajuste da 3.1 foi aprovado como critério documental, não como aceite da implementação do explorador, e não autoriza sync ou arquivo.
 
 ## Workflow follow-up
 
