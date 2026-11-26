@@ -1293,6 +1293,24 @@ A fixture de integração da página usa `TransactionListStateService`, a lista 
 
 Nenhuma migration, endpoint, integração com provedor ou configuração de publicação foi criada ou exercitada nesta validação. Os resultados são checks locais e não constituem checks/review do GitHub ou prova de publicação. O titular aceitou a implementação local e aprovou BACKLOG 0.77/TDD 0.33, depois aprovando BACKLOG 0.78/TDD 0.34, no harness em 25/11/2026; isso não comprova API/CORS/provedor reais nem autoriza commits, PR, sync/arquivo, merge ou publicação. O M-03 do produto permanece sem aceite integrado.
 
+## Explorador de movimentos sem total — prova integrada local da tarefa 3.1 (26/11/2026)
+
+Após autorização específica para uma tentativa local com serviços descartáveis, o navegador Chromium percorreu o login Angular e consultou a API ASP.NET Core Release contra PostgreSQL 18 isolado. O banco `finora_integration_test` foi criado em um container exclusivo, com armazenamento PostgreSQL em tmpfs e porta publicada somente em `127.0.0.1:55433`; as migrations atuais foram aplicadas somente nesse banco temporário. A API ouviu em `127.0.0.1:5081` e o Angular Dev Server em `127.0.0.1:4201`. Para a prova, `frontend/src/environments/environment.ts` foi apontado temporariamente para a API isolada e restaurado ao endereço original `127.0.0.1:5080`; nenhuma alteração da aplicação permaneceu.
+
+A fixture continha titular, conexão, três cartões/moedas (BRL, USD e EUR), categoria e três movimentos sintéticos: natureza `Unknown`/situação efetivada, `BillPayment`/efetivada e `Fee`/pendente. O último sucesso informado também era sintético, criado apenas para impedir que a entrada da área elegesse uma atualização automática. Nenhum token, senha, segredo, ID interno ou corpo com dado pessoal foi registrado.
+
+| Passo integrado | Resultado observado no navegador/API |
+|---|---|
+| Login Angular → `POST /api/auth/login` | HTTP 200; sessão local iniciada e navegação para a área protegida. |
+| Consulta inicial de lista e catálogos | `GET /api/transactions`, `/api/cards`, `/api/categories` e candidatos de recorrência retornaram HTTP 200. A lista apresentou os três movimentos sintéticos em cartões separados, cada um com valor/moeda individual, data original, natureza e situação; `Unknown` foi traduzido como natureza não reconhecida. |
+| Aplicação do filtro `situation=Pending` | `GET /api/transactions?situation=Pending&page=1&pageSize=25` retornou HTTP 200 e um item. A lista mostrou `€ 4,25`, data original/técnica `2026-11-25`, natureza `Tarifa` e situação `Pendente`. |
+| Navegação à visão descritiva | `GET /api/dashboard?situation=Pending` retornou HTTP 200. A página mostrou um movimento no conjunto filtrado, o filtro aplicado, distribuições e cobertura informadas; não reproduziu a descrição nem o valor individual. A mensagem da página esclarece que lista e resumo são GETs independentes sem snapshot atômico. |
+| Link da visão para a lista única FNR-022 | A navegação retornou à lista com o filtro `Pending` e o conjunto de um movimento preservados. |
+
+O login e os GETs usados pela prova passaram pelo CORS local. A entrada pós-login também tentou o POST automático ` /api/connections/current/sync/on-entry`; seu preflight foi bloqueado porque o cabeçalho `Idempotency-Key` não está na allowlist CORS atual (`Authorization` e `Content-Type`). O navegador registrou a falha antes do handler, então nenhuma intenção ou atualização foi iniciada. Este achado foi mantido explícito e não foi corrigido nem mascarado nesta tarefa; requer triagem própria na integração CORS da conexão. Ele não impediu os GETs de movimentos/resumo desta prova.
+
+**Limites e limpeza:** prova local do caminho navegador→Angular→API→PostgreSQL com dados inteiramente sintéticos; não é serviço hospedado, provedor Pluggy, aceite FNR-020 ou aceite integrado M-03. Os dois GETs permanecem sem snapshot atômico. A API Release passou build com 0 avisos/0 erros; esta prova não repetiu as suítes completas frontend/backend nem resolve as falhas históricas 179/181. A aba isolada do navegador, processos iniciados para o teste, container PostgreSQL e arquivos temporários foram encerrados/removidos. Os quatro containers preexistentes e o processo API Debug `12364` em `127.0.0.1:5080` permaneceram intactos; nenhuma migration atingiu bancos preexistentes.
+
 ## FNR-038 — preservação e validação integrada local
 
 ### Imutabilidade das transações e ausência de agregados (tarefas 4.3 e 5.1)
