@@ -37,6 +37,8 @@ public sealed class PostgreSqlTransactionRecurrenceStoreTests
         var originalSnapshot = Snapshot("Nuvem Fictícia 8472", 100m, 100m, 100m);
         var firstImport = await PromoteAsync("synthetic-old-item", originalSnapshot, StartedAtUtc);
         Assert.IsTrue(firstImport.Succeeded, firstImport.FailureCode?.ToString());
+        // Mantém a imagem integral dos movimentos para comparar decisões e sincronizações.
+        var originalFinancialFacts = await FinancialTransactionSnapshotAssertions.CaptureAsync(fixture.Context, UserId);
         var firstEvaluation = await EvaluateAndSynchronizeAsync(StartedAtUtc.AddMinutes(2));
         var originalCandidate = firstEvaluation.Single();
         Assert.AreEqual(TransactionRecurrenceEvaluator.PolicyVersion, originalCandidate.PolicyVersion);
@@ -50,6 +52,10 @@ public sealed class PostgreSqlTransactionRecurrenceStoreTests
         await SaveAndAssertDecisionAsync(originalCandidate.Id, RecurrenceDecisionKind.Subscription, confirmedAtUtc);
         await SaveAndAssertDecisionAsync(
             originalCandidate.Id, RecurrenceDecisionKind.IndependentPurchases, correctedAtUtc);
+        // Rejeição, confirmação e correção não reescrevem a origem financeira.
+        FinancialTransactionSnapshotAssertions.AssertUnchanged(
+            originalFinancialFacts,
+            await FinancialTransactionSnapshotAssertions.CaptureAsync(fixture.Context, UserId));
 
         // A repetição idêntica da origem não duplica transações/candidato nem restaura uma escolha anterior.
         var repeatedImport = await PromoteAsync(
@@ -58,6 +64,10 @@ public sealed class PostgreSqlTransactionRecurrenceStoreTests
         var afterRepeatedImport = await EvaluateAndSynchronizeAsync(StartedAtUtc.AddMinutes(12));
         AssertCandidateAndDecision(originalCandidate, afterRepeatedImport.Single(), RecurrenceDecisionKind.IndependentPurchases,
             correctedAtUtc);
+        // Reimportar os mesmos fatos mantém cada coluna persistida e a decisão vigente.
+        FinancialTransactionSnapshotAssertions.AssertUnchanged(
+            originalFinancialFacts,
+            await FinancialTransactionSnapshotAssertions.CaptureAsync(fixture.Context, UserId));
 
         // A origem pode corrigir texto e valores; a identidade do candidato continua baseada nos IDs internos.
         var updatedSnapshot = Snapshot("Plano Sintético 9321", 100.50m, 100.60m, 100.40m);
@@ -65,10 +75,29 @@ public sealed class PostgreSqlTransactionRecurrenceStoreTests
             "synthetic-old-item", updatedSnapshot, StartedAtUtc.AddMinutes(20));
         Assert.IsTrue(updatedImport.Succeeded, updatedImport.FailureCode?.ToString());
         var updatedMovements = await ReadTransactionsAsync();
+        // Captura a sincronização autorizada de descrição/valor para comparar os demais campos.
+        var updatedFinancialFacts = await FinancialTransactionSnapshotAssertions.CaptureAsync(fixture.Context, UserId);
         Assert.AreEqual(3, updatedMovements.Count);
         Assert.AreEqual(3, updatedMovements.Select(movement => movement.Id).Distinct().Count());
         Assert.IsTrue(updatedMovements.All(movement => movement.Description == "Plano Sintético 9321"));
         Assert.IsTrue(updatedMovements.All(movement => movement.Amount is >= 100.40m and <= 100.60m));
+
+        // A sincronização pode atualizar fatos recebidos, mas preserva os demais campos do snapshot.
+        foreach (var updatedFact in updatedFinancialFacts)
+        {
+            var previousFact = originalFinancialFacts.Single(fact => fact.Id == updatedFact.Id);
+            var expectedAmount = updatedFact.ExternalId switch
+            {
+                "synthetic-september" => 100.50m,
+                "synthetic-october" => 100.60m,
+                "synthetic-november" => 100.40m,
+                _ => throw new AssertFailedException("A fixture contém identificador externo inesperado.")
+            };
+            Assert.AreEqual(
+                previousFact with { Description = "Plano Sintético 9321", Amount = expectedAmount },
+                updatedFact);
+        }
+
         var afterFactUpdate = await EvaluateAndSynchronizeAsync(StartedAtUtc.AddMinutes(22));
         AssertCandidateAndDecision(originalCandidate, afterFactUpdate.Single(),
             RecurrenceDecisionKind.IndependentPurchases, correctedAtUtc);
@@ -83,6 +112,10 @@ public sealed class PostgreSqlTransactionRecurrenceStoreTests
         CollectionAssert.AreEquivalent(
             updatedMovements.Select(movement => movement.Id).ToArray(),
             reconnectedMovements.Select(movement => movement.Id).ToArray());
+        // A reconexão reaproveita a identidade sem alterar qualquer campo do snapshot financeiro.
+        FinancialTransactionSnapshotAssertions.AssertUnchanged(
+            updatedFinancialFacts,
+            await FinancialTransactionSnapshotAssertions.CaptureAsync(fixture.Context, UserId));
 
         await using var verification = CreateContext();
         Assert.AreEqual("synthetic-new-item", await verification.Set<FinancialConnection>()

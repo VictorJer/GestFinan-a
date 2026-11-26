@@ -79,6 +79,8 @@ public sealed class PostgreSqlTransactionRecurrenceApiTests
         var token = await fixture.TokenAsync();
         var otherUserId = await fixture.SeedUserAsync("other-recurrence@example.invalid");
         var graph = await SeedRecurrenceGraphAsync(fixture.Context, ownerId, otherUserId, fixture.Clock.GetUtcNow());
+        // Guarda todos os campos persistidos do titular antes da avaliação HTTP.
+        var originalFinancialFacts = await FinancialTransactionSnapshotAssertions.CaptureAsync(fixture.Context, ownerId);
 
         using var listResponse = await SendAsync(fixture.Client, HttpMethod.Get, CandidateRoute, token);
         Assert.AreEqual(HttpStatusCode.OK, listResponse.StatusCode);
@@ -108,12 +110,19 @@ public sealed class PostgreSqlTransactionRecurrenceApiTests
         Assert.AreEqual(1, evaluated.GetArrayLength());
         var evaluatedCandidate = evaluated[0];
         Assert.AreEqual(OwnerCandidateId, evaluatedCandidate.GetProperty("candidateId").GetGuid());
+        // A reavaliação mantém a mesma projeção sem incluir fatos financeiros no DTO.
+        CollectionAssert.AreEquivalent(CandidatePropertyNames,
+            evaluatedCandidate.EnumerateObject().Select(property => property.Name).ToArray());
         Assert.IsTrue(evaluatedCandidate.GetProperty("isCurrent").GetBoolean());
         Assert.AreEqual("Rejected", evaluatedCandidate.GetProperty("decision").GetString());
         Assert.AreEqual(graph.OwnerDecisionUpdatedAtUtc,
             evaluatedCandidate.GetProperty("decisionUpdatedAtUtc").GetDateTimeOffset());
         Assert.AreEqual(2, await fixture.Context.Set<RecurrenceCandidate>().CountAsync());
         Assert.AreEqual(2, await fixture.Context.Set<RecurrenceDecision>().CountAsync());
+        // A decisão e a reavaliação não podem alterar nenhum campo financeiro original.
+        FinancialTransactionSnapshotAssertions.AssertUnchanged(
+            originalFinancialFacts,
+            await FinancialTransactionSnapshotAssertions.CaptureAsync(fixture.Context, ownerId));
 
         // OpenAPI publica o corpo allowlisted e as respostas das rotas sem sugerir campos financeiros.
         using var openApiResponse = await fixture.Client.GetAsync("/openapi/v1.json");
@@ -149,6 +158,8 @@ public sealed class PostgreSqlTransactionRecurrenceApiTests
         var token = await fixture.TokenAsync();
         var otherUserId = await fixture.SeedUserAsync("decision-other-recurrence@example.invalid");
         await SeedRecurrenceGraphAsync(fixture.Context, ownerId, otherUserId, fixture.Clock.GetUtcNow());
+        // Usa o estado completo dos movimentos como referência para rejeição e correção HTTP.
+        var originalFinancialFacts = await FinancialTransactionSnapshotAssertions.CaptureAsync(fixture.Context, ownerId);
 
         using var rejected = await SendAsync(fixture.Client, HttpMethod.Put,
             $"{CandidateRoute}/{OwnerCandidateId:D}/decision", token, "{\"decision\":\"Rejected\"}");
@@ -156,6 +167,10 @@ public sealed class PostgreSqlTransactionRecurrenceApiTests
         var rejectedBody = await ReadJsonAsync(rejected);
         Assert.AreEqual(OwnerCandidateId, rejectedBody.GetProperty("candidateId").GetGuid());
         Assert.AreEqual("Rejected", rejectedBody.GetProperty("decision").GetString());
+        // Rejeitar o padrão altera somente a entidade de decisão.
+        FinancialTransactionSnapshotAssertions.AssertUnchanged(
+            originalFinancialFacts,
+            await FinancialTransactionSnapshotAssertions.CaptureAsync(fixture.Context, ownerId));
 
         using var corrected = await SendAsync(fixture.Client, HttpMethod.Put,
             $"{CandidateRoute}/{OwnerCandidateId:D}/decision", token, "{\"decision\":\"Installment\"}");
@@ -167,6 +182,10 @@ public sealed class PostgreSqlTransactionRecurrenceApiTests
         var correctedJson = await corrected.Content.ReadAsStringAsync();
         Assert.IsFalse(correctedJson.Contains("userId", StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(correctedJson.Contains("amount", StringComparison.OrdinalIgnoreCase));
+        // Corrigir a escolha também preserva integralmente as transações persistidas.
+        FinancialTransactionSnapshotAssertions.AssertUnchanged(
+            originalFinancialFacts,
+            await FinancialTransactionSnapshotAssertions.CaptureAsync(fixture.Context, ownerId));
 
         using var foreign = await SendAsync(fixture.Client, HttpMethod.Put,
             $"{CandidateRoute}/{OtherCandidateId:D}/decision", token, "{\"decision\":\"Subscription\"}");

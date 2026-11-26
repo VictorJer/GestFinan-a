@@ -314,6 +314,12 @@ describe('Página protegida de movimentos', () => {
     expect(articleText).toContain('Efetivado');
     expect(rendered.querySelectorAll('article')).toHaveLength(1);
     expect(rendered.querySelectorAll('ul')).toHaveLength(1);
+    // A decisão mantém os dados individuais visíveis sem criar qualquer apresentação agregada.
+    expect(articleText).toContain('Compra de teste sintético');
+    expect(articleText).toContain('data original textual de origem');
+    expect(articleText).toContain('Valor individual e moeda');
+    expect(articleText).not.toMatch(/\b(?:soma|média|total monetário|gastos totais)\b/i);
+    expect(rendered.querySelectorAll('canvas, svg, table')).toHaveLength(0);
   });
 
   // Falhas de leitura, avaliação e escrita são sanitizadas, com retry explícito e snapshot anterior preservado.
