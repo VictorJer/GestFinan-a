@@ -49,6 +49,10 @@ public static class AuthenticationServiceCollectionExtensions
                         || type == typeof(GetTransactionsQueryHandler)
                         || type == typeof(GetTransactionDashboardQueryHandler)
                         || type == typeof(UpdateTransactionAnnotationHandler)
+                        // A recorrência só registra handlers protegidos quando a composição autenticada está disponível.
+                        || type == typeof(GetTransactionRecurrenceCandidatesHandler)
+                        || type == typeof(EvaluateTransactionRecurrenceCandidatesHandler)
+                        || type == typeof(UpdateTransactionRecurrenceDecisionHandler)
                         || type == typeof(CreatePersonalCategoryHandler)
                        || type == typeof(GetCategoriesHandler)
                       || type == typeof(GetSyncRunStatusHandler)));

@@ -90,6 +90,19 @@ public sealed class FinoraDbContext(DbContextOptions<FinoraDbContext> options)
             entry.Entity.ValidateForPersistence();
         }
 
+        // Candidato e decisão conservam suas próprias invariantes antes do provider e fora da transação de sync.
+        foreach (var entry in ChangeTracker.Entries<RecurrenceCandidate>()
+                     .Where(entry => entry.State is EntityState.Added or EntityState.Modified))
+        {
+            entry.Entity.ValidateForPersistence();
+        }
+
+        foreach (var entry in ChangeTracker.Entries<RecurrenceDecision>()
+                     .Where(entry => entry.State is EntityState.Added or EntityState.Modified))
+        {
+            entry.Entity.ValidateForPersistence();
+        }
+
         foreach (var entry in ChangeTracker.Entries<SyncRun>()
                      .Where(entry => entry.State is EntityState.Added or EntityState.Modified))
         {

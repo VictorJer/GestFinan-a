@@ -302,6 +302,90 @@
       </div>
     }
 
+    <!-- A avaliação é explícita; as decisões aparecem associadas aos movimentos desta mesma lista. -->
+    <section
+      aria-labelledby="recurrence-review-title"
+      class="mb-5 rounded-finora-control border border-finora-line bg-finora-bg p-4 sm:p-5"
+    >
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 id="recurrence-review-title" class="font-semibold">Revisão de recorrência</h3>
+          <p id="recurrence-review-help" class="mt-1 max-w-3xl text-sm leading-6 text-finora-muted">
+            Uma sugestão é apenas um padrão possível observado; escolha ou corrija sua interpretação
+            junto ao movimento relacionado. A avaliação não altera os movimentos nem calcula totais.
+          </p>
+        </div>
+        <button
+          type="button"
+          aria-describedby="recurrence-review-help"
+          [disabled]="!canEvaluateRecurrences()"
+          class="min-h-11 rounded-finora-control border border-finora-line bg-white px-4 py-2 text-sm font-semibold outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          (click)="evaluateRecurrences()"
+        >
+          {{
+            recurrence().evaluationStatus === 'evaluating'
+              ? 'Avaliando…'
+              : 'Avaliar possíveis recorrências'
+          }}
+        </button>
+      </div>
+
+      @if (recurrence().candidatesStatus === 'loading') {
+        <p class="mt-3 text-sm text-finora-muted" role="status" aria-live="polite">
+          Carregando sugestões registradas…
+        </p>
+      }
+      @if (recurrence().candidatesStatus === 'error') {
+        <div
+          class="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-finora-control border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"
+          role="alert"
+          aria-live="polite"
+        >
+          <p>{{ recurrenceFailureMessage(recurrence().candidatesFailure) }}</p>
+          <button
+            type="button"
+            id="retry-recurrence-candidates"
+            [disabled]="!canRetryRecurrenceRead()"
+            class="min-h-11 rounded-finora-control px-3 font-semibold underline underline-offset-4 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+            (click)="retryRecurrenceRead()"
+          >
+            Recarregar sugestões
+          </button>
+        </div>
+      }
+      @if (recurrence().evaluationStatus === 'evaluating') {
+        <p class="mt-3 text-sm text-finora-muted" role="status" aria-live="polite">
+          Reavaliando os movimentos persistidos da sessão…
+        </p>
+      }
+      @if (recurrence().evaluationStatus === 'error') {
+        <p
+          class="mt-3 rounded-finora-control border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"
+          role="alert"
+          aria-live="polite"
+        >
+          {{ recurrenceFailureMessage(recurrence().evaluationFailure) }} As sugestões anteriores, se
+          presentes, não foram substituídas.
+        </p>
+      }
+      @if (recurrence().evaluationStatus === 'complete') {
+        <p class="mt-3 text-sm leading-6" role="status" aria-live="polite">
+          {{ recurrence().evaluationMessage }}
+        </p>
+      }
+      @if (recurrence().candidatesStatus === 'loaded' && recurrence().candidates.length === 0) {
+        <p class="mt-3 text-sm leading-6 text-finora-muted" role="status">
+          Nenhuma sugestão registrada para esta sessão. A lista de movimentos permanece inalterada.
+        </p>
+      }
+      @if (recurrence().candidatesStatus === 'loaded' && recurrence().candidates.length > 0) {
+        <p class="mt-3 text-sm leading-6 text-finora-muted">
+          A revisão de cada candidato fica junto ao primeiro movimento relacionado visível nesta
+          página; use filtros ou paginação para localizar outros movimentos relacionados.
+        </p>
+      }
+    </section>
+
     @if (state().snapshot; as snapshot) {
       @if (snapshot.response.items.length === 0) {
         @if (snapshot.response.filteredCount === 0) {
@@ -330,6 +414,89 @@
                 class="min-w-0 rounded-finora-control border border-finora-line bg-finora-bg p-4 sm:p-5"
               >
                 <h3 class="break-words text-lg font-semibold">{{ movement.description }}</h3>
+                <!-- A revisão usa IDs internos para associação e mantém as escolhas junto ao movimento. -->
+                @for (
+                  review of recurrenceCandidatesForMovement(movement.id);
+                  track review.candidate.candidateId
+                ) {
+                  <section
+                    class="mt-4 rounded-finora-control border border-finora-line bg-white p-4"
+                    [attr.aria-labelledby]="
+                      'recurrence-candidate-title-' + review.candidate.candidateId
+                    "
+                  >
+                    <h4
+                      id="recurrence-candidate-title-{{ review.candidate.candidateId }}"
+                      class="font-semibold"
+                    >
+                      {{ recurrenceCandidateHeading(review) }}
+                    </h4>
+                    <p class="mt-2 text-sm leading-6 text-finora-muted">
+                      Política {{ review.candidate.policyVersion }}; candidato ligado a três
+                      movimentos observados. A sugestão não confirma uma assinatura ou parcela.
+                    </p>
+                    @if (review.candidate.decision !== null) {
+                      <p class="mt-2 text-sm leading-6">
+                        Decisão do titular:
+                        <strong>{{ recurrenceDecisionLabel(review.candidate.decision) }}</strong>
+                      </p>
+                    } @else {
+                      <p class="mt-2 text-sm leading-6">Ainda sem decisão do titular.</p>
+                    }
+                    <label
+                      for="recurrence-decision-{{ review.candidate.candidateId }}"
+                      class="mt-3 block text-sm font-semibold"
+                    >
+                      Sua interpretação do padrão
+                    </label>
+                    <select
+                      id="recurrence-decision-{{ review.candidate.candidateId }}"
+                      [value]="review.selectedDecision"
+                      [disabled]="review.decisionStatus === 'saving'"
+                      [attr.aria-describedby]="
+                        'recurrence-decision-help-' + review.candidate.candidateId
+                      "
+                      (change)="updateRecurrenceDecision(review.candidate.candidateId, $event)"
+                      class="mt-1 min-h-11 w-full rounded-finora-control border border-finora-line bg-white px-3 py-2 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <option value="">Selecione uma interpretação</option>
+                      <option value="Subscription">Assinatura</option>
+                      <option value="Installment">Parcelamento</option>
+                      <option value="IndependentPurchases">Compras independentes</option>
+                      <option value="Rejected">Rejeitar padrão</option>
+                    </select>
+                    <p
+                      id="recurrence-decision-help-{{ review.candidate.candidateId }}"
+                      class="mt-1 text-xs leading-5 text-finora-muted"
+                    >
+                      A escolha é corrigível e não altera natureza, situação ou dados da transação.
+                    </p>
+                    @if (review.decisionMessage; as decisionMessage) {
+                      <p
+                        class="mt-2 text-sm leading-6"
+                        [attr.role]="review.decisionStatus === 'error' ? 'alert' : 'status'"
+                        aria-live="polite"
+                      >
+                        {{ decisionMessage }}
+                      </p>
+                    }
+                    <button
+                      type="button"
+                      [attr.aria-describedby]="
+                        'recurrence-candidate-title-' + review.candidate.candidateId
+                      "
+                      [disabled]="!canSaveRecurrenceDecision(review)"
+                      (click)="saveRecurrenceDecision(review.candidate.candidateId)"
+                      class="mt-2 min-h-11 rounded-finora-control border border-finora-line bg-white px-4 py-2 text-sm font-semibold outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {{
+                        review.decisionStatus === 'saving'
+                          ? 'Salvando…'
+                          : recurrenceDecisionButtonLabel(review)
+                      }}
+                    </button>
+                  </section>
+                }
                 <dl class="mt-4 grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   <div class="min-w-0">
                     <dt class="text-sm text-finora-muted">Cartão</dt>
@@ -376,8 +543,12 @@
                     </div>
                   }
                   <div class="min-w-0">
-                    <dt class="text-sm text-finora-muted">Parcelas</dt>
-                    <dd class="mt-1 break-words">{{ installmentLabel(movement) }}</dd>
+                    <dt class="text-sm text-finora-muted">
+                      Parcelamento informado pela origem (Pluggy)
+                    </dt>
+                    <dd class="mt-1 break-words">
+                      {{ installmentLabel(movement) }}. Esses metadados não confirmam recorrência.
+                    </dd>
                   </div>
                   <div class="min-w-0">
                     <dt class="text-sm text-finora-muted">Categoria confirmada</dt>

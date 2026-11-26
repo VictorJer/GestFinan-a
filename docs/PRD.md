@@ -1,13 +1,15 @@
 # Finora — PRD v0
 
 **Documento de requisitos do produto**  
-**Versão:** 0.4 — **aprovada documentalmente pelo titular em 16/11/2026**; encerramento revisado da FNR-005 aceito nos limites registrados. Aprovação da revisão 0.3 preservada abaixo.\
+**Versão:** 0.5 — aprovada explicitamente pelo titular no harness em 26/11/2026, junto do aceite local da implementação FNR-038. A revisão 0.4 permanece preservada em seu escopo anterior.\
 **Data:** 15 de novembro de 2026 (definição inicial em 9 de novembro)\
 **Contexto:** TCC individual; ideia aprovada pelo professor sem alterações, conforme relato do aluno.  
 **Prazo de referência:** duas semanas de desenvolvimento; data final de entrega a confirmar.  
 **Responsável pelo produto e desenvolvimento:** aluno autor do TCC.
 
-**Origem e aprovação da revisão 0.4:** o titular aprovou a direção de substituir o objetivo pendente da FNR-005/5.3 no MVP por movimentos descritivos e recorrência assistida. O conteúdo final deste documento foi aprovado explicitamente no harness em 16/11/2026, e o titular aceitou o encerramento revisado da FNR-005 nos limites registrados. Isso não atende tecnicamente o objetivo antigo nem autoriza implementação, nova consulta real, commits, PR, sync ou arquivamento. O explorador reutiliza a [mudança existente](../openspec/changes/explorador-movimentos-cartao-sem-total/proposal.md); recorrência será especificada em mudança própria, ainda não criada.
+**Revisão 0.5 — estado factual:** atualiza RF17/VP-07 com a política `recurrence-v1` aprovada explicitamente no harness em 25/11/2026 antes do código, e registra a implementação e evidências locais da FNR-038. Em 26/11/2026, o titular aprovou explicitamente esta revisão e aceitou a implementação local; isso não comprova integração hospedada, API/CORS/provedor reais ou publicação. A aprovação da revisão 0.4 não se transfere a esta revisão.
+
+**Origem e aprovação da revisão 0.4 — preservada:** o titular aprovou a direção de substituir o objetivo pendente da FNR-005/5.3 no MVP por movimentos descritivos e recorrência assistida. O conteúdo final foi aprovado explicitamente no harness em 16/11/2026, e o titular aceitou o encerramento revisado da FNR-005 nos limites registrados. Isso não atende tecnicamente o objetivo antigo. A revisão 0.4 não autorizava implementação, nova consulta real, commits, PR, sync ou arquivamento. O explorador reutiliza a [mudança existente](../openspec/changes/explorador-movimentos-cartao-sem-total/proposal.md); recorrência passou a ser detalhada na mudança própria da FNR-038.
 
 **Origem da revisão 0.3 — preservada:** pedido do autor, nesta conversa em 13/11/2026, para alinhamento às skills atuais `generate-prd` e `generate-tdd`. Escopo exclusivamente documental; elaboração assistida. O pedido posterior de aplicação autorizava preparar aquela revisão, não a aprovava nem autorizava código ou integração.
 
@@ -20,8 +22,9 @@
 | 0.2 — FNR-001 | 13/11/2026 | Alinhamento documental aprovado pelo autor; PR #1 integrado em `075af73`. Evidências e limites preservados no §15 e no [backlog](BACKLOG.md), §7. A aprovação continua restrita àquela revisão. |
 | 0.3 | 13/11/2026 | IDs dos RNFs, métricas e encaminhamento das pendências; decisões e RF01–RF16 preservados. Entregue em revisão e posteriormente **aprovada documentalmente pelo autor**, por confirmação explícita no harness. Propostas, baselines desconhecidos e validações continuam nos estados indicados. Preparação registrada na [proposta](../openspec/changes/archive/2026-11-13-alinhar-prd-tdd-skills/proposal.md) e no [SDD](../openspec/changes/archive/2026-11-13-alinhar-prd-tdd-skills/design.md). |
 | 0.4 | 15/11/2026 | **Aprovada documentalmente em 16/11/2026; encerramento revisado FNR-005 aceito.** MVP descritivo sem agregados monetários de movimentos; RF04–RF07/RF15 revisados e RF17 de recorrência assistida em mudança própria. Objetivos financeiros anteriores adiados; FNR-005/5.3 substituída por revisão de escopo, nunca atendida tecnicamente. PR #12, coletas e aprovações anteriores preservados. |
+| 0.5 | 26/11/2026 | **Aprovada explicitamente pelo titular no harness; implementação local FNR-038 aceita.** Concretiza RF17/VP-07 por `recurrence-v1` e registra testes locais e limites. Integração e publicação permanecem pendentes; aprovações das revisões 0.3/0.4 permanecem em seus escopos. |
 
-O restante do documento descreve o produto pretendido, não funcionalidades já implementadas. Nenhuma aprovação histórica se transfere às adições desta revisão.
+O PRD define requisitos e critérios de aceite; os registros factuais de implementação identificam separadamente o que foi validado localmente e o que continua pendente. A aprovação de 0.5 é posterior e própria; nenhuma aprovação histórica se transfere às adições desta revisão.
 
 ## 1. Visão do produto
 
@@ -73,7 +76,8 @@ Não há entrevista registrada em `docs/entrevista.md` nas fontes disponíveis d
 | Consulta pelo backend .NET | FNR-004 demonstrou leitura real local limitada a uma página; evidência no backlog e em AMBIENTE.md. Não comprova importação persistente. |
 | Contrato técnico conservador — FNR-005 | Incremento integrado pelo [PR #12](https://github.com/VictorJer/GestFinan-a/pull/12), merge `adee6998342722e905a1db98ed1423620ce77ee4`. Preserva análises sanitizadas e regras conservadoras; não valida regra positiva de compra ou competência. |
 | Objetivo original FNR-005/5.3 | Substituído por revisão de escopo, não tecnicamente atendido. O titular aprovou o conteúdo revisado e aceitou o encerramento técnico conservador em 16/11/2026; compra/competência e indicadores financeiros continuam não validados e adiados. |
-| Persistência, explorador e recorrência assistida | Ainda não implementados; proposta do explorador reaproveitada, recorrência a especificar em mudança própria. |
+| Persistência e lista descritiva | Entregas locais registradas nas mudanças próprias; evidência de API/provedor reais, aceites e publicação continuam condicionados aos registros correspondentes. |
+| Recorrência assistida FNR-038 | Implementação local aceita pelo titular e revisão PRD 0.5 aprovada; evidências em [AMBIENTE.md](AMBIENTE.md). Integração, API/CORS/provedor reais e publicação permanecem pendentes. |
 | Indicadores financeiros de gastos | Adiados até validação própria; não estão entregues pelo incremento técnico ou pelo planejamento descritivo. |
 
 A visualização no painel do provedor não comprova, por si só, a leitura pela aplicação ou a disponibilidade de todos os campos desejados. As provas locais posteriores e seus limites estão em [AMBIENTE.md](AMBIENTE.md) e [PLUGGY-CONTRACT.md](PLUGGY-CONTRACT.md). Preservam-se as observações históricas de uma página e o resultado inconclusivo do parser antigo de `billForecastDate`; nenhuma coleta ou reclassificação foi feita nesta revisão. O PR #12 consultado não reporta reviews formais ou checks; ausência não equivale a aprovação.
@@ -88,7 +92,7 @@ A visualização no painel do provedor não comprova, por si só, a leitura pela
 4. Exibir cobertura e contagens descritivas coerentes com o universo consultado, sem somas ou gráficos monetários de movimentos.
 5. Informar atualização, falhas e necessidade de renovação da conexão.
 6. Proteger o acesso do titular por login, sem cadastro público, e permitir organizar movimentos com categorias pessoais e observações.
-7. Entregar recorrência assistida em mudança própria, após suas dependências e decisões pendentes: sugestão de candidato e confirmação pelo titular, sem reconhecimento automático de compra.
+7. Entregar recorrência assistida em mudança própria após histórico, consulta protegida e lista; a política `recurrence-v1` e a implementação local foram aprovadas/aceitas pelo titular. A sugestão permanece revisável pelo titular e não reconhece compras automaticamente; integração e publicação ainda dependem de seus gates.
 
 **P1 — complementos previstos, após P0:**
 
@@ -113,7 +117,7 @@ Os métodos abaixo são propostas de verificação, não resultados novos desta 
 | M-05 — desempenho local | Medir duração das consultas da interface ao banco com até 5.000 transações fictícias, identificando ambiente, volume e filtros; medir API externa separadamente. Amostra, ferramenta e estatística a definir antes da execução. | Não medido | Meta local já existente de RNF-08: até 2 segundos. Não define percentil nem SLA hospedado. | Autor sugerido; propor roteiro em FNR-024 e validar em FNR-028. Protocolo pendente (§15, VP-05). |
 | M-06 — esforço do titular | Proposta: comparar tempo e intervenções manuais para uma tarefa equivalente de organizar compras com e sem Finora, em dados seguros e condições registradas. | A definir por medição | A definir; não há redução percentual ou duração prometida. | Autor sugerido, com orientação acadêmica se pertinente; validar utilidade/método antes da avaliação no TCC. Pendente (§15, VP-05). |
 
-**M-03 anterior — adiada, não atendida:** comparar total filtrado de todas as páginas e dashboard com cálculo independente de um conjunto controlado, mesmos filtros, situações e BRL, registrando diferenças e casos elegíveis. Esse objetivo depende da futura validação financeira; consistência de contagens não o satisfaz. Para RF17, o plano de testes deverá distinguir candidatos, confirmações e falsos positivos, com tolerâncias explicitadas antes da implementação; não há taxa de acerto prometida ou medida.
+**M-03 anterior — adiada, não atendida:** comparar total filtrado de todas as páginas e dashboard com cálculo independente de um conjunto controlado, mesmos filtros, situações e BRL, registrando diferenças e casos elegíveis. Esse objetivo depende da futura validação financeira; consistência de contagens não o satisfaz. Para RF17, `recurrence-v1` fixa cenários sintéticos de candidatos, decisões e falsos positivos antes da implementação. Não há taxa de acerto prometida ou medida, e esse plano não valida gastos ou competência.
 
 ## 6. Jornada principal
 
@@ -159,7 +163,7 @@ No P0, o fluxo de autorização acontece no ambiente do provedor. Um botão que 
 | RF14 | P0 | Controlar acesso do titular | Login por e-mail e senha, sem cadastro público. Dados financeiros só são acessíveis ao titular autenticado. A sessão dura 30 minutos, sem renovação automática; recarregar ou expirar exige novo login. Logout confirmado invalida a sessão atual; redefinição administrativa de senha invalida todas as sessões. Criação e recuperação de acesso são administrativas, sem envio de e-mail no MVP. |
 | RF15 | P0 | Anotar movimentos | Permitir editar e limpar observação pessoal em texto simples de até 500 caracteres, preservada após sincronização. A anotação altera somente categoria e observação; valor, data, descrição, natureza e situação da origem não são editados. A confirmação de recorrência de RF17 é um registro separado, não classificação manual geral da natureza financeira. |
 | RF16 | P0 | Atualizar dados disponíveis | Ao entrar autenticado, solicitar importação se nunca houve sucesso ou se a última importação completa bem-sucedida tiver mais de 24 horas, com intervalo configurável. Permitir atualização manual; navegar e filtrar não importam dados. Falhas ou execuções incompletas não renovam o horário de sucesso. |
-| RF17 | P0 — entrega própria planejada | Sugerir e confirmar recorrência | Após padrão em três meses consecutivos, sugerir possível recorrência para confirmação pelo titular como assinatura, parcela ou compras independentes. Valor igual sozinho não basta. Metadados de parcelamento da origem são tratados separadamente. Tolerâncias de valor, datas e descrição são decisões pendentes obrigatórias antes da implementação; não há detector ou confirmação implementados nesta revisão. |
+| RF17 | P0 — entrega própria | Sugerir e confirmar recorrência | Sugerir somente após três ocorrências distintas em meses consecutivos, mesma conta/cartão e moeda, que atendam à `recurrence-v1` de §8; o titular decide entre assinatura, parcela, compras independentes ou rejeição, podendo corrigir. Metadados de parcelamento permanecem separados. Decisão e sincronização preservam os fatos originais, sem competência presumida ou agregados monetários. Implementação local FNR-038 aceita em 26/11/2026; integração e publicação seguem pendentes. |
 
 ## 8. Regras de negócio
 
@@ -189,10 +193,12 @@ O critério original de RF07 na revisão 0.3 era: **“Exibir gastos efetivados 
 
 ### Recorrência assistida — mudança própria
 
-- O backend procurará padrões em três meses consecutivos de histórico observado e sugerirá **possível recorrência**, não assinatura/parcela automaticamente. O usuário confirma assinatura, parcela ou compras independentes.
-- Duplicatas da mesma transação e parcelas apenas previstas não constituem três cobranças mensais observadas. Valor igual isoladamente é insuficiente; critérios de correspondência e tolerâncias de valor, datas e descrição devem ser definidos e aprovados na mudança própria antes de implementar.
-- `paymentType`, numeração e total de parcelas fornecidos pela origem são evidência separada de parcelamento; não precisam ser substituídos pela heurística temporal. Ausências e incoerências permanecem explícitas.
-- A confirmação do usuário deve ser preservada separadamente dos dados da origem nas sincronizações. Não altera valor, data, natureza financeira, situação ou competência e não libera indicadores adiados.
+- A política versionada **`recurrence-v1`** foi aprovada explicitamente pelo titular no harness em 25/11/2026 antes da implementação. O candidato exige exatamente três ocorrências elegíveis e distintas em meses-calendário consecutivos, do mesmo titular, `CardAccountId` e moeda; duplicatas são contextualizadas por (`CardAccountId`, `ExternalId`). Igualdade de valor isolada nunca basta.
+- Os três valores devem ser não zero e ter o mesmo sinal. Cada magnitude deve ficar a até **1% da mediana** das magnitudes. Os meses e dias derivam exclusivamente de `TransactionDate`: o último dia de cada mês representa o dia 31, e cada dia normalizado deve ficar a até **3 dias da mediana**. Limites são inclusivos, sem conversão cambial ou arredondamento intermediário.
+- A descrição deve ser não vazia e, após Unicode NFC, caixa invariável, pontuação Unicode substituída por espaço e espaços reduzidos/aparados, corresponder exatamente. Números e acentos são preservados; não há similaridade aproximada. Somente `Situation=Effective` é elegível. Data técnica nula, `Pending`, `FutureInstallment`, `Unknown` e parcela explicitamente futura/projetada não completam o trio; data de fatura/vencimento não substitui `TransactionDate`.
+- `PaymentType`, número e total de parcelas recebidos da origem permanecem evidência separada, mesmo ausentes ou incoerentes. A decisão vigente do titular (assinatura, parcela, compras independentes ou rejeição) é corrigível e persiste separada dos fatos e metadados da origem; outra versão de política não sobrescreve decisões anteriores.
+- O detector sugere **possível recorrência**, nunca confirma natureza financeira. Registrar/corrigir uma decisão não altera qualquer campo da transação. A sincronização só atualiza fatos fornecidos pela origem conforme o contrato de importação e não sobrescreve a decisão; não há propriedade independente de competência financeira em `FinancialTransaction`. Nenhuma alteração libera somas ou outros agregados monetários.
+- Os exemplos de borda e de falso positivo/negativo são sintéticos e estão no [design arquivado da FNR-038](../openspec/changes/archive/2026-11-26-deteccao-assistida-recorrencia/design.md), D3. A implementação/testes locais e seus limites constam em [AMBIENTE.md](AMBIENTE.md); não comprovam provedor/API/CORS reais ou publicação.
 
 ### Sincronização
 
@@ -319,7 +325,7 @@ No MVP revisado, também ficam adiados reconhecimento automático de compras e i
 2. Histórico efetivamente disponível e cobertura de faturas, parcelas e limites da origem.
 3. Regra positiva de compra e semântica de competência para indicadores financeiros adiados; não bloquear persistência/listagem descritiva por sua ausência.
 4. Limitações operacionais e cobertura da leitura real já demonstrada em escopo limitado, sem presumir validação de importação persistente ou ambiente hospedado. Referências: TDD §7, FNR-004/005 e dependências futuras no [backlog](BACKLOG.md).
-5. Tolerâncias de valor, datas e descrição e critérios executáveis de RF17, obrigatórios antes da implementação da mudança própria de recorrência.
+5. **VP-07 — critérios da FNR-038:** tolerâncias e regras reproduzíveis foram aprovadas antes do código em `recurrence-v1`, e a implementação local e esta revisão foram aceitas em 26/11/2026. A integração, validação hospedada e publicação permanecem pendentes; testes sintéticos não as substituem.
 
 ### Encaminhamento das pendências
 
@@ -333,7 +339,7 @@ Responsáveis abaixo são **sugeridos**, sem atribuição aceita ou prazo invent
 | VP-04 — leitura e limites operacionais (item 4) | Integração real ou publicação podem permanecer bloqueadas. | Autor | Validar ambiente/compatibilidade, PoC e condições dos serviços antes das fases dependentes; registrar falha e alternativa para avaliação, sem substituir aceite real. | FNR-002/004/005/025–028; TDD §§7/17 |
 | VP-05 — protocolo e baselines M-01–M-06 | Sem medição não se pode afirmar desempenho ou ganho do titular. | Autor; professor como consultado para método acadêmico, se pertinente | Validar métodos/amostra e coletar resultados antes de declarar sucesso; metas desconhecidas continuam a definir. | §5; proposta de verificação em FNR-024/028; TDD §14 |
 | VP-06 — recuperação e retenção | Perda de dados e tratamento inadequado do histórico se a operação não for definida. | Autor | Avaliar e decidir políticas/procedimentos, registrar limitações e validar recuperação antes de declarar operação validada; descarte depende de decisão explícita. | Pendências OP-01–OP-07 do TDD §17; encaminhamento proposto FNR-025/026/028, sem mudar critérios do backlog |
-| VP-07 — correspondência de recorrência (item 5) | Falsos candidatos se valor igual, descrição genérica ou projeções forem tratados como assinatura/parcela. | Autor | Definir/aprovar tolerâncias de valor, datas e descrição, critérios de meses consecutivos e cenários de confirmação na mudança própria antes de implementar. Não escolher números implicitamente nem usar recorrência como prova de compra. | RF17; item próprio no backlog; explorador não implementa detector |
+| VP-07 — correspondência de recorrência (item 5) | Falsos candidatos se valor igual, descrição genérica ou projeções forem tratados como assinatura/parcela. | Autor | `recurrence-v1` foi aprovada antes do código; implementação local e revisão PRD 0.5 foram aceitas em 26/11/2026. Validar integração/publicação conforme seus gates, sem usar recorrência como prova de compra. | RF17; FNR-038 e AMBIENTE.md; explorador permanece separado |
 
 ### Histórico de aprovação anterior
 

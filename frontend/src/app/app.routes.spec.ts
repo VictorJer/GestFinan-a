@@ -31,7 +31,11 @@ function emptyTransactionPage(): object {
     page: 1,
     pageSize: 25,
     filteredCount: 0,
-    coverage: { lastSuccessfulImportAtUtc: null, lastSuccessfulWindow: null, latestExecution: null },
+    coverage: {
+      lastSuccessfulImportAtUtc: null,
+      lastSuccessfulWindow: null,
+      latestExecution: null,
+    },
   };
 }
 
@@ -105,15 +109,20 @@ describe('Rotas da sessão no navegador', () => {
     const transactionsRequest = backend.expectOne(
       (request) => request.url === `${API_BASE}/api/transactions`,
     );
+    const recurrenceRequest = backend.expectOne(
+      `${API_BASE}/api/transactions/recurrence-candidates`,
+    );
     expect(cardsRequest.request.method).toBe('GET');
     expect(categoriesRequest.request.method).toBe('GET');
     expect(transactionsRequest.request.method).toBe('GET');
+    expect(recurrenceRequest.request.method).toBe('GET');
     backend.expectNone(
       (request) => request.method === 'POST' && request.url.toLowerCase().includes('/sync'),
     );
     cardsRequest.flush([]);
     categoriesRequest.flush([]);
     transactionsRequest.flush(emptyTransactionPage());
+    recurrenceRequest.flush([]);
     backend.expectNone(() => true);
   });
 
@@ -142,15 +151,20 @@ describe('Rotas da sessão no navegador', () => {
     const transactionsRequest = backend.expectOne(
       (request) => request.url === `${API_BASE}/api/transactions`,
     );
+    const recurrenceRequest = backend.expectOne(
+      `${API_BASE}/api/transactions/recurrence-candidates`,
+    );
     expect(listCardsRequest.request.method).toBe('GET');
     expect(categoriesRequest.request.method).toBe('GET');
     expect(transactionsRequest.request.method).toBe('GET');
+    expect(recurrenceRequest.request.method).toBe('GET');
     backend.expectNone(
       (request) => request.method === 'POST' && request.url.toLowerCase().includes('/sync'),
     );
     listCardsRequest.flush([]);
     categoriesRequest.flush([]);
     transactionsRequest.flush(emptyTransactionPage());
+    recurrenceRequest.flush([]);
     await harness.navigateByUrl('/area', AuthenticatedAreaPage);
 
     const cardsRequest = backend.expectOne(`${API_BASE}/api/cards`);

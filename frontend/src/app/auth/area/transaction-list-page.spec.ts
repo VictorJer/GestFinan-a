@@ -10,10 +10,15 @@ const API_BASE = 'https://api.example.test/proxy/';
 const CARDS_URL = `${API_BASE}api/cards`;
 const CATEGORIES_URL = `${API_BASE}api/categories`;
 const TRANSACTIONS_URL = `${API_BASE}api/transactions`;
+const RECURRENCE_CANDIDATES_URL = `${TRANSACTIONS_URL}/recurrence-candidates`;
+const RECURRENCE_EVALUATE_URL = `${RECURRENCE_CANDIDATES_URL}/evaluate`;
 const CARD_ID = '2a990192-cb59-43eb-8520-cfef6a0e3e40';
 const CATEGORY_ID = '6e209084-7488-4d97-930f-10f52df4b116';
 const MOVEMENT_ID = '5b76333c-6d8e-4d9e-aac6-3a6096f97ab1';
 const CREATED_CATEGORY_ID = '11b8435c-912c-4528-9e5d-89c924f950a2';
+const RECURRENCE_CANDIDATE_ID = 'f2ea634d-9f08-4bc0-9319-521b773844e3';
+const SECOND_MOVEMENT_ID = '64965e38-e2e3-4b52-afd2-6bb1cfcf2450';
+const THIRD_MOVEMENT_ID = '9a0cc19d-c360-4a93-8ba1-6f5353c8871d';
 
 let backend: HttpTestingController;
 let fixture: ComponentFixture<TransactionListPage> | undefined;
@@ -45,7 +50,7 @@ function openPage(): ComponentFixture<TransactionListPage> {
 }
 
 // Responde filtros de cartão e categoria com opções sintéticas, incluindo o virtual nulo não filtrável.
-function flushFilterOptions(): void {
+function flushFilterOptions(candidates: readonly Record<string, unknown>[] = []): void {
   backend
     .expectOne(CARDS_URL)
     .flush([{ id: CARD_ID, name: 'Cartão principal', lastFour: '1234', currencyCode: 'BRL' }]);
@@ -53,6 +58,7 @@ function flushFilterOptions(): void {
     { id: CATEGORY_ID, name: 'Pessoal', kind: 'personal' },
     { id: null, name: 'Sem categoria', kind: 'unassigned' },
   ]);
+  backend.expectOne(RECURRENCE_CANDIDATES_URL).flush(candidates);
 }
 
 // Localiza GET de movimentos pela URL-base e deixa parâmetros disponíveis para asserções separadas.
@@ -104,6 +110,19 @@ function pageResponse(
     pageSize: 25,
     filteredCount: items.length,
     coverage: coverage(),
+    ...overrides,
+  };
+}
+
+// Cria candidato sintético com três IDs internos; campos financeiros permanecem fora do DTO.
+function recurrenceCandidate(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    candidateId: RECURRENCE_CANDIDATE_ID,
+    policyVersion: 'recurrence-v1',
+    occurrenceTransactionIds: [MOVEMENT_ID, SECOND_MOVEMENT_ID, THIRD_MOVEMENT_ID],
+    isCurrent: true,
+    decision: null,
+    decisionUpdatedAtUtc: null,
     ...overrides,
   };
 }
@@ -195,6 +214,176 @@ describe('Página protegida de movimentos', () => {
     expect(rendered.textContent).not.toContain('PRIVATE_CODE');
     expect(rendered.querySelectorAll('canvas, svg, table')).toHaveLength(0);
     expect(rendered.textContent).not.toMatch(/\b(?:saldo|soma|média|gráfico)\b/i);
+  });
+
+  // As três escolhas permanecem corrigíveis e são associadas ao movimento, sem criar outra lista.
+  it('confirma, rejeita e corrige uma sugestão sem substituir os dados do movimento', () => {
+    const page = openPage();
+    flushFilterOptions([recurrenceCandidate()]);
+    expectTransactionRequest().flush(
+      pageResponse([movement({ installmentNumber: 1, totalInstallments: 12 })]),
+    );
+    page.detectChanges();
+
+    const rendered = page.nativeElement as HTMLElement;
+    expect(rendered.querySelectorAll('article')).toHaveLength(1);
+    expect(rendered.querySelectorAll('ul')).toHaveLength(1);
+    expect(rendered.textContent).toContain('Sugestão: possível recorrência');
+    expect(rendered.textContent).toContain('Ainda sem decisão do titular.');
+    expect(rendered.textContent).toContain('Parcelamento informado pela origem (Pluggy)');
+    expect(rendered.textContent).toContain('Parcela 1 de 12');
+    expect(rendered.textContent).toContain('Esses metadados não confirmam recorrência.');
+    expect(rendered.textContent).not.toContain(SECOND_MOVEMENT_ID);
+    expect(rendered.textContent).not.toContain(THIRD_MOVEMENT_ID);
+
+    const decisionSelector = `#recurrence-decision-${RECURRENCE_CANDIDATE_ID}`;
+    setControlValue(rendered, decisionSelector, 'Subscription');
+    page.detectChanges();
+    rendered
+      .querySelector<HTMLButtonElement>(
+        `button[aria-describedby="recurrence-candidate-title-${RECURRENCE_CANDIDATE_ID}"]`,
+      )
+      ?.click();
+    const confirmationRequest = backend.expectOne(
+      `${RECURRENCE_CANDIDATES_URL}/${RECURRENCE_CANDIDATE_ID}/decision`,
+    );
+    expect(confirmationRequest.request.method).toBe('PUT');
+    expect(confirmationRequest.request.body).toEqual({ decision: 'Subscription' });
+    confirmationRequest.flush(
+      {
+        candidateId: RECURRENCE_CANDIDATE_ID,
+        decision: 'Subscription',
+        decisionUpdatedAtUtc: '2026-11-25T12:30:00Z',
+      },
+      { status: 200, statusText: 'OK' },
+    );
+    page.detectChanges();
+    expect(rendered.textContent).toContain('Decisão do titular: Assinatura');
+    expect(rendered.textContent).toContain(
+      'Decisão salva. Os movimentos originais permanecem inalterados.',
+    );
+
+    setControlValue(rendered, decisionSelector, 'Rejected');
+    page.detectChanges();
+    rendered
+      .querySelector<HTMLButtonElement>(
+        `button[aria-describedby="recurrence-candidate-title-${RECURRENCE_CANDIDATE_ID}"]`,
+      )
+      ?.click();
+    const rejectionRequest = backend.expectOne(
+      `${RECURRENCE_CANDIDATES_URL}/${RECURRENCE_CANDIDATE_ID}/decision`,
+    );
+    expect(rejectionRequest.request.body).toEqual({ decision: 'Rejected' });
+    rejectionRequest.flush(
+      {
+        candidateId: RECURRENCE_CANDIDATE_ID,
+        decision: 'Rejected',
+        decisionUpdatedAtUtc: '2026-11-25T12:31:00Z',
+      },
+      { status: 200, statusText: 'OK' },
+    );
+    page.detectChanges();
+    expect(rendered.textContent).toContain('Decisão do titular: Padrão rejeitado');
+
+    setControlValue(rendered, decisionSelector, 'IndependentPurchases');
+    page.detectChanges();
+    rendered
+      .querySelector<HTMLButtonElement>(
+        `button[aria-describedby="recurrence-candidate-title-${RECURRENCE_CANDIDATE_ID}"]`,
+      )
+      ?.click();
+    const correctionRequest = backend.expectOne(
+      `${RECURRENCE_CANDIDATES_URL}/${RECURRENCE_CANDIDATE_ID}/decision`,
+    );
+    expect(correctionRequest.request.body).toEqual({ decision: 'IndependentPurchases' });
+    correctionRequest.flush(
+      {
+        candidateId: RECURRENCE_CANDIDATE_ID,
+        decision: 'IndependentPurchases',
+        decisionUpdatedAtUtc: '2026-11-25T12:32:00Z',
+      },
+      { status: 200, statusText: 'OK' },
+    );
+    page.detectChanges();
+
+    const articleText = rendered.querySelector('article')?.textContent ?? '';
+    expect(articleText).toContain('Decisão do titular: Compras independentes');
+    expect(articleText).toMatch(/R\$\s*17,25/);
+    expect(articleText).toContain('2026-11-24');
+    expect(articleText).toContain('Natureza');
+    expect(articleText).toContain('Efetivado');
+    expect(rendered.querySelectorAll('article')).toHaveLength(1);
+    expect(rendered.querySelectorAll('ul')).toHaveLength(1);
+    // A decisão mantém os dados individuais visíveis sem criar qualquer apresentação agregada.
+    expect(articleText).toContain('Compra de teste sintético');
+    expect(articleText).toContain('data original textual de origem');
+    expect(articleText).toContain('Valor individual e moeda');
+    expect(articleText).not.toMatch(/\b(?:soma|média|total monetário|gastos totais)\b/i);
+    expect(rendered.querySelectorAll('canvas, svg, table')).toHaveLength(0);
+  });
+
+  // Falhas de leitura, avaliação e escrita são sanitizadas, com retry explícito e snapshot anterior preservado.
+  it('recupera a carga, mantém candidatos após erro de avaliação e não confirma escrita recusada', () => {
+    const page = openPage();
+    backend
+      .expectOne(CARDS_URL)
+      .flush([{ id: CARD_ID, name: 'Cartão principal', lastFour: '1234', currencyCode: 'BRL' }]);
+    backend.expectOne(CATEGORIES_URL).flush([
+      { id: CATEGORY_ID, name: 'Pessoal', kind: 'personal' },
+      { id: null, name: 'Sem categoria', kind: 'unassigned' },
+    ]);
+    backend
+      .expectOne(RECURRENCE_CANDIDATES_URL)
+      .flush(
+        { detail: 'synthetic-private-error' },
+        { status: 503, statusText: 'Service Unavailable' },
+      );
+    expectTransactionRequest().flush(pageResponse([movement()]));
+    page.detectChanges();
+
+    const rendered = page.nativeElement as HTMLElement;
+    expect(rendered.textContent).toContain('A API está temporariamente indisponível.');
+    expect(rendered.textContent).not.toContain('synthetic-private-error');
+    rendered.querySelector<HTMLButtonElement>('#retry-recurrence-candidates')?.click();
+    const retryRequest = backend.expectOne(RECURRENCE_CANDIDATES_URL);
+    expect(retryRequest.request.method).toBe('GET');
+    retryRequest.flush([recurrenceCandidate()]);
+    page.detectChanges();
+    expect(rendered.textContent).toContain('Sugestão: possível recorrência');
+
+    rendered
+      .querySelector<HTMLButtonElement>('button[aria-describedby="recurrence-review-help"]')
+      ?.click();
+    const evaluationRequest = backend.expectOne(RECURRENCE_EVALUATE_URL);
+    expect(evaluationRequest.request.method).toBe('POST');
+    evaluationRequest.flush(
+      { detail: 'synthetic-evaluation-error' },
+      { status: 503, statusText: 'Service Unavailable' },
+    );
+    page.detectChanges();
+    expect(rendered.textContent).toContain(
+      'As sugestões anteriores, se presentes, não foram substituídas.',
+    );
+    expect(rendered.textContent).not.toContain('synthetic-evaluation-error');
+    expect(rendered.textContent).toContain('Sugestão: possível recorrência');
+
+    setControlValue(rendered, `#recurrence-decision-${RECURRENCE_CANDIDATE_ID}`, 'Subscription');
+    page.detectChanges();
+    rendered
+      .querySelector<HTMLButtonElement>(
+        `button[aria-describedby="recurrence-candidate-title-${RECURRENCE_CANDIDATE_ID}"]`,
+      )
+      ?.click();
+    backend
+      .expectOne(`${RECURRENCE_CANDIDATES_URL}/${RECURRENCE_CANDIDATE_ID}/decision`)
+      .flush({ detail: 'synthetic-decision-error' }, { status: 404, statusText: 'Not Found' });
+    page.detectChanges();
+
+    expect(rendered.textContent).toContain(
+      'O candidato não está mais disponível. Recarregue as sugestões.',
+    );
+    expect(rendered.textContent).not.toContain('synthetic-decision-error');
+    expect(rendered.textContent).toContain('Ainda sem decisão do titular.');
   });
 
   // Os filtros da tela chegam juntos; uma página vazia com contagem positiva não vira conjunto vazio.
@@ -397,6 +586,7 @@ describe('Página protegida de movimentos', () => {
         { detail: 'synthetic-private-error' },
         { status: 503, statusText: 'Service Unavailable' },
       );
+    backend.expectOne(RECURRENCE_CANDIDATES_URL).flush([]);
     expectTransactionRequest().flush(pageResponse([movement()]));
     page.detectChanges();
 
@@ -577,22 +767,104 @@ describe('Página protegida de movimentos', () => {
   // Opções privadas e movimentos ficam invisíveis assim que a geração local termina.
   it('redige snapshots de cartões, categorias e movimentos no logout', () => {
     const page = openPage();
-    flushFilterOptions();
+    flushFilterOptions([recurrenceCandidate()]);
     expectTransactionRequest().flush(pageResponse());
     const session = TestBed.inject(SessionService);
     const generation = session.currentSession()!.generation;
+    expect(page.componentInstance.recurrence().candidates).toHaveLength(1);
 
     session.endSessionForGeneration(generation);
 
     expect(page.componentInstance.cardOptions()).toEqual([]);
     expect(page.componentInstance.categoryOptions()).toEqual([]);
     expect(page.componentInstance.state().snapshot).toBeNull();
+    expect(page.componentInstance.recurrence().candidates).toEqual([]);
   });
 
-  // Nomes, foco, envio nativo por Enter e classes responsivas mantêm inclusive os novos editores acessíveis.
+  // Uma sessão nova cancela leituras/escritas pendentes e nunca herda candidatos privados anteriores.
+  it('descarta respostas de recorrência pendentes quando muda a geração da sessão', () => {
+    const page = openPage();
+    backend
+      .expectOne(CARDS_URL)
+      .flush([{ id: CARD_ID, name: 'Cartão principal', lastFour: '1234', currencyCode: 'BRL' }]);
+    backend.expectOne(CATEGORIES_URL).flush([
+      { id: CATEGORY_ID, name: 'Pessoal', kind: 'personal' },
+      { id: null, name: 'Sem categoria', kind: 'unassigned' },
+    ]);
+    const staleRequest = backend.expectOne(RECURRENCE_CANDIDATES_URL);
+    expectTransactionRequest().flush(pageResponse([movement()]));
+
+    const session = TestBed.inject(SessionService);
+    session.startSession({
+      accessToken: 'synthetic-second-session-token',
+      tokenType: 'Bearer',
+      expiresIn: 1800,
+      expiresAtUtc: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    });
+    expect(page.componentInstance.recurrence().candidates).toEqual([]);
+    page.detectChanges();
+
+    expect(staleRequest.cancelled).toBe(true);
+    backend
+      .expectOne(CARDS_URL)
+      .flush([
+        { id: CARD_ID, name: 'Cartão da nova sessão', lastFour: '9876', currencyCode: 'BRL' },
+      ]);
+    backend.expectOne(CATEGORIES_URL).flush([
+      { id: CATEGORY_ID, name: 'Pessoal', kind: 'personal' },
+      { id: null, name: 'Sem categoria', kind: 'unassigned' },
+    ]);
+    const currentRequest = backend.expectOne(RECURRENCE_CANDIDATES_URL);
+    expect(currentRequest.request.headers.get('Authorization')).toBe(
+      'Bearer synthetic-second-session-token',
+    );
+    currentRequest.flush([recurrenceCandidate({ candidateId: SECOND_MOVEMENT_ID })]);
+    page.detectChanges();
+
+    expect(
+      page.componentInstance.recurrence().candidates.map((review) => review.candidate.candidateId),
+    ).toEqual([SECOND_MOVEMENT_ID]);
+    expect(page.componentInstance.recurrence().generation).toBe(
+      session.currentSession()?.generation,
+    );
+
+    page.componentInstance.updateRecurrenceDecision(SECOND_MOVEMENT_ID, {
+      target: { value: 'Rejected' },
+    } as unknown as Event);
+    page.componentInstance.saveRecurrenceDecision(SECOND_MOVEMENT_ID);
+    const staleDecisionRequest = backend.expectOne(
+      `${RECURRENCE_CANDIDATES_URL}/${SECOND_MOVEMENT_ID}/decision`,
+    );
+    session.startSession({
+      accessToken: 'synthetic-third-session-token',
+      tokenType: 'Bearer',
+      expiresIn: 1800,
+      expiresAtUtc: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    });
+    expect(page.componentInstance.recurrence().candidates).toEqual([]);
+    page.detectChanges();
+
+    expect(staleDecisionRequest.cancelled).toBe(true);
+    backend
+      .expectOne(CARDS_URL)
+      .flush([
+        { id: CARD_ID, name: 'Cartão da terceira sessão', lastFour: '5678', currencyCode: 'BRL' },
+      ]);
+    backend.expectOne(CATEGORIES_URL).flush([
+      { id: CATEGORY_ID, name: 'Pessoal', kind: 'personal' },
+      { id: null, name: 'Sem categoria', kind: 'unassigned' },
+    ]);
+    backend.expectOne(RECURRENCE_CANDIDATES_URL).flush([]);
+    expect(page.componentInstance.recurrence().candidates).toEqual([]);
+    expect(page.componentInstance.recurrence().generation).toBe(
+      session.currentSession()?.generation,
+    );
+  });
+
+  // Nomes, foco, envio nativo por Enter e classes responsivas mantêm os controles de recorrência acessíveis.
   it('mantém controles acessíveis por teclado e dados longos legíveis em layouts responsivos', () => {
     const page = openPage();
-    flushFilterOptions();
+    flushFilterOptions([recurrenceCandidate()]);
     const description = 'Descrição sem espaço '.repeat(20);
     const note = 'Observação extensa '.repeat(20);
     expectTransactionRequest().flush(
@@ -610,6 +882,9 @@ describe('Página protegida de movimentos', () => {
     const article = rendered.querySelector('article');
     const title = article?.querySelector('h3');
     const noteValue = article?.querySelector('dd.whitespace-pre-wrap');
+    const recurrenceDecision = rendered.querySelector<HTMLSelectElement>(
+      `#recurrence-decision-${RECURRENCE_CANDIDATE_ID}`,
+    );
 
     expect(rendered.querySelector('h1')?.textContent).toContain('Movimentos');
     expect(form?.className).toContain('sm:grid-cols-2');
@@ -618,6 +893,12 @@ describe('Página protegida de movimentos', () => {
     expect(title?.className).toContain('break-words');
     expect(noteValue?.textContent).toContain(note);
     expect(title?.textContent).toContain(description);
+    expect(recurrenceDecision?.getAttribute('aria-describedby')).toBe(
+      `recurrence-decision-help-${RECURRENCE_CANDIDATE_ID}`,
+    );
+    expect(
+      rendered.querySelector(`#recurrence-decision-help-${RECURRENCE_CANDIDATE_ID}`)?.textContent,
+    ).toContain('corrigível');
     expect(article?.className).not.toMatch(/overflow-hidden|truncate|line-clamp|whitespace-nowrap/);
 
     for (const control of controls) {

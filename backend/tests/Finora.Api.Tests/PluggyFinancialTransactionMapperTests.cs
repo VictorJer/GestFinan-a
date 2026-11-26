@@ -60,6 +60,36 @@ public sealed class PluggyFinancialTransactionMapperTests
         Assert.AreEqual(new DateOnly(2026, 11, 18), foreign.TransactionDate);
     }
 
+    // Metadados Pluggy permanecem no snapshot da origem, e nenhum parcelamento isolado cria candidato recorrente.
+    [TestMethod]
+    public void PreservesInstallmentMetadataIndependentlyOfRecurrenceCandidate()
+    {
+        var present = Map(Transaction(
+            "installment-present", "COMPRA", "DEBIT", 25m,
+            installmentNumber: 1, totalInstallments: 3,
+            billForecastDate: "2026-11", paymentType: "INSTALLMENT"));
+        var absent = Map(Transaction("installment-absent", "COMPRA", "DEBIT", 25m));
+        var incoherent = Map(Transaction(
+            "installment-incoherent", "COMPRA", "DEBIT", 25m,
+            installmentNumber: 4, totalInstallments: 3,
+            billForecastDate: "2026-11", paymentType: "INSTALLMENT"));
+
+        Assert.AreEqual(1, present.InstallmentNumber);
+        Assert.AreEqual(3, present.TotalInstallments);
+        Assert.AreEqual("2026-11", present.BillForecastDate);
+        Assert.AreEqual("INSTALLMENT", present.PaymentType);
+        Assert.IsNull(absent.InstallmentNumber);
+        Assert.IsNull(absent.TotalInstallments);
+        Assert.IsNull(absent.BillForecastDate);
+        Assert.IsNull(absent.PaymentType);
+        Assert.AreEqual(4, incoherent.InstallmentNumber);
+        Assert.AreEqual(3, incoherent.TotalInstallments);
+        Assert.AreEqual("INSTALLMENT", incoherent.PaymentType);
+        Assert.AreEqual(TransactionSituation.Unknown, incoherent.Situation);
+        Assert.AreEqual(TransactionExclusionReason.InvalidInstallment, incoherent.SituationReason);
+        Assert.AreEqual(0, TransactionRecurrenceEvaluator.Evaluate(new[] { present }).Count);
+    }
+
     // Usa IDs internos explícitos e fatos externos sintéticos para exercitar o mesmo caminho de mapeamento.
     private static FinancialTransaction Map(PluggyTransactionData source) =>
         PluggyFinancialTransactionMapper.ToFinancialTransaction(source, UserId, CardId, Reference);

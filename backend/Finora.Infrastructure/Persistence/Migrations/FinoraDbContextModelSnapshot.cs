@@ -306,6 +306,98 @@ namespace Finora.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Finora.Domain.FinancialData.RecurrenceCandidate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("FirstOccurrenceTransactionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsCurrent")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset>("LastEvaluatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PolicyVersion")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .UseCollation("C");
+
+                    b.Property<Guid>("SecondOccurrenceTransactionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ThirdOccurrenceTransactionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FirstOccurrenceTransactionId", "UserId")
+                        .HasDatabaseName("IX_RecurrenceCandidate_FirstOccurrenceOwner");
+
+                    b.HasIndex("SecondOccurrenceTransactionId", "UserId")
+                        .HasDatabaseName("IX_RecurrenceCandidate_SecondOccurrenceOwner");
+
+                    b.HasIndex("ThirdOccurrenceTransactionId", "UserId")
+                        .HasDatabaseName("IX_RecurrenceCandidate_ThirdOccurrenceOwner");
+
+                    b.HasIndex("UserId", "PolicyVersion", "CreatedAtUtc")
+                        .HasDatabaseName("IX_RecurrenceCandidate_CurrentOwnerPolicyCreated")
+                        .HasFilter("\"IsCurrent\" = TRUE");
+
+                    b.HasIndex("UserId", "PolicyVersion", "FirstOccurrenceTransactionId", "SecondOccurrenceTransactionId", "ThirdOccurrenceTransactionId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_RecurrenceCandidate_OwnerPolicyOccurrences");
+
+                    b.ToTable("RecurrenceCandidate", t =>
+                        {
+                            t.HasCheckConstraint("CK_RecurrenceCandidate_EvaluationRange", "\"LastEvaluatedAtUtc\" >= \"CreatedAtUtc\"");
+
+                            t.HasCheckConstraint("CK_RecurrenceCandidate_IdsNotEmpty", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid AND \"UserId\" <> '00000000-0000-0000-0000-000000000000'::uuid AND \"FirstOccurrenceTransactionId\" <> '00000000-0000-0000-0000-000000000000'::uuid AND \"SecondOccurrenceTransactionId\" <> '00000000-0000-0000-0000-000000000000'::uuid AND \"ThirdOccurrenceTransactionId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
+
+                            t.HasCheckConstraint("CK_RecurrenceCandidate_OccurrencesDistinct", "\"FirstOccurrenceTransactionId\" <> \"SecondOccurrenceTransactionId\" AND \"FirstOccurrenceTransactionId\" <> \"ThirdOccurrenceTransactionId\" AND \"SecondOccurrenceTransactionId\" <> \"ThirdOccurrenceTransactionId\"");
+
+                            t.HasCheckConstraint("CK_RecurrenceCandidate_PolicyVersionRequired", "length(btrim(\"PolicyVersion\")) > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Finora.Domain.FinancialData.RecurrenceDecision", b =>
+                {
+                    b.Property<Guid>("CandidateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("CandidateId", "UserId");
+
+                    b.HasIndex("UserId", "CandidateId")
+                        .HasDatabaseName("IX_RecurrenceDecision_OwnerCandidate");
+
+                    b.ToTable("RecurrenceDecision", t =>
+                        {
+                            t.HasCheckConstraint("CK_RecurrenceDecision_IdsNotEmpty", "\"CandidateId\" <> '00000000-0000-0000-0000-000000000000'::uuid AND \"UserId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
+
+                            t.HasCheckConstraint("CK_RecurrenceDecision_Kind", "\"Kind\" IN ('Subscription', 'Installment', 'IndependentPurchases', 'Rejected')");
+                        });
+                });
+
             modelBuilder.Entity("Finora.Domain.FinancialData.SyncRun", b =>
                 {
                     b.Property<Guid>("Id")
@@ -881,6 +973,40 @@ namespace Finora.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("CardAccountId", "UserId", "ExternalAccountId")
                         .HasPrincipalKey("Id", "UserId", "ExternalId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Finora.Domain.FinancialData.RecurrenceCandidate", b =>
+                {
+                    b.HasOne("Finora.Domain.FinancialData.FinancialTransaction", null)
+                        .WithMany()
+                        .HasForeignKey("FirstOccurrenceTransactionId", "UserId")
+                        .HasPrincipalKey("Id", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Finora.Domain.FinancialData.FinancialTransaction", null)
+                        .WithMany()
+                        .HasForeignKey("SecondOccurrenceTransactionId", "UserId")
+                        .HasPrincipalKey("Id", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Finora.Domain.FinancialData.FinancialTransaction", null)
+                        .WithMany()
+                        .HasForeignKey("ThirdOccurrenceTransactionId", "UserId")
+                        .HasPrincipalKey("Id", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Finora.Domain.FinancialData.RecurrenceDecision", b =>
+                {
+                    b.HasOne("Finora.Domain.FinancialData.RecurrenceCandidate", null)
+                        .WithMany()
+                        .HasForeignKey("CandidateId", "UserId")
+                        .HasPrincipalKey("Id", "UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
