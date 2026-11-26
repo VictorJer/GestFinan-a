@@ -15,6 +15,8 @@ using Finora.Infrastructure.Messaging.Contracts;
 using Finora.Infrastructure.Persistence;
 using MassTransit;
 using MassTransit.EntityFrameworkCoreIntegration;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -29,6 +31,57 @@ namespace Finora.Api.Tests;
 [DoNotParallelize]
 public sealed class PostgreSqlSyncRunAcceptanceApiTests
 {
+    private const string AllowedOrigin = "https://finora.example";
+
+    // O CORS acompanha POSTs reais no host sem dispensar autenticação nem criar intenção anônima.
+    [TestMethod]
+    public async Task SyncIntentPostsWithAllowedOriginKeepCorsOnAnonymousSuccessAndHandledErrorResponses()
+    {
+        await using var fixture = await AcceptanceApiFixture.CreateAsync(
+            connectionCount: 1,
+            lastSuccessfulImportAtUtc: DateTimeOffset.UtcNow.AddHours(-1));
+
+        using var anonymousSync = await fixture.PostSyncAsync(
+            "cors-anonymous-sync-key", authenticated: false, includeOrigin: true);
+        using var anonymousEntry = await fixture.PostOnEntryAsync(
+            "cors-anonymous-entry-key", authenticated: false, includeOrigin: true);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, anonymousSync.StatusCode);
+        AssertSyncCorsOrigin(anonymousSync);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, anonymousEntry.StatusCode);
+        AssertSyncCorsOrigin(anonymousEntry);
+        Assert.AreEqual(0, fixture.SyncIntentActionCount);
+        Assert.AreEqual(0, await fixture.Database.Context.Set<SyncRun>().AsNoTracking().CountAsync());
+        Assert.AreEqual(0, await fixture.Database.Context.Set<OutboxMessage>().AsNoTracking().CountAsync());
+        Assert.AreEqual(0, fixture.CommitEvidence.CommittedAcceptanceCount);
+
+        using var notRequired = await fixture.PostOnEntryAsync("cors-entry-not-required-key", includeOrigin: true);
+        Assert.AreEqual(HttpStatusCode.OK, notRequired.StatusCode);
+        AssertSyncCorsOrigin(notRequired);
+        using (var body = JsonDocument.Parse(await notRequired.Content.ReadAsStringAsync()))
+        {
+            Assert.AreEqual("not_required", body.RootElement.GetProperty("decision").GetString());
+            Assert.IsFalse(body.RootElement.TryGetProperty("syncRunId", out _));
+        }
+
+        using var accepted = await fixture.PostSyncAsync("cors-sync-accepted-key", includeOrigin: true);
+        Assert.AreEqual(HttpStatusCode.Accepted, accepted.StatusCode);
+        AssertSyncCorsOrigin(accepted);
+        var acceptedId = await ReadAcceptedIdAsync(accepted);
+        var delivered = await fixture.Receipt.Message.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.AreEqual(acceptedId, delivered.Message.SyncRunId);
+
+        using var active = await fixture.PostOnEntryAsync("cors-entry-active-key", includeOrigin: true);
+        Assert.AreEqual(HttpStatusCode.Conflict, active.StatusCode);
+        AssertSyncCorsOrigin(active);
+        using (var problem = JsonDocument.Parse(await active.Content.ReadAsStringAsync()))
+        {
+            Assert.AreEqual("SYNC_RUN_ALREADY_ACTIVE", problem.RootElement.GetProperty("code").GetString());
+            Assert.AreEqual(acceptedId, problem.RootElement.GetProperty("syncRunId").GetGuid());
+        }
+        Assert.AreEqual(1, await fixture.Database.Context.Set<SyncRun>().AsNoTracking().CountAsync());
+        Assert.AreEqual(1, fixture.CommitEvidence.CommittedAcceptanceCount);
+    }
+
     // A rota retorna 202 apenas depois do commit e uma repetição pela mesma chave responde com o mesmo identificador.
     [TestMethod]
     public async Task HttpAcceptanceCommitsRunAndOutboxBeforeReturning202AndReplaysSameRun()
@@ -377,15 +430,16 @@ public sealed class PostgreSqlSyncRunAcceptanceApiTests
         Assert.AreEqual(1, fixture.Receipt.MessageCount);
     }
 
-    // Perda simulada após o commit físico retorna estado indeterminado; replay recupera o par já confirmado sem duplicá-lo.
+    // Perda de confirmação com Origin mantém CORS; replay da mesma chave/titular/modo recupera o par já confirmado.
     [TestMethod]
     public async Task LostCommitConfirmationAfterPhysicalCommitReturnsIndeterminateAndReplayReusesPair()
     {
         await using var fixture = await AcceptanceApiFixture.CreateAsync(connectionCount: 1);
         fixture.CommitEvidence.LoseNextCommitConfirmation();
 
-        using var uncertainResponse = await fixture.PostSyncAsync("http-lost-confirmation-key");
+        using var uncertainResponse = await fixture.PostSyncAsync("http-lost-confirmation-key", includeOrigin: true);
         await AssertAcceptanceIndeterminateAsync(uncertainResponse);
+        AssertSyncCorsOrigin(uncertainResponse);
         Assert.AreEqual(1, fixture.CommitEvidence.LostConfirmationCount);
         Assert.AreEqual(1, fixture.CommitEvidence.Snapshots.Count(snapshot => snapshot.SyncRuns == 1 && snapshot.OutboxMessages == 1));
 
@@ -399,8 +453,9 @@ public sealed class PostgreSqlSyncRunAcceptanceApiTests
         await WaitForOutboxDrainAsync(fixture.Database.Context);
         Assert.AreEqual(0, await fixture.Database.Context.Set<OutboxMessage>().AsNoTracking().CountAsync());
 
-        using var retryResponse = await fixture.PostSyncAsync("http-lost-confirmation-key");
+        using var retryResponse = await fixture.PostSyncAsync("http-lost-confirmation-key", includeOrigin: true);
         Assert.AreEqual(HttpStatusCode.Accepted, retryResponse.StatusCode);
+        AssertSyncCorsOrigin(retryResponse);
         Assert.AreEqual(persistedId, await ReadAcceptedIdAsync(retryResponse));
         Assert.AreEqual(1, await fixture.Database.Context.Set<SyncRun>().AsNoTracking().CountAsync());
         Assert.AreEqual(0, await fixture.Database.Context.Set<OutboxMessage>().AsNoTracking().CountAsync());
@@ -584,6 +639,7 @@ public sealed class PostgreSqlSyncRunAcceptanceApiTests
         private readonly HttpClient _client;
         private readonly string _token;
         private readonly string _otherToken;
+        private readonly SyncIntentActionExecutionEvidence _actionEvidence;
 
         private AcceptanceApiFixture(
             DisposablePostgresMigrationFixture database,
@@ -592,7 +648,8 @@ public sealed class PostgreSqlSyncRunAcceptanceApiTests
             string token,
             string otherToken,
             SyncRunExecutionReceipt receipt,
-            AcceptanceCommitEvidenceInterceptor commitEvidence)
+            AcceptanceCommitEvidenceInterceptor commitEvidence,
+            SyncIntentActionExecutionEvidence actionEvidence)
         {
             Database = database;
             _factory = factory;
@@ -601,6 +658,7 @@ public sealed class PostgreSqlSyncRunAcceptanceApiTests
             _otherToken = otherToken;
             Receipt = receipt;
             CommitEvidence = commitEvidence;
+            _actionEvidence = actionEvidence;
         }
 
         internal DisposablePostgresMigrationFixture Database { get; }
@@ -608,6 +666,7 @@ public sealed class PostgreSqlSyncRunAcceptanceApiTests
         internal string OtherToken => _otherToken;
         internal SyncRunExecutionReceipt Receipt { get; }
         internal AcceptanceCommitEvidenceInterceptor CommitEvidence { get; }
+        internal int SyncIntentActionCount => _actionEvidence.Count;
         internal string Logs => _factory.Logs.Text;
 
         // A fixture aplica apenas o modelo atual em schema descartável e substitui RabbitMQ por transporte in-memory.
@@ -623,11 +682,16 @@ public sealed class PostgreSqlSyncRunAcceptanceApiTests
             var connectionString = DisposablePostgresTestConfiguration.ReadRequired().ConnectionString;
             var receipt = new SyncRunExecutionReceipt();
             var commitEvidence = new AcceptanceCommitEvidenceInterceptor();
+            var actionEvidence = new SyncIntentActionExecutionEvidence();
             var configuration = AuthenticationAvailabilityTests.Configuration(
                 connectionString,
                 Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));
+            // A fixture restringe CORS a uma origem reservada e registra a passagem pelas actions reais.
+            configuration["Cors:AllowedOrigins:0"] = AllowedOrigin;
             var factory = new AuthenticationApiFactory(configuration, configure: services =>
             {
+                services.Configure<MvcOptions>(options =>
+                    options.Filters.Add(new SyncIntentActionExecutionFilter(actionEvidence)));
                 services.AddSingleton<IDbTransactionInterceptor>(commitEvidence);
                 services.AddSingleton(receipt);
                 if (configureInMemoryOutbox)
@@ -689,7 +753,8 @@ public sealed class PostgreSqlSyncRunAcceptanceApiTests
                 var otherToken = factory.Services.GetRequiredService<IAccessTokenIssuer>()
                     .Issue(otherUser.Id, otherSession.Id, otherSession.CreatedAtUtc, otherSession.ExpiresAtUtc)
                     .AccessToken;
-                return new AcceptanceApiFixture(database, factory, client, token, otherToken, receipt, commitEvidence);
+                return new AcceptanceApiFixture(
+                    database, factory, client, token, otherToken, receipt, commitEvidence, actionEvidence);
             }
             catch
             {
@@ -700,21 +765,29 @@ public sealed class PostgreSqlSyncRunAcceptanceApiTests
             }
         }
 
-        // Cada request recebe a chave em header próprio e a sessão real emitida pelo host de teste.
-        internal async Task<HttpResponseMessage> PostSyncAsync(string? idempotencyKey)
+        // Cada request pode variar sessão e Origin para exercitar a fronteira HTTP sem estado de cliente compartilhado.
+        internal async Task<HttpResponseMessage> PostSyncAsync(
+            string? idempotencyKey,
+            bool authenticated = true,
+            bool includeOrigin = false)
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, "/api/connections/current/sync");
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _token);
+            if (authenticated) { request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _token); }
             if (idempotencyKey is not null) { request.Headers.Add("Idempotency-Key", idempotencyKey); }
+            if (includeOrigin) { request.Headers.TryAddWithoutValidation("Origin", AllowedOrigin); }
             return await _client.SendAsync(request);
         }
 
         // Entrada e pedido manual usam a mesma chave opaca, mas alcançam rotas e fingerprints de intenção distintos.
-        internal async Task<HttpResponseMessage> PostOnEntryAsync(string? idempotencyKey)
+        internal async Task<HttpResponseMessage> PostOnEntryAsync(
+            string? idempotencyKey,
+            bool authenticated = true,
+            bool includeOrigin = false)
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, "/api/connections/current/sync/on-entry");
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _token);
+            if (authenticated) { request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _token); }
             if (idempotencyKey is not null) { request.Headers.Add("Idempotency-Key", idempotencyKey); }
+            if (includeOrigin) { request.Headers.TryAddWithoutValidation("Origin", AllowedOrigin); }
             return await _client.SendAsync(request);
         }
 
@@ -744,6 +817,35 @@ public sealed class PostgreSqlSyncRunAcceptanceApiTests
             _client.Dispose();
             await _factory.DisposeAsync();
             await Database.DisposeAsync();
+        }
+    }
+
+    // Confirma a concessão de origem em respostas efetivas sem ativar credenciais CORS.
+    private static void AssertSyncCorsOrigin(HttpResponseMessage response)
+    {
+        Assert.AreEqual(AllowedOrigin, response.Headers.GetValues("Access-Control-Allow-Origin").Single());
+        Assert.IsFalse(response.Headers.Contains("Access-Control-Allow-Credentials"));
+    }
+
+    // A evidência é incrementada somente quando um filtro alcança a action real do controller de sincronização.
+    private sealed class SyncIntentActionExecutionEvidence
+    {
+        private int _count;
+        internal int Count => Volatile.Read(ref _count);
+        internal void Record() => Interlocked.Increment(ref _count);
+    }
+
+    // O filtro diferencia o challenge antes da action de uma resposta 401 produzida pelo próprio controller.
+    private sealed class SyncIntentActionExecutionFilter(SyncIntentActionExecutionEvidence evidence) : IAsyncActionFilter
+    {
+        public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
+        {
+            var executed = await next();
+            if (!executed.Canceled
+                && string.Equals(context.RouteData.Values["controller"] as string, "ConnectionSync", StringComparison.Ordinal))
+            {
+                evidence.Record();
+            }
         }
     }
 

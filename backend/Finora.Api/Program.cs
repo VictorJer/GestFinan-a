@@ -82,7 +82,7 @@ var app = builder.Build();
 
 // A fronteira sanitizada precede autenticação/autorização; diagnóstico anônimo não dispara consulta de sessão.
 app.UseRouting();
-// CORS precisa envolver as respostas da fronteira HTTP e encerrar preflight antes da autenticação.
+// CORS envolve respostas da API e seleciona a exceção de chave por rota/método antes da autenticação.
 app.UseCors(FinoraCors.PolicyName);
 // A fronteira externa sanitiza exceções não tratadas antes da escrita de respostas de status.
 app.UseMiddleware<ApiExceptionBoundary>();
