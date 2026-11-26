@@ -17,6 +17,13 @@ A aplicação SHALL apresentar os movimentos efetivamente disponibilizados para 
 - **WHEN** a paginação falha, é cancelada ou atinge um limite
 - **THEN** o resultado é marcado incompleto e nenhuma contagem ou visão parcial é apresentada como universo completo
 
+### Requirement: Composição da visão geral com a lista única
+A visão geral SHALL mostrar resumos descritivos, cobertura e filtros aplicados e permitir abrir a lista única preservando esses filtros. Os campos e valores individuais SHALL aparecer na lista, sem criar outra lista na visão geral.
+
+#### Scenario: Da visão geral à lista única
+- **WHEN** o titular consulta os resumos com filtros aplicados e abre a lista de movimentos
+- **THEN** a visão geral apresenta contagens e cobertura do universo declarado sem reproduzir os movimentos individuais, e a lista única mantém os filtros aplicados e apresenta valores, moeda, data de origem, natureza e situação por movimento; consultas separadas não prometem um snapshot atômico
+
 ### Requirement: Natureza explícita e independente da situação
 A aplicação SHALL apresentar natureza somente quando sustentada pelas regras aprovadas e SHALL manter natureza desconhecida distinta de situação pendente, efetivada ou futura. Códigos ambíguos não SHALL ser promovidos por sinal, descrição ou equivalência não validada.
 

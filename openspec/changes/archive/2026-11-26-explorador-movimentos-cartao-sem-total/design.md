@@ -53,6 +53,12 @@ O incremento técnico foi integrado pelo [PR #12](https://github.com/VictorJer/G
 
    Este mapa orienta a revisão documental solicitada, não inicia os itens. As dependências formais e critérios de FNR-015/018/022/023 e do item próprio de recorrência devem constar no backlog revisado antes de implementação; não renumerar IDs existentes nem declarar entregues os objetivos antigos. A recorrência é um eixo independente: sua confirmação não altera automaticamente natureza financeira, status, valor/data originais ou competência. Detalhes e critérios executáveis do detector serão especificados na mudança própria, sem acrescentar outra capability a este explorador.
 
+## Reconciliação posterior da composição visual
+
+O contexto inicial acima descreve a situação de 16/11/2026; desde então, FNR-015 expôs a consulta protegida, FNR-018 o resumo descritivo, FNR-022 a lista única e FNR-023 a visão geral. A decisão aprovada para a tarefa 3.1 é compor essas superfícies, **sem duplicar a lista na visão geral**: `/area/visao` mostra contagens, cobertura, data técnica e filtros aplicados; o link para `/area/movimentos` preserva os filtros aplicados na sessão, onde aparecem valor e moeda individuais, data de origem, natureza e situação. A lista controla a edição dos filtros e a paginação; a visão geral consulta o universo filtrado sem `page/pageSize`. Os GETs são independentes e não prometem snapshot atômico se os dados mudarem entre as leituras.
+
+Essa decisão refina a apresentação, não cria endpoint, modifica a taxonomia conservadora nem libera agregados monetários. A evidência local e suas limitações são confrontadas na matriz do [BACKLOG 0.84](../../../../docs/BACKLOG.md); documentação, tarefas e aceite do explorador permanecem próprios. A verificação em navegador cobre somente GETs/apresentação: o POST automático de atualização na entrada, responsabilidade do fluxo FNR-021, continua bloqueado pelo preflight CORS porque `Idempotency-Key` não está na allowlist API FNR-011; portanto, não se declara validada a integração completa pelo navegador. Não houve teste com leitor de tela, publicação ou serviço/provedor hospedado. As duas falhas PostgreSQL históricas de integridade/rollback seguem sem prova concluída e têm encaminhamento proposto separadamente à FNR-024.
+
 ## Risks / Trade-offs
 
 - [A tela descritiva pode ser confundida com um dashboard de gastos] → Remover cartões de soma monetária, identificar a visão como movimentos disponíveis e destacar natureza desconhecida, cobertura e ausência dos indicadores.
