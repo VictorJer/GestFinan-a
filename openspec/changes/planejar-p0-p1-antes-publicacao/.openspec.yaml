@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-11-27
+# Esta mudança reorganiza apenas marcos e dependências documentais; não altera requisitos da aplicação.
+skip_specs: true

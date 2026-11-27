@@ -2,6 +2,7 @@
 
 **Documento de requisitos do produto**  
 **Versão:** 0.5 — aprovada explicitamente pelo titular no harness em 26/11/2026, junto do aceite local da implementação FNR-038. A revisão 0.4 permanece preservada em seu escopo anterior.\
+**Revisão 0.6 — aprovada explicitamente pelo titular no harness em 27/11/2026:** reordena somente o §12 para posicionar carteira, simulador e CSV como pacote P1 antes da primeira publicação neste recorte, após o checkpoint P0 local referenciado no backlog e no TDD. RF10–RF13 continuam P1 com critérios inalterados; a aprovação da revisão 0.5 é preservada e não se transfere a esta revisão.\
 **Data:** 15 de novembro de 2026 (definição inicial em 9 de novembro)\
 **Contexto:** TCC individual; ideia aprovada pelo professor sem alterações, conforme relato do aluno.  
 **Prazo de referência:** duas semanas de desenvolvimento; data final de entrega a confirmar.  
@@ -23,8 +24,9 @@
 | 0.3 | 13/11/2026 | IDs dos RNFs, métricas e encaminhamento das pendências; decisões e RF01–RF16 preservados. Entregue em revisão e posteriormente **aprovada documentalmente pelo autor**, por confirmação explícita no harness. Propostas, baselines desconhecidos e validações continuam nos estados indicados. Preparação registrada na [proposta](../openspec/changes/archive/2026-11-13-alinhar-prd-tdd-skills/proposal.md) e no [SDD](../openspec/changes/archive/2026-11-13-alinhar-prd-tdd-skills/design.md). |
 | 0.4 | 15/11/2026 | **Aprovada documentalmente em 16/11/2026; encerramento revisado FNR-005 aceito.** MVP descritivo sem agregados monetários de movimentos; RF04–RF07/RF15 revisados e RF17 de recorrência assistida em mudança própria. Objetivos financeiros anteriores adiados; FNR-005/5.3 substituída por revisão de escopo, nunca atendida tecnicamente. PR #12, coletas e aprovações anteriores preservados. |
 | 0.5 | 26/11/2026 | **Aprovada explicitamente pelo titular no harness; implementação local FNR-038 aceita.** Concretiza RF17/VP-07 por `recurrence-v1` e registra testes locais e limites. Integração e publicação permanecem pendentes; aprovações das revisões 0.3/0.4 permanecem em seus escopos. |
+| 0.6 | 27/11/2026 | **Aprovada explicitamente pelo titular no harness.** §12 coloca os três módulos P1 antes da primeira publicação neste recorte, após checkpoint P0 local; preserva RF10–RF13, prioridades, critérios e aprovação 0.5. A aprovação é documental: não declara checkpoint executado, aceite da implementação ou publicação. |
 
-O PRD define requisitos e critérios de aceite; os registros factuais de implementação identificam separadamente o que foi validado localmente e o que continua pendente. A aprovação de 0.5 é posterior e própria; nenhuma aprovação histórica se transfere às adições desta revisão.
+O PRD define requisitos e critérios de aceite; os registros factuais de implementação identificam separadamente o que foi validado localmente e o que continua pendente. A aprovação de 0.5 permanece restrita àquela revisão; a revisão 0.6 recebeu aprovação documental explícita em 27/11/2026. Essa aprovação não declara o checkpoint executado nem aceita implementação ou publicação.
 
 ## 1. Visão do produto
 
@@ -281,13 +283,13 @@ Se o acesso real pela aplicação falhar, registrar o bloqueio, a tentativa e a 
 |---|---|---|
 | M1 — Integração | Dias 1–2 | Backend consulta o cartão e transações reais; formato, cobertura e estados documentados. |
 | M2 — Dados | Dias 3–5 | Banco persistente, importação paginada e repetível sem duplicações. |
-| M3 — Núcleo revisado | Dias 6–9 — referência original, não nova estimativa | Lista, categorias, visão descritiva, filtros e estados integrados; recorrência em entrega própria após histórico e tolerâncias. Sem indicadores financeiros adiados. |
-| M4 — Complementos | Dias 10–11, se P0 estável | Carteira manual e simulador; exportação CSV se couber. |
-| M5 — Entrega | Dias 12–14 | Correções, documentação, demonstração com dados seguros e apresentação. |
+| M3 — Núcleo P0 integrado localmente | Dias 6–9 — referência original, não nova estimativa | Lista, categorias, visão descritiva, filtros e estados integrados; recorrência em entrega própria após histórico e tolerâncias. Preparar evidência para o checkpoint local antes de P1; sem indicadores financeiros adiados. |
+| M4 — Complementos P1 | Dias 10–11, referência original, após checkpoint P0 local e aceite explícito do escopo local | Carteira manual, simulador e exportação CSV como pacote P1 completo antes da primeira publicação deste recorte. |
+| M5 — Primeira publicação e validação hospedada | Dias 12–14 — referência original, não nova estimativa | Preparação operacional, migrations administrativas compatíveis e publicação pelos gates próprios; validar P0 e P1 no ambiente hospedado e preparar demonstração com dados seguros. |
 
 O texto do TCC acompanha todos os marcos. Datas de calendário e disponibilidade diária devem ser registradas no planejamento de execução, sem presumir que o prazo foi renovado com a aprovação.
 
-As janelas acima são sugestões do planejamento inicial, não um prazo reiniciado. O [backlog](BACKLOG.md), §§3–4, detalha as dependências e ordena a entrega P0 antes dos complementos; o roadmap do TDD §16 explicita os critérios de passagem. Os nomes M1–M5 desta visão resumida não equivalem aos M0–M6 do backlog. Nada nesta revisão inicia FNR-002 ou autoriza publicação.
+As janelas acima são sugestões do planejamento inicial, não um prazo reiniciado. Neste recorte, o checkpoint P0 local e seu aceite explícito antecedem FNR-029–031; o pacote P1 antecede a primeira publicação, sem substituir os critérios de núcleo pronto e hospedado do §13/FNR-028. O [backlog](BACKLOG.md), §§3–5, detalha dependências e evidências; o roadmap do TDD §16 explicita a passagem. Os nomes M1–M5 desta visão resumida não equivalem às fases do backlog. Esta revisão documental não afirma que o checkpoint foi executado nem autoriza publicação.
 
 ## 13. Validação e definição de pronto
 
