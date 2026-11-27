@@ -29,6 +29,6 @@
 
 ## Workflow follow-up
 
-- Após validação local, o titular solicitou explicitamente em 27/11/2026 os commits locais e o encaminhamento por PR; o escopo validado foi tratado como aceito localmente para esse encaminhamento. O commit de implementação foi criado pelo committer; o PR ainda será aberto. Isso não autoriza merge ou publicação.
+- Após validação local, o titular solicitou explicitamente em 27/11/2026 os commits locais e o encaminhamento por PR; o escopo validado foi tratado como aceito localmente para esse encaminhamento. O committer criou `3c9dbf4` (implementação/testes) e `e17b3c5` (documentos/spec/arquivo); ambos foram enviados e compõem o [PR #47](https://github.com/VictorJer/GestFinan-a/pull/47), aberto contra `main`. No head inicial `e17b3c5`, os três checks reportaram `SUCCESS`, sem reviews ou decisão de review reportadas. Este registro factual altera o head e exige consultar os checks do novo head separadamente. Não houve merge ou publicação.
 - Uma execução do comando com o item real e o banco persistente local exige confirmação própria do titular após conferir destino/contêiner; uma sincronização real exige ainda configuração e gates próprios do transporte. Não tratar esse teste operacional como implícito no aceite do código.
 - Por solicitação explícita do titular em 27/11/2026, a delta `administrative-connection-provisioning` foi sincronizada na spec principal e esta mudança foi arquivada localmente antes da integração. O arquivo não comprova merge/publicação e não fecha automaticamente FNR-024, FNR-028 ou FNR-034.
