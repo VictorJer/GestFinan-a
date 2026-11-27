@@ -296,6 +296,21 @@ Códigos de saída administrativos:
 
 O aviso antigo `session_revocation=not_implemented` e a afirmação de que o reset não revogava sessões pertencem à evidência histórica da FNR-008; não descrevem a implementação local posterior da FNR-010. Neste escopo local, reset de senha e revogação de todas as sessões ainda não revogadas — inclusive expiradas — compartilham a mesma transação; sessões já revogadas mantêm o timestamp. O comando não envia e-mail, não desbloqueia a conta nem cria JWT/sessão. Somente um commit confirmado produz o texto de sucesso acima. Em falha anterior à tentativa, não há alteração; em cancelamento/falha de commit ou confirmação perdida, o código `1` não permite inferir rollback nem confirmar o resultado remoto. O código `130` é reservado ao cancelamento antes da tentativa de commit. A FNR-010 permanece em implementação local, sem aceite final/integração/publicação; a entrega FNR-008 isolada não atende RF14 e os gates FNR-011/020 e de publicação continuam obrigatórios. A verificação manual TTY histórica e evidências atuais, com limites, estão no [guia de ambiente](docs/AMBIENTE.md); testes PostgreSQL usam somente o Compose descartável local.
 
+### Vínculo inicial administrativo local (FNR-039; implementação local aceita para encaminhamento)
+
+Depois de revisar o destino local e obter a autorização operacional específica descrita em [AMBIENTE.md — FNR-039](docs/AMBIENTE.md), execute em terminal interativo, sem perfil de lançamento e sem argumentos adicionais:
+
+```powershell
+# User Secrets só são carregados quando Development é selecionado explicitamente.
+$env:DOTNET_ENVIRONMENT = 'Development'
+# O comando usa ConnectionStrings:Finora e Pluggy configurados por fonte protegida; não passe valores como argumentos.
+dotnet run --project backend/Finora.Api --no-launch-profile -- connection-link-local
+```
+
+O schema necessário, incluindo a migration `20261120211916_AddFinancialConnectionItemIdentityHistory`, deve estar aplicado; deve existir exatamente um titular, e a configuração protegida deve apontar ao PostgreSQL local autorizado e ao item Pluggy elegível. Antes de executar, inspecione o projeto Compose, container, porta em loopback e volume conforme o guia de ambiente; um túnel ou encaminhamento em loopback pode apontar para remoto. O comando pede a confirmação do database e do container/volume, consulta somente metadados do item/cartão configurado e solicita uma confirmação terminal final. A execução consulta a Pluggy configurada e grava no banco escolhido: esta entrega **não** executa o comando com dados pessoais; uso real exige autorização operacional separada depois da conferência do destino.
+
+`status=linked` confirma somente a criação do vínculo e da identidade externa ativa. `already_linked` indica que o mesmo vínculo íntegro já existia. Nenhum dos estados significa importação concluída: o comando não cria cartão (`CardAccount`), movimento, `SyncRun` ou outbox e não lê transações. RabbitMQ **não é necessário para vincular**; só entra no fluxo separado de sincronização posterior, sujeito a FNR-013/014 e ao gate MQ-P01. Códigos: `0` vínculo novo ou íntegro existente; `1` falha operacional/commit incerto; `2` argumento, configuração ou terminal inválido; `4` conflito; `130` cancelamento antes do commit. A implementação local foi aceita para encaminhamento; integração e publicação continuam pendentes.
+
 ## Funcionalidades planejadas
 
 ### Núcleo do MVP
