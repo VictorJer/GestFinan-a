@@ -191,6 +191,38 @@ describe('Apresentação da visão descritiva', () => {
     fixture.destroy();
   });
 
+  // A sequência dos títulos permanece compreensível quando o grid visual passa a ter colunas.
+  it('mantém ordem semântica do cabeçalho aos filtros, resumo, cobertura e lista única', () => {
+    const { fixture } = createPage(
+      summary(57, {
+        lastSuccessfulImportAtUtc: null,
+        lastSuccessfulWindow: null,
+        latestExecution: null,
+      }),
+    );
+    const page = fixture.nativeElement as HTMLElement;
+    const headings = Array.from(page.querySelectorAll<HTMLElement>('h1, h2, h3')).map((heading) => [
+      heading.tagName,
+      heading.textContent?.trim(),
+    ]);
+
+    expect(headings).toEqual([
+      ['H1', 'Visão descritiva'],
+      ['H2', 'Filtros aplicados'],
+      ['H2', 'Conjunto filtrado'],
+      ['H2', 'Distribuições independentes'],
+      ['H3', 'Natureza do movimento'],
+      ['H3', 'Situação do movimento'],
+      ['H2', 'Cobertura e execução informadas'],
+    ]);
+    expect(page.querySelector('a[href="/area/movimentos"]')?.textContent).toContain(
+      'Abrir lista de movimentos',
+    );
+    expect(page.textContent).not.toContain('Movimento sintético');
+    expect(page.textContent).not.toMatch(/R\$|\b(?:saldo|gasto|receita|subtotal|média)\b/i);
+    fixture.destroy();
+  });
+
   // Contagem vazia não implica cobertura completa: sem sucesso e janela, a cobertura continua desconhecida.
   it('apresenta conjunto vazio com cobertura desconhecida sem fabricar janela ou execução', () => {
     const { fixture } = createPage(
@@ -235,11 +267,12 @@ describe('Apresentação da visão descritiva', () => {
     });
     const http = TestBed.inject(HttpTestingController);
     const listState = TestBed.inject(TransactionListStateService);
-    listState.updateDraft({ search: 'filtro sintético' });
+    const appliedSearch = 'filtro sintético';
+    listState.updateDraft({ search: appliedSearch });
     expect(listState.applyDraftFilters()).toBe(true);
 
     const listRequest = http.expectOne((request) => request.url === TRANSACTIONS_URL);
-    expect(listRequest.request.params.get('search')).toBe('filtro sintético');
+    expect(listRequest.request.params.get('search')).toBe(appliedSearch);
     expect(listRequest.request.params.get('pageSize')).toBe('25');
     listRequest.flush({
       items: Array.from({ length: 25 }, (_, index) => transaction(index)),
@@ -256,7 +289,7 @@ describe('Apresentação da visão descritiva', () => {
     const fixture = TestBed.createComponent(DashboardOverviewPage);
     fixture.detectChanges();
     const dashboardRequest = http.expectOne((request) => request.url === DASHBOARD_URL);
-    expect(dashboardRequest.request.params.get('search')).toBe('filtro sintético');
+    expect(dashboardRequest.request.params.get('search')).toBe(appliedSearch);
     expect(dashboardRequest.request.params.has('page')).toBe(false);
     expect(dashboardRequest.request.params.has('pageSize')).toBe(false);
     dashboardRequest.flush(
@@ -272,6 +305,14 @@ describe('Apresentação da visão descritiva', () => {
     expect(listState.view().snapshot?.response.filteredCount).toBe(57);
     expect(fixture.nativeElement.textContent).toContain('57 movimentos no conjunto filtrado');
     expect(fixture.nativeElement.textContent).not.toContain('25 movimentos no conjunto filtrado');
+    const page = fixture.nativeElement as HTMLElement;
+    expect(page.textContent).toContain('Busca literal');
+    expect(page.textContent).toContain(appliedSearch);
+    expect(listState.view().filters).toEqual({ search: appliedSearch });
+    expect(page.querySelectorAll('a[href="/area/movimentos"]')).toHaveLength(1);
+    expect(page.querySelector('a[href="/area/movimentos"]')?.textContent).toContain(
+      'Abrir lista de movimentos',
+    );
     fixture.destroy();
     http.verify({ ignoreCancelled: true });
   });
@@ -324,6 +365,50 @@ describe('Apresentação da visão descritiva', () => {
     const listLink = page.querySelector<HTMLAnchorElement>('a[href="/area/movimentos"]');
     expect(listLink?.tabIndex).toBe(0);
     expect(listLink?.classList.contains('focus-visible:outline-solid')).toBe(true);
+    http.verify({ ignoreCancelled: true });
+    fixture.destroy();
+  });
+
+  // Uma falha de retry identifica o resumo anterior da mesma sessão sem confundi-lo com sucesso novo.
+  it('diferencia resposta anterior de falha e repete apenas o GET do resumo', () => {
+    const { fixture, http } = createAuthenticatedApiPage();
+    http.expectOne((request) => request.url === DASHBOARD_URL).flush(
+      summary(12, {
+        lastSuccessfulImportAtUtc: '2026-11-24T10:00:00Z',
+        lastSuccessfulWindow: {
+          requestedFrom: '2026-11-01',
+          requestedToExclusive: '2026-12-01',
+          observedFrom: '2026-11-01',
+          observedTo: '2026-11-24',
+          coverageState: 'Partial',
+        },
+        latestExecution: null,
+      }),
+    );
+    fixture.detectChanges();
+
+    fixture.componentInstance.retry();
+    fixture.detectChanges();
+    const retry = http.expectOne((request) => request.url === DASHBOARD_URL);
+    expect(retry.request.method).toBe('GET');
+    retry.flush(
+      { detail: 'synthetic-private-retry-failure' },
+      { status: 503, statusText: 'Service Unavailable' },
+    );
+    fixture.detectChanges();
+
+    const page = fixture.nativeElement as HTMLElement;
+    expect(page.querySelector('[role="status"]')?.textContent).toContain(
+      'resposta anterior da mesma sessão e dos mesmos filtros',
+    );
+    expect(page.querySelector('[role="alert"]')?.textContent).toContain(
+      'temporariamente indisponível',
+    );
+    expect(page.textContent).toContain('12 movimentos no conjunto filtrado');
+    expect(page.textContent).toContain('2026-11-01 até 2026-12-01 (final exclusivo)');
+    expect(page.textContent).not.toContain('synthetic-private-retry-failure');
+    expect(page.textContent).not.toMatch(/R\$|\b(?:saldo|gasto|receita|subtotal|média)\b/i);
+    expect(page.querySelectorAll('a[href="/area/movimentos"]')).toHaveLength(1);
     http.verify({ ignoreCancelled: true });
     fixture.destroy();
   });

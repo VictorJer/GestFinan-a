@@ -35,3 +35,74 @@ body {
   color: var(--color-finora-ink);
   font-family: var(--font-finora-sans);
 }
+
+/* Mantém a visão em uma coluna estreita e separa conteúdo e apoio operacional quando há largura. */
+.dashboard-overview-grid,
+.dashboard-overview-primary {
+  display: grid;
+  min-width: 0;
+  gap: 1.5rem;
+}
+
+.dashboard-overview-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Faz os grupos internos refluírem sem depender de larguras mínimas ou esconder dados essenciais. */
+.dashboard-overview-distributions-grid,
+.dashboard-overview-coverage-grid,
+.dashboard-applied-filters-values {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.dashboard-overview-distributions-grid dt,
+.dashboard-overview-distributions-grid dd,
+.dashboard-overview-coverage-grid dd {
+  overflow-wrap: anywhere;
+}
+
+.dashboard-overview-actions {
+  display: flex;
+  min-width: 0;
+}
+
+/* O breakpoint acompanha o shell compacto; a coluna lateral conserva janela e execução visíveis. */
+@media (min-width: 56.3125rem) {
+  .dashboard-overview-grid {
+    grid-template-columns: minmax(0, 1.45fr) minmax(15rem, 1fr);
+    align-items: start;
+  }
+}
+
+/* Abre os agrupamentos internos apenas quando os cartões têm espaço para leitura sem truncamento. */
+@media (min-width: 80rem) {
+  .dashboard-overview-distributions-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-applied-filters-values {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* Em telas estreitas, reduz apenas os intervalos e oferece o link em toda a largura disponível. */
+@media (max-width: 35rem) {
+  .dashboard-overview-grid,
+  .dashboard-overview-primary {
+    gap: 1rem;
+  }
+
+  .dashboard-overview-distributions-grid,
+  .dashboard-overview-coverage-grid,
+  .dashboard-applied-filters-values {
+    gap: 0.75rem;
+  }
+
+  .dashboard-overview-actions > a {
+    width: 100%;
+    justify-content: center;
+  }
+}
