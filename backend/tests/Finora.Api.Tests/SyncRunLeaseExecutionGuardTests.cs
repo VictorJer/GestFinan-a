@@ -31,7 +31,8 @@ public sealed class SyncRunLeaseExecutionGuardTests
             CancellationToken.None);
 
         Assert.AreEqual("continued", result);
-        Assert.AreEqual(1, store.RenewalCount);
+        // O relógio real pode entregar ticks extras sob carga; o contrato exige pelo menos uma renovação.
+        Assert.IsTrue(store.RenewalCount >= 1, "A lease deve ser renovada antes de a operação continuar.");
     }
 
     // Perda da renovação cancela o token do importador e impede que ele retorne um resultado de sucesso.

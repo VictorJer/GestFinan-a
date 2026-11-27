@@ -37,7 +37,8 @@ public sealed class PostgreSqlFinancialIntegrityTests
     {
         await using var fixture = DisposablePostgresMigrationFixture.CreateValidated();
         await fixture.ResetToEmptySchemaAsync();
-        await fixture.Context.Database.MigrateAsync(PostgreSqlPersistenceTests.CoreMigrationId);
+        // A prova usa SyncRun do modelo atual; a cadeia completa cria suas colunas no schema descartável.
+        await fixture.Context.Database.MigrateAsync();
         await SeedValidGraphAsync(fixture.Context);
         await AssertValidCategoryScopesAsync();
 
@@ -349,7 +350,8 @@ public sealed class PostgreSqlFinancialIntegrityTests
         Assert.AreEqual(2, await context.Set<CardAccount>().CountAsync());
         Assert.AreEqual(4, await context.Set<FinancialTransaction>().CountAsync());
         Assert.AreEqual(1, await context.Set<SyncRun>().CountAsync());
-        Assert.AreEqual(3, await context.Set<Category>().CountAsync());
+        // As migrations semeiam sete categorias; as três do cenário devem permanecer sem gravações inválidas adicionais.
+        Assert.AreEqual(10, await context.Set<Category>().CountAsync());
         Assert.AreEqual(3, await context.Set<TransactionAnnotation>().CountAsync());
     }
 }

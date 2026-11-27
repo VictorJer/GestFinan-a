@@ -28,7 +28,8 @@ public sealed class PostgreSqlFinancialTransactionAtomicityTests
     {
         await using var fixture = DisposablePostgresMigrationFixture.CreateValidated();
         await fixture.ResetToEmptySchemaAsync();
-        await fixture.Context.Database.MigrateAsync(PostgreSqlPersistenceTests.CoreMigrationId);
+        // O cenário grava o SyncRun atual; migrations completas alinham o schema somente no banco descartável.
+        await fixture.Context.Database.MigrateAsync();
         await SeedPreviouslyCommittedGraphAsync(fixture.Context);
 
         var attemptedTransactionId = Guid.NewGuid();

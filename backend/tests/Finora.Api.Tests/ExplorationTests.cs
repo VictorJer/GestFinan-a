@@ -48,6 +48,9 @@ public sealed class ExplorationTests
                 "/api/dashboard", // O resumo FNR-018 é uma operação protegida própria, sem paginação.
                 "/api/categories", // O catálogo autenticado FNR-016 agora integra a superfície OpenAPI.
                 "/api/transactions/{id}/annotation", // A edição protegida FNR-017 também integra o contrato publicado.
+                "/api/transactions/recurrence-candidates", // A recorrência FNR-038 publica consulta, reavaliação e decisão protegidas.
+                "/api/transactions/recurrence-candidates/evaluate",
+                "/api/transactions/recurrence-candidates/{candidateId}/decision",
                 "/api/connections/current/sync", "/api/connections/current/sync/on-entry",
                 "/api/connections/current/sync-state", "/api/sync-runs/{syncRunId}"
             },
@@ -62,6 +65,9 @@ public sealed class ExplorationTests
             ("/api/transactions/{id}/annotation", "patch"),
             ("/api/categories", "get"),
             ("/api/categories", "post"),
+            ("/api/transactions/recurrence-candidates", "get"),
+            ("/api/transactions/recurrence-candidates/evaluate", "post"),
+            ("/api/transactions/recurrence-candidates/{candidateId}/decision", "put"),
             ("/api/connections/current/sync", "post"),
             ("/api/connections/current/sync/on-entry", "post"),
             ("/api/connections/current/sync-state", "get"),
