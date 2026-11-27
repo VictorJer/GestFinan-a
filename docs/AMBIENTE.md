@@ -1383,3 +1383,136 @@ Em 26/11/2026, após a apresentação destas evidências, o titular aceitou expl
 ### Encaminhamento Git e PR
 
 Os commits `787ff24` (testes de imutabilidade) e `458c663` (registros, capability e arquivo OpenSpec) foram criados depois dos commits-base `90a19a9` e `07e270c`, preservados no histórico. A branch `feature/fnr-038-deteccao-assistida-recorrencia` foi enviada ao origin e o [PR #42](https://github.com/VictorJer/GestFinan-a/pull/42) foi aberto contra `main`. Na consulta após a abertura, o PR estava `OPEN`, com `reviews: []`, `statusCheckRollup: []` e `gh pr checks` sem checks reportados; ausência de review/check não é aprovação. O merge permanece não autorizado e não foi realizado; publicação, validação hospedada, CORS/provedor reais e migration em destino continuam pendentes.
+
+## FNR-024 — recuperação focal das provas PostgreSQL (26/11/2026)
+
+Antes desta correção, `PostgreSqlFinancialIntegrityTests` e `PostgreSqlFinancialTransactionAtomicityTests` aplicavam somente até `20261117193137_Fnr007CorePersistence` (`CoreMigrationId`), mas persistiam o modelo atual de `SyncRun`, que inclui `AttemptDeadlineAtUtc`, coluna introduzida por `20261123000048_Fnr013SyncRunExecutionPersistence`. O schema de teste ficava, portanto, anterior às gravações exigidas por esses cenários. As alterações ficaram restritas ao setup dessas duas provas: após o reset validado do schema público descartável, ambas chamam `MigrateAsync()` para aplicar as migrations registradas no projeto, até a mais recente disponível nesta branch, `20261126003137_Fnr038RecurrenceAssistance`. A cadeia inclui a coluna atual de `SyncRun` e a migration `20261124043312_Fnr016InitialCategories`, que semeia sete categorias do catálogo.
+
+| Execução focal | Resultado observado | Asserções preservadas / limite |
+|---|---|---|
+| `PostgreSqlFinancialIntegrityTests.PostgreSqlEnforcesOwnershipCategoryAndReferencedParentIntegrity` | **1/1**, 0 falhas e 0 ignorados | Mantidas rejeições de FK/propriedade por EF e SQL parametrizado, CHECKs, exclusões `RESTRICT` e releitura do grafo. A contagem final exige **10 categorias**: sete semeadas por FNR-016 e três criadas pelo cenário, continuando a detectar gravações inválidas adicionais. |
+| `PostgreSqlFinancialTransactionAtomicityTests.RollbackRemovesEarlierWritesAndPreservesPreviouslyCommittedFinancialHistory` | **1/1**, 0 falhas e 0 ignorados | Mantidas a gravação anterior dentro da transação, a falha PostgreSQL injetada depois da gravação, o rollback e a conferência em contexto independente da remoção das tentativas e preservação do histórico confirmado. |
+
+As duas execuções foram isoladas no PostgreSQL 18 do Compose descartável `finora-fnr024-test`, database `finora_integration_test`, schema `public`, em `127.0.0.1:55433`, com dados em tmpfs. A fixture validou loopback/database antes do reset; `FINORA_TEST_CONNECTION_STRING` foi formada a partir das credenciais locais e existiu somente no processo de testes, sem ser impressa. O serviço dedicado permaneceu ativo para a sequência de validação da FNR-024. Não foram alteradas migrations históricas, asserções financeiras, configuração de runtime ou inicialização da API; `MigrateAsync()` é usado somente nestas fixtures descartáveis.
+
+Esses resultados comprovam somente as duas execuções focais acima. Não convertem a rodada histórica ampla **179/181** em aprovação retroativa nem significam que a suíte PostgreSQL ampla ou o CI já passaram; as contagens e falhas históricas permanecem registradas nos seus contextos originais. Nenhum broker RabbitMQ real, banco persistente/de desenvolvimento, Neon, migration em destino, commit ou publicação foi usado nesta validação.
+
+## FNR-024 — jobs backend reproduzíveis e fronteira do broker (26/11/2026)
+
+O workflow [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) dispara em PR destinado a `main` e em `push` para `main`; os jobs backend têm IDs estáveis `backend-no-postgres` e `backend-postgres`. Usa `global.json` (SDK .NET 10.0.402), restore `--locked-mode`, build antes dos testes, seleção mínima de um teste e política estrita contra seleção vazia. As actions `checkout` v7.0.1 e `setup-dotnet` v6.1.0 estão fixadas pelos SHAs de commit revisados. O workflow tem somente permissão `contents: read`, não recebe credenciais de provedor e não tem passos de deploy, migration em destino ou publicação. A existência dos jobs e os resultados seguintes são locais; nenhum check foi executado no GitHub por esta validação.
+
+Da raiz do repositório, o job backend sem PostgreSQL equivale a:
+
+```powershell
+# Restaura somente as dependências fechadas nos locks versionados.
+dotnet restore backend/Finora.slnx --locked-mode
+
+# Compila todos os projetos backend antes de executar a suíte selecionada.
+dotnet build backend/Finora.slnx --no-restore
+
+# Exclui classes PostgreSQL e as provas de contrato/propriedade que abrem fixture PostgreSQL sem esse sufixo.
+$reportDirectory = Join-Path $env:LOCALAPPDATA "Temp\opencode\fnr024-no-postgres-$([guid]::NewGuid().ToString('N'))"
+dotnet test --solution backend/Finora.slnx --no-build --no-restore --filter 'FullyQualifiedName!~PostgreSql&FullyQualifiedName!~MqP01CompatibilityTests&FullyQualifiedName!~OwnershipProbeTests&FullyQualifiedName!~ProblemDetailsContractTests' --output normal --minimum-expected-tests 1 --zero-tests-policy strict --report-trx --results-directory $reportDirectory
+
+# Recusa relatório sem resultados, teste ignorado ou qualquer outcome diferente de Passed.
+.github/scripts/Assert-TrxNoSkippedTests.ps1 -ResultsDirectory $reportDirectory
+```
+
+Restore bloqueado e build passaram; o build terminou com **0 avisos/0 erros**. A seleção final passou **363/363**, sem falhas ou ignorados, com conexão de banco e variáveis de provedores ausentes do processo; o validador TRX confirmou 363 `Passed`. Um ensaio negativo com resultado sintético `NotExecuted` foi recusado pela mesma guarda. A primeira execução encontrou duas expectativas de teste desatualizadas: a lista OpenAPI de `ExplorationTests` ainda não incluía as três operações protegidas FNR-038, e `SyncRunLeaseExecutionGuardTests` exigia exatamente um tick de renovação real de 10 ms sob carga. Atualizei somente as expectativas/testes, sem mudar rotas ou comportamento do guard; os dois focais passaram 1/1 e a seleção completa final passou. A falha inicial foi preservada aqui, não contada como aprovação.
+
+O filtro PostgreSQL e as variáveis de teste são reproduzíveis no Compose descartável local. O exemplo lê credenciais apenas do `.env` ignorado, forma a connection string em memória, não a imprime e a remove após o teste:
+
+```powershell
+# Inicia somente o serviço PostgreSQL do projeto dedicado; compose.test.yaml usa armazenamento em tmpfs.
+docker compose --env-file .env -p finora-fnr024-test -f compose.test.yaml up -d postgres
+
+# Carrega os valores locais sem imprimir credenciais; o porto do host vem da mesma configuração do Compose.
+$testSettings = @{}
+Get-Content .env | ForEach-Object {
+    if ($_ -match '^\s*([^#=]+)=(.*)$') {
+        $testSettings[$matches[1].Trim()] = $matches[2].Trim().Trim('"').Trim("'")
+    }
+}
+$escapedPassword = $testSettings['POSTGRES_TEST_PASSWORD'].Replace('"', '""')
+$env:FINORA_TEST_CONNECTION_STRING = "Host=127.0.0.1;Port=$($testSettings['POSTGRES_TEST_PORT']);Database=$($testSettings['POSTGRES_TEST_DB']);Username=$($testSettings['POSTGRES_TEST_USER']);Password=`"$escapedPassword`""
+$reportDirectory = Join-Path $env:LOCALAPPDATA "Temp\opencode\fnr024-postgres-$([guid]::NewGuid().ToString('N'))"
+
+# Mantém exatamente o filtro amplo do job e propaga o código do runner antes de limpar a variável transitória.
+dotnet test --solution backend/Finora.slnx --no-build --no-restore --filter 'FullyQualifiedName~PostgreSql&FullyQualifiedName!~PostgreSqlRabbitMqSyncRunIntegrationTests&FullyQualifiedName!~MqP01CompatibilityTests' --output normal --minimum-expected-tests 1 --zero-tests-policy strict --report-trx --results-directory $reportDirectory
+$testExitCode = $LASTEXITCODE
+Remove-Item Env:FINORA_TEST_CONNECTION_STRING
+if ($testExitCode -ne 0) { exit $testExitCode }
+
+# Confirma os outcomes depois que a variável de conexão já saiu de escopo.
+.github/scripts/Assert-TrxNoSkippedTests.ps1 -ResultsDirectory $reportDirectory
+```
+
+No job hospedado, `postgres:18` usa somente o database allowlisted `finora_integration_test`, usuário e senha sintéticos efêmeros, health check e tmpfs. A porta é publicada para o runner efêmero em loopback; `FINORA_TEST_CONNECTION_STRING` existe somente no passo `dotnet test`. Na validação local, o projeto exclusivo `finora-fnr024-test` usou `127.0.0.1:55433`, PostgreSQL 18 e tmpfs, sem banco pessoal, de desenvolvimento ou remoto. A migration de execução confirmou a sequência atual até `20261126003137_Fnr038RecurrenceAssistance`; sua expectativa de IDs foi atualizada no teste depois que a primeira rodada ampla revelou a entrada FNR-038 ausente. Migrations de aplicação não foram modificadas.
+
+A seleção PostgreSQL ampla passou **224/224**, sem falhas ou ignorados; o validador TRX confirmou 224 `Passed`. O relatório confirmou em execução: integridade **1**, rollback **1**, importação **13**, autenticação **53**, consultas/visão **20** e recorrência **5** resultados aprovados. A execução inicial, antes da atualização da expectativa de migration, passou 223/224; o resultado final foi repetido integralmente após a correção e não usa filtro adicional para ocultar falhas.
+
+Os dois jobs excluem as provas que exigem broker RabbitMQ real: `PostgreSqlRabbitMqSyncRunIntegrationTests` e `MqP01CompatibilityTests`. Nenhum broker foi iniciado ou simulado como se fosse prova real neste CI; ambas permanecem gates separados sob MQ-P01. Testes de importação usam Pluggy simulada, sem credenciais ou chamadas ao provedor real. Na data deste registro, o serviço Compose local permaneceu ativo para a continuação da validação FNR-024; isso não é um banco persistente de aplicação nem evidência de check GitHub, proteção de branch, integração ou publicação.
+
+## FNR-024 — check frontend reproduzível (26/11/2026)
+
+O job `frontend` do workflow usa Node 24 por meio de `actions/setup-node` v7.1.0, fixada pelo SHA `949feb2413d6458794dcd2491c4babbbce0c15c1`, com cache vinculado a `frontend/package-lock.json`. A instalação é `npm ci`; o teste executa Vitest sem watch, grava JSON no diretório temporário do runner e valida o relatório com [`.github/scripts/Assert-VitestNoSkippedTests.ps1`](../.github/scripts/Assert-VitestNoSkippedTests.ps1). A guarda falha se o relatório faltar ou for inválido, se houver zero testes, falhas ou qualquer caso cujo status não seja `passed`. O job termina com `npm run build -- --configuration production`; não é necessário duplicar build de desenvolvimento. Nenhum manifesto, lock ou código de tela foi alterado para criar esse check.
+
+Da raiz do repositório, a execução local equivalente em PowerShell é:
+
+```powershell
+# Mantém o relatório fora do repositório e cria o diretório temporário aprovado para a execução local.
+$reportDirectory = Join-Path $env:LOCALAPPDATA 'Temp\opencode'
+New-Item -ItemType Directory -Force -Path $reportDirectory | Out-Null
+$reportPath = Join-Path $reportDirectory 'fnr024-vitest-report.json'
+
+# Instala o grafo fechado pelo lock e executa Vitest uma vez, preservando o exit code do runner.
+Push-Location frontend
+npm ci
+$installExitCode = $LASTEXITCODE
+if ($installExitCode -ne 0) { Pop-Location; exit $installExitCode }
+npm test -- --watch=false --reporters=json "--output-file=$reportPath"
+$testExitCode = $LASTEXITCODE
+Pop-Location
+if ($testExitCode -ne 0) { exit $testExitCode }
+
+# Rejeita explicitamente relatório ausente, seleção vazia ou testes ignorados/pendentes.
+.github/scripts/Assert-VitestNoSkippedTests.ps1 -ReportPath $reportPath
+
+# Compila a configuração de produção aprovada para o gate frontend.
+Push-Location frontend
+npm run build -- --configuration production
+$buildExitCode = $LASTEXITCODE
+Pop-Location
+if ($buildExitCode -ne 0) { exit $buildExitCode }
+```
+
+Em 26/11/2026, no Node **v24.22.0** e npm **11.19.1**, `npm ci` instalou 305 pacotes, auditou 312 e reportou zero vulnerabilidades. O npm também avisou que scripts de instalação de `@parcel/watcher`, `esbuild`, `lmdb` e `msgpackr-extract` não estavam cobertos por `allowScripts`; a instalação terminou e a validação subsequente passou, sem aprovar scripts adicionais nem mudar dependências. `npm test -- --watch=false --reporters=json --output-file=<relatório temporário>` passou **19 arquivos / 203 testes**, sem falhas, pendências ou ignorados; a guarda aceitou o relatório de 203 `passed`. A seleção contém regressões de sessão, lista de movimentos, visão descritiva, falhas e `recurrence-v1`, incluindo `session.spec.ts`, `transaction-list-*.spec.ts`, `dashboard-overview-*.spec.ts`, `app.routes.spec.ts` e testes de falhas/interceptor. Um ensaio negativo com `--include=__fnr024_no_match__/missing.spec.ts` foi recusado pelo Angular CLI com exit code **1** e “No tests found”; relatórios sintéticos vazio e com caso `skipped` também foram recusados pela guarda com exit code **1**. O build de produção passou; o bundle inicial observado foi **476,93 kB** bruto (**111,41 kB** de transferência estimada).
+
+Os testes de frontend exercitam Angular/Vitest, DOM e `HttpTestingController` com requests e respostas controlados; não usam navegador real, API hospedada, banco ou provedor Pluggy. Esses resultados locais comprovam somente a suíte simulada atual e o build estático. A execução hospedada do PR #45 está registrada abaixo; nem os testes locais nem os checks do PR comprovam navegador/API reais, aceite integrado FNR-021/M-03 ou publicação. A inspeção do diff da tarefa não encontrou alterações em `frontend/src/`, `package.json` ou `package-lock.json`, portanto o comportamento das telas e o grafo de dependências permanecem inalterados.
+
+### Regras observadas para `main`
+
+Consulta GitHub somente leitura em 26/11/2026: `GET /repos/VictorJer/GestFinan-a/branches/main/protection` respondeu **404 — Branch not protected**; `GET /repos/VictorJer/GestFinan-a/rulesets?includes_parents=true&per_page=100` retornou **0 rulesets** aplicáveis, incluindo níveis superiores. Portanto, não há nomes de checks exigidos observados para `main`. Os três jobs configurados foram reportados como `SUCCESS` no PR #45, mas não são checks obrigatórios por regra da branch. Nenhuma regra foi criada ou alterada. Assim, o CI ainda não constitui uma barreira obrigatória de integração na plataforma; tampouco se declara que ele bloqueie publicação, cuja seleção segura do commit depende de FNR-026/027.
+
+### Matriz de validação observada e pendências
+
+| Área | Resultado observado | Estado / limite |
+|---|---|---|
+| Restore e build backend | `dotnet restore backend/Finora.slnx --locked-mode` passou; `dotnet build backend/Finora.slnx --no-restore` passou com **0 avisos / 0 erros**. | Execução local; não é check GitHub. |
+| `backend-no-postgres` | Local e no PR #45: **363/363**, 0 falhas/ignorados; TRX confirmou todos `Passed`. | Comando e exclusões iguais ao job; check hospedado `SUCCESS`. |
+| `backend-postgres` | Local e no PR #45: **224/224**, 0 falhas/ignorados; TRX confirmou todos `Passed`, incluindo integridade, rollback, importação, autenticação, consulta/visão e recorrência. | PostgreSQL 18 descartável `finora-fnr024-test`; as duas classes de broker real foram excluídas; check hospedado `SUCCESS`. |
+| `frontend` | Local e no PR #45: `npm ci`; Vitest **19 arquivos / 203 testes**, 0 falhas/pendentes/ignorados; guarda JSON e build Angular de produção passaram. | Requests são simulados com `HttpTestingController`; nenhum navegador/API real; check hospedado `SUCCESS`. |
+| Workflow e artefatos | Parser YAML do Prettier aceitou `.github/workflows/ci.yml`; execução GitHub #45915780590 completou com os três jobs `SUCCESS`; `openspec validate ... --strict` passou; `git diff --check` não apontou erros de whitespace. | Git reportou somente avisos informativos LF/CRLF; `actionlint` não está instalado. |
+| Regras da `main` | Nenhuma proteção de branch e **0 rulesets** aplicáveis; nenhum nome de check exigido. | Os três checks passaram no PR, mas não são required checks. Sem alteração remota ou alegação de bloqueio de publicação por CI. |
+
+### Execução observada no PR #45 (27/11/2026 UTC)
+
+O PR [#45](https://github.com/VictorJer/GestFinan-a/pull/45), em rascunho para `main`, executou o workflow `Finora CI` pelo evento `pull_request`, run [#45915780590](https://github.com/VictorJer/GestFinan-a/actions/runs/45915780590), no head `d7af53360f873d50e50529ea6bd546de18bd92f3`. A execução iniciou às 00:16:35Z e terminou às 00:18:47Z com conclusão geral `success`.
+
+| Check reportado na plataforma | Resultado/contagem conferida nos logs | Duração do job |
+|---|---|---:|
+| `backend-no-postgres` | `SUCCESS`; 363 testes, 363 aprovados, 0 falhas/ignorados; TRX confirmou 363 `Passed`. | 47 s |
+| `backend-postgres` | `SUCCESS`; 224 testes, 224 aprovados, 0 falhas/ignorados; TRX confirmou 224 `Passed`. | 2 min 9 s |
+| `frontend` | `SUCCESS`; `npm ci` instalou 305 pacotes; guarda reportou 203 testes aprovados e nenhum ignorado/pendente; build Angular de produção concluiu. | 32 s |
+
+Os nomes e estados foram conferidos em `gh pr checks 45`/`gh pr view 45`; contagens vieram dos logs da execução e guardas dos relatórios. Esta execução valida o workflow no PR, sem converter esses checks em required checks, pois a branch não tem proteção/rulesets. As duas provas com RabbitMQ real continuam excluídas e no gate MQ-P01 separado; nenhum broker foi iniciado. A rodada histórica PostgreSQL **179/181** não foi reclassificada. O PR permanece aberto em rascunho: o evento `push` no commit integrado só poderá ser observado após merge autorizado; não houve merge, publicação ou aceite integrado FNR-021/M-03.

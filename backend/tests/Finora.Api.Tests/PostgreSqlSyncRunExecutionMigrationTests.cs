@@ -15,7 +15,7 @@ public sealed class PostgreSqlSyncRunExecutionMigrationTests
     private const string ExecutionMigrationId = "20261123000048_Fnr013SyncRunExecutionPersistence";
     private const string RecoveryMigrationId = "20261123013815_Fnr013SyncRunExecutionRecovery";
 
-    // Schema vazio recebe a migration e cria tabelas, colunas, checks e índices exigidos sem seed automático.
+    // Schema vazio aplica a cadeia atual e cria restrições; o catálogo é semeado pelas migrations próprias.
     [TestMethod]
     public async Task FreshSchemaCreatesLeaseOutboxAndRetryConstraints()
     {
@@ -33,7 +33,8 @@ public sealed class PostgreSqlSyncRunExecutionMigrationTests
                 PreviousMigrationId,
                 ExecutionMigrationId,
                 RecoveryMigrationId,
-                "20261124043312_Fnr016InitialCategories" // A migração de dados FNR-016 estende a sequência atual.
+                "20261124043312_Fnr016InitialCategories", // A migração de dados FNR-016 estende a sequência atual.
+                "20261126003137_Fnr038RecurrenceAssistance" // A migration mais recente cria o schema de recorrência.
             },
             (await fixture.Context.Database.GetAppliedMigrationsAsync()).ToArray());
         Assert.AreEqual(0, await fixture.Context.Set<SyncRunLease>().CountAsync());

@@ -1,0 +1,139 @@
+# Checks locais e reproduzíveis para PR/main; este workflow não tem etapas de deploy.
+name: Finora CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+# O workflow só precisa ler o conteúdo versionado do repositório.
+permissions:
+  contents: read
+
+jobs:
+  backend-no-postgres:
+    name: backend-no-postgres
+    runs-on: ubuntu-latest
+    steps:
+      # SHA imutável revisado para checkout v7.0.1.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # SHA imutável revisado para setup-dotnet v6.1.0; o SDK vem de global.json.
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73
+        with:
+          global-json-file: global.json
+
+      # O restore em locked mode falha se os manifests e locks não estiverem coerentes.
+      - name: Restore backend dependencies
+        run: dotnet restore backend/Finora.slnx --locked-mode
+
+      # Compila a solução antes da seleção sem banco, sem repetir restore.
+      - name: Build backend
+        run: dotnet build backend/Finora.slnx --no-restore
+
+      # As classes PostgreSql usam a fixture de banco; as três classes restantes também criam fixture PostgreSQL.
+      # MqP01CompatibilityTests exige ainda o broker RabbitMQ real, reservado ao gate MQ-P01.
+      - name: Test backend without PostgreSQL or RabbitMQ
+        run: >-
+          dotnet test --solution backend/Finora.slnx --no-build --no-restore
+          --filter
+          'FullyQualifiedName!~PostgreSql&FullyQualifiedName!~MqP01CompatibilityTests&FullyQualifiedName!~OwnershipProbeTests&FullyQualifiedName!~ProblemDetailsContractTests'
+          --output normal --minimum-expected-tests 1 --zero-tests-policy strict
+          --report-trx --results-directory "${{ runner.temp }}/backend-no-postgres-trx"
+
+      # O runner falha por testes com erro; esta guarda também falha se algum teste obrigatório for ignorado.
+      - name: Reject skipped backend tests
+        shell: pwsh
+        run: .github/scripts/Assert-TrxNoSkippedTests.ps1 -ResultsDirectory '${{ runner.temp }}/backend-no-postgres-trx'
+
+  backend-postgres:
+    name: backend-postgres
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Serviço exclusivo do job; os dados vivem em tmpfs e são descartados pelo runner.
+        image: postgres:18
+        env:
+          POSTGRES_DB: finora_integration_test
+          POSTGRES_USER: finora_test
+          POSTGRES_PASSWORD: finora_ci_ephemeral
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U finora_test -d finora_integration_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+          --health-start-period 10s
+          --tmpfs /var/lib/postgresql:rw,size=536870912
+    steps:
+      # Cada job GitHub tem runner/checkout próprios; restaura e compila antes da suíte PostgreSQL.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Reusa o mesmo pin/SDK do job sem banco para manter a baseline única.
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73
+        with:
+          global-json-file: global.json
+
+      - name: Restore backend dependencies
+        run: dotnet restore backend/Finora.slnx --locked-mode
+
+      - name: Build backend
+        run: dotnet build backend/Finora.slnx --no-restore
+
+      # A conexão sintética só existe nesta etapa de testes e aponta ao serviço efêmero allowlisted.
+      - name: Test backend with disposable PostgreSQL
+        env:
+          FINORA_TEST_CONNECTION_STRING: Host=127.0.0.1;Port=5432;Database=finora_integration_test;Username=finora_test;Password=finora_ci_ephemeral
+        run: >-
+          dotnet test --solution backend/Finora.slnx --no-build --no-restore
+          --filter
+          'FullyQualifiedName~PostgreSql&FullyQualifiedName!~PostgreSqlRabbitMqSyncRunIntegrationTests&FullyQualifiedName!~MqP01CompatibilityTests'
+          --output normal --minimum-expected-tests 1 --zero-tests-policy strict
+          --report-trx --results-directory "${{ runner.temp }}/backend-postgres-trx"
+
+      # A connection string sai de escopo com o passo de testes; a validação TRX não recebe ambiente de banco.
+      - name: Reject skipped backend tests
+        shell: pwsh
+        run: .github/scripts/Assert-TrxNoSkippedTests.ps1 -ResultsDirectory '${{ runner.temp }}/backend-postgres-trx'
+
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout imutável compartilhado pelos checks do workflow.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # SHA imutável revisado para setup-node v7.1.0; usa Node 24 e cache derivado do lock frontend.
+      - name: Setup Node.js 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # Instala exatamente o grafo fechado pelo package-lock.json, sem alterar o manifesto.
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      # Executa Vitest sem watch e grava JSON para validar seleção não vazia e ausência de skips.
+      - name: Test frontend with Vitest
+        run: npm test -- --watch=false --reporters=json --output-file=${{ runner.temp }}/frontend-vitest.json
+        working-directory: frontend
+
+      # Impede que testes pendentes, ignorados ou uma seleção vazia apareçam como check aprovado.
+      - name: Reject empty or skipped frontend tests
+        shell: pwsh
+        run: .github/scripts/Assert-VitestNoSkippedTests.ps1 -ReportPath '${{ runner.temp }}/frontend-vitest.json'
+
+      # O target padrão do workspace é produção; não executa build de desenvolvimento desnecessário.
+      - name: Build frontend for production
+        run: npm run build -- --configuration production
+        working-directory: frontend
