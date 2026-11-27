@@ -27,6 +27,15 @@ describe('Apresentação dos filtros aplicados da visão', () => {
     const rendered = fixture.nativeElement as HTMLElement;
 
     expect(rendered.textContent).toContain('Filtros aplicados');
+    expect(rendered.querySelector('h2')?.textContent).toContain('Filtros aplicados');
+    expect(Array.from(rendered.querySelectorAll('dt')).map((label) => label.textContent?.trim())).toEqual([
+      'Cartão',
+      'Categoria',
+      'Situação',
+      'Data inicial',
+      'Data final',
+      'Busca literal',
+    ]);
     expect(rendered.textContent).toContain('Filtro de cartão aplicado');
     expect(rendered.textContent).toContain('Filtro de categoria aplicado');
     expect(rendered.textContent).toContain('Pendente');

@@ -1,18 +1,29 @@
-<section aria-labelledby="dashboard-applied-filters-title" class="space-y-3 rounded-lg border p-4">
-  <h2 id="dashboard-applied-filters-title" class="font-semibold">Filtros aplicados</h2>
+<!-- O contexto aplicado é somente leitura; a alteração continua nos controles da lista única. -->
+<section
+  aria-labelledby="dashboard-applied-filters-title"
+  class="dashboard-applied-filters min-w-0 space-y-3 rounded-lg border border-finora-line bg-finora-surface p-4 sm:p-5"
+>
+  <div>
+    <h2 id="dashboard-applied-filters-title" class="font-semibold">Filtros aplicados</h2>
+    <p class="mt-1 text-sm leading-6 text-finora-muted">
+      Este é o contexto usado no resumo; filtros podem ser alterados somente na lista de movimentos.
+    </p>
+  </div>
 
   @if (labels().length === 0) {
-    <p>Nenhum filtro aplicado; o resumo considera o conjunto de movimentos persistidos.</p>
+    <p class="text-sm leading-6 text-finora-muted">
+      Nenhum filtro aplicado; o resumo considera o conjunto de movimentos persistidos.
+    </p>
   } @else {
-    <dl class="grid gap-2 sm:grid-cols-2">
+    <dl class="dashboard-applied-filters-values">
       @for (label of labels(); track label.name) {
-        <div>
-          <dt class="font-medium">{{ label.name }}</dt>
-          <dd class="break-words">{{ label.value }}</dd>
+        <div class="min-w-0">
+          <dt class="text-sm font-medium text-finora-muted">{{ label.name }}</dt>
+          <dd class="break-words text-sm leading-6">{{ label.value }}</dd>
         </div>
       }
     </dl>
-    <p>
+    <p class="text-sm leading-6 text-finora-muted">
       O rascunho ainda não enviado na lista não altera este resumo. Use os controles da única lista de
       movimentos para mudar os filtros.
     </p>

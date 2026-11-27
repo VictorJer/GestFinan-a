@@ -176,6 +176,8 @@ describe('Página inicial pública', () => {
         request.url.includes('/connections/') ||
         request.url === `${API_BASE}/transactions`,
     );
+    // Abrir a visão só pode consultar o resumo; nenhuma navegação da página inicia atualização.
+    TestBed.inject(HttpTestingController).expectNone((request) => request.method === 'POST');
     fixture.destroy();
   });
 
