@@ -24,7 +24,7 @@
 
 ## 5. Integração e gates observáveis
 
-- [ ] 5.1 Validar a sintaxe do workflow e, após autorização específica para commits/PR, executá-lo em PR da feature branch para `main`, conferindo nomes, contagens e resultado efetivo dos três checks na plataforma; o disparo no commit integrado só pode ser conferido após integração autorizada, sem declará-lo concluído antecipadamente.
+- [x] 5.1 Validar a sintaxe do workflow e, após autorização específica para commits/PR, executá-lo em PR da feature branch para `main`, conferindo nomes, contagens e resultado efetivo dos três checks na plataforma; o disparo no commit integrado só pode ser conferido após integração autorizada, sem declará-lo concluído antecipadamente.
 - [x] 5.2 Conferir as regras/rulesets aplicáveis à `main` e registrar os checks exigidos versus os apenas executados; propor/ativar obrigatoriedade somente após autorização e permissões correspondentes, verificando a configuração real sem declarar deploy bloqueado por CI enquanto FNR-026/027 não implementarem a seleção do commit.
 - [x] 5.3 Executar validação integrada proporcional (`openspec validate fnr-024-testes-criticos-ci --strict`, `git diff --check`, builds e suítes dos jobs) e apresentar matriz de resultado/pendência para aceite humano; verificar que a exclusão de `MqP01CompatibilityTests` e `PostgreSqlRabbitMqSyncRunIntegrationTests` está explícita e vinculada ao gate MQ-P01 separado, e que publicação, provas reais e falhas que eventualmente surgirem não foram ocultadas por filtros adicionais.
 
