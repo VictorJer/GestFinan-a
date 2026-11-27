@@ -1,4 +1,5 @@
 using Finora.Api;
+using Finora.Api.AdministrativeConnections;
 using Finora.Api.Authentication;
 using Finora.Api.Cors;
 using Finora.Api.Errors;
@@ -15,6 +16,12 @@ if (args.Length > 0 && !PluggyReadCommand.IsApiTestHostInvocation(args))
     if (AdministrativeUserCommand.IsAdministrativeCommand(args))
     {
         return await AdministrativeUserCommand.RunAsync(args, Console.Out, Console.Error);
+    }
+
+    // O comando de vínculo é separado dos comandos Pluggy de leitura e retorna antes da composição HTTP.
+    if (ConnectionLinkLocalCommand.IsAdministrativeCommand(args))
+    {
+        return await ConnectionLinkLocalCommand.RunAsync(args, Console.Error);
     }
 
     var isAnalysisCommand = string.Equals(args[0], "pluggy-analyze", StringComparison.Ordinal);

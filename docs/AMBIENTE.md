@@ -517,6 +517,66 @@ O diagnóstico mede somente liveness do processo. Não comprova banco, autentica
 
 O `compose.yaml` executa PostgreSQL 18 para desenvolvimento, publica a porta somente em `127.0.0.1` e mantém os dados no volume nomeado `finora-dev_finora-dev-data`. O `compose.test.yaml` usa projeto Compose e porta separados, sem volume persistente: os dados de teste ficam em `tmpfs` e desaparecem quando o container descartável é removido. Nenhuma configuração usa a Neon.
 
+#### Barreira manual de destino — FNR-039
+
+Antes de qualquer futura execução de `connection-link-local` com dados persistentes, confira **localmente** o arquivo `compose.yaml` e o container que ele seleciona: o serviço PostgreSQL esperado deve pertencer a esse projeto Compose, publicar a porta apenas em loopback e montar o volume nomeado de desenvolvimento no diretório de dados do PostgreSQL. Confirme também que o container está no estado esperado e que o mount visto em execução corresponde ao volume definido no arquivo. Não use o `compose.test.yaml`: ele guarda os dados em `tmpfs` e o database de integração é recusado pelo comando.
+
+Os comandos abaixo validam e inspecionam somente metadados não secretos. A saída é para conferência no terminal local; **não a copie** para issues, logs ou documentação. Não use `docker compose config` sem `--quiet`, `docker inspect` sem formato filtrado, `docker inspect ... .Config.Env`, nem `Get-Content .env`: esses caminhos podem expor configuração ou credenciais.
+
+```powershell
+# Valida o Compose sem imprimir a configuração interpolada do arquivo local.
+docker compose --env-file .env -f compose.yaml config --quiet
+
+# Obtém somente o identificador do serviço selecionado por este arquivo Compose.
+$postgresId = docker compose --env-file .env -f compose.yaml ps -q postgres
+if ([string]::IsNullOrWhiteSpace($postgresId)) { throw 'O serviço PostgreSQL não tem container para conferir.' }
+
+# Confere localmente projeto/serviço, estado e publicação TCP; não retenha nem compartilhe a saída.
+docker inspect --format 'projeto={{index .Config.Labels "com.docker.compose.project"}} serviço={{index .Config.Labels "com.docker.compose.service"}} estado={{.State.Status}}' $postgresId
+docker port $postgresId 5432/tcp
+
+# Confere apenas tipo, nome e destino do mount para compará-los ao compose.yaml.
+docker inspect --format '{{range .Mounts}}{{.Type}} {{.Name}} -> {{.Destination}}{{println}}{{end}}' $postgresId
+```
+
+O teste do comando valida o endereço literal `127.0.0.1`, mas isso identifica somente o endpoint de rede visto pelo processo, não a origem física do PostgreSQL. Um túnel SSH/local, proxy ou encaminhamento de porta também pode escutar em loopback e levar a um servidor remoto; o binding local declarado no Compose, sozinho, não descarta esse caso. Antes da autorização operacional, confira se existe algum túnel/encaminhamento ativo para a porta selecionada e relacione o listener, o container, o serviço e o volume inspecionados. Se não for possível provar que o destino é o PostgreSQL de desenvolvimento sob controle do titular, interrompa o procedimento; não prossiga com base apenas no host loopback ou no nome do database.
+
+O ramo administrativo exige `DOTNET_ENVIRONMENT=Development` escolhido explicitamente para carregar User Secrets; ausente ou vazio, o host administrativo usa `Production` e não habilita essa fonte. Em qualquer ambiente a connection string deve vir de configuração protegida, e `.env` não é fallback do comando. Os prompts e resultados do programa são fixos: o nome esperado digitado, credenciais e valores da connection string não são incluídos pela aplicação em stdout, stderr ou logs. Os testes focais com sentinelas verificam a saída do programa; a linha digitada ainda pode ser mostrada pelo próprio terminal enquanto o operador a insere.
+
+#### Comando administrativo de vínculo local — FNR-039
+
+Este comando cria apenas o vínculo inicial. **Não o execute contra o PostgreSQL de desenvolvimento ou Pluggy real sem autorização operacional separada.** Para uso real, primeiro confira a barreira de destino acima e obtenha autorização explícita para consultar o item Pluggy configurado e gravar nesse banco; login na aplicação, aprovação dos artefatos ou teste sintético não são essa autorização. O comando não aceita titular, item, credencial ou connection string como argumento.
+
+Pré-condições para uma execução operacional autorizada:
+
+- `compose.yaml`, container PostgreSQL, publicação somente em loopback e volume nomeado devem ter sido conferidos conforme os passos desta seção; confirme também que nenhum túnel/proxy redireciona a porta. Não use o projeto `compose.test.yaml` nem `finora_integration_test` como destino do comando.
+- O schema/migrations requeridos pela implementação devem estar aplicados pelo processo aprovado antes do comando, incluindo `20261120211916_AddFinancialConnectionItemIdentityHistory`; o comando não cria schema nem executa migrations e FNR-039 não adiciona migration. Deve existir exatamente um titular, sem conexão prévia incompatível.
+- `ConnectionStrings:Finora` e `Pluggy:ClientId`, `Pluggy:ClientSecret`, `Pluggy:ItemId` devem estar em User Secrets (somente com `DOTNET_ENVIRONMENT=Development` escolhido explicitamente) ou em outra fonte externa protegida. `Pluggy:AccountId` é opcional quando a seleção de cartão precisa ser desambiguada. Não use `.env` como fallback, não coloque valores em arquivos versionados, histórico do shell, argumentos ou logs.
+- O terminal deve ser interativo, com entrada e saída não redirecionadas. O operador confirma o nome exato do database, que controla o container/volume e, após a consulta de pré-condições, confirma o vínculo digitando `SIM`. Ctrl+C/recusa encerram antes da gravação; falhas de commit podem ter resultado incerto e não são reportadas como sucesso.
+
+Após conferir o destino e autorizar a operação, execute a partir da raiz do repositório:
+
+```powershell
+# User Secrets da API só são carregados quando Development é selecionado explicitamente.
+$env:DOTNET_ENVIRONMENT = 'Development'
+# Não acrescente argumentos: o comando obtém banco e Pluggy somente da configuração protegida.
+dotnet run --project backend/Finora.Api --no-launch-profile -- connection-link-local
+```
+
+A saída `operation=link status=linked` confirma somente que `FinancialConnection` e `FinancialConnectionItemIdentity` ativa foram persistidas juntas. `already_linked` significa que o mesmo vínculo íntegro já existia sem alteração. **Nenhum deles confirma sincronização/importação:** a operação consulta apenas metadados do item/cartão, não consulta transações e não cria `CardAccount`, `FinancialTransaction`, `SyncRun` ou mensagem/outbox. RabbitMQ não é necessário para vincular; é usado somente pelo fluxo independente de sincronização posterior. A configuração e a execução desse transporte continuam sujeitas às tarefas FNR-013/014 e ao gate MQ-P01, que não é resolvido por FNR-039.
+
+O código de saída é `0` para vínculo novo ou repetição íntegra, `1` para falha operacional/commit incerto, `2` para argumentos/configuração/terminal inválido, `4` para conflito e `130` para cancelamento antes do commit. Não execute o comando durante testes automatizados: estes usam Pluggy simulada e PostgreSQL descartável allowlisted.
+
+##### Evidência local FNR-039 — 27/11/2026
+
+- `dotnet restore backend/Finora.slnx --locked-mode` passou; o restore e build usaram a pasta isolada de artifacts fora do checkout para não sobrescrever assemblies mantidos pelo processo local preexistente. `dotnet build backend/Finora.slnx --no-restore` passou com **0 avisos e 0 erros**.
+- Regressão backend sem PostgreSQL, conforme o filtro de CI para esse job: **390/390 aprovados**, sem ignorados. Regressão PostgreSQL conforme o filtro de CI: **241/241 aprovados**, sem ignorados. O filtro excluiu somente as duas classes que exigem RabbitMQ real (`MqP01CompatibilityTests` e `PostgreSqlRabbitMqSyncRunIntegrationTests`), fora deste escopo e ainda sob o gate MQ-P01.
+- Filtro focal FNR-039 após as últimas alterações de cancelamento/commit: `PostgreSqlConnectionLinkLocalPreflightTests` e `PostgreSqlConnectionLinkLocalProvisioningTests`, **17/17 aprovados**, incluindo concorrência, rollback e repetição após confirmação perdida. Todos os cenários Pluggy foram simulados; nenhum comando administrativo foi executado.
+- Os testes PostgreSQL rodaram somente no projeto Compose temporário `finora-fnr039-test`, database allowlisted `finora_integration_test`, porta loopback, PostgreSQL 18 e armazenamento em `tmpfs` sem mount persistente; labels, estado, porta, healthcheck e tmpfs foram conferidos antes dos testes. O container e a rede exclusivos foram removidos depois; nenhuma migration foi aplicada fora da fixture descartável.
+- Na primeira regressão sem PostgreSQL com artifacts externos, cinco testes arquiteturais não localizaram `Finora.slnx` a partir do diretório temporário. Uma cópia temporária do solution e dos quatro `.csproj` no artifacts path (não no repositório) permitiu que esses testes inspecionassem os arquivos do checkout; a repetição passou **390/390**. Nenhum teste ou fonte de produção foi alterado para contornar essa particularidade.
+
+`openspec validate vincular-item-pluggy-local --strict` e `git diff --check` passaram após a documentação. Não há migration, endpoint HTTP público ou alteração de frontend nesta entrega. A validação não cobre RabbitMQ real/MQ-P01, Pluggy real, banco persistente ou publicação; não houve acesso a esses destinos. Após autorização explícita do titular, o committer criou `3c9dbf4` para implementação/testes, `e17b3c5` para documentação/specs/arquivo e `aae6cfd` para o registro do PR; os três foram enviados preservando os commits anteriores da branch. A mudança foi sincronizada e arquivada localmente, e o [PR #47](https://github.com/VictorJer/GestFinan-a/pull/47) foi aberto contra `main`. No head inicial `e17b3c5`, os três jobs reportaram `SUCCESS`; no head `aae6cfd`, os três também concluíram `SUCCESS`, sem reviews/decisão de review. Este novo registro gerará outro head; os checks desse head serão consultados separadamente. A evidência não declara review formal, integração ou publicação; o uso operacional continua exigindo autorização própria.
+
 Na primeira execução, copie `.env.example` para `.env` e substitua as duas senhas de exemplo por valores locais fortes e diferentes. `.env` é ignorado pelo Git; não versione, registre em logs nem compartilhe credenciais. `.env.example` contém somente marcadores, nunca senhas utilizáveis. Verifique o ignore local com `git check-ignore -v .env`.
 
 Comandos PowerShell a partir da raiz do repositório:

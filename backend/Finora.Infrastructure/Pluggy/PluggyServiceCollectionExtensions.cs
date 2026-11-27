@@ -16,6 +16,17 @@ public static class PluggyServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        services.AddPluggyConnectionInspector(configuration);
+        services.AddScoped<IPluggyLocalReader, PluggyLocalReader>();
+        services.AddScoped<IPluggyAnalysisReader, PluggyAnalysisReader>();
+        return services;
+    }
+
+    // Registra somente a autenticação e o inspector quando um comando não deve compor leitores de transações.
+    public static IServiceCollection AddPluggyConnectionInspector(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
         var options = PluggyOptions.FromConfiguration(configuration);
         // Desativa logs padrão do HttpClient que podem incluir caminho, headers ou escopo do request.
         services.AddLogging(logging =>
@@ -27,8 +38,6 @@ public static class PluggyServiceCollectionExtensions
             serviceProvider.GetRequiredService<IHttpClientFactory>().CreateClient("Pluggy"),
             serviceProvider.GetRequiredService<PluggyOptions>()));
         services.AddScoped<PluggyConnectionInspector>();
-        services.AddScoped<IPluggyLocalReader, PluggyLocalReader>();
-        services.AddScoped<IPluggyAnalysisReader, PluggyAnalysisReader>();
         return services;
     }
 
