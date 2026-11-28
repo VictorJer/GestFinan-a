@@ -7,7 +7,10 @@ import { API_BASE_URL } from '../../api-base-url.token';
 import { apiAuthInterceptor, ProtectedApiRequestError } from '../api-auth.interceptor';
 import { SessionService } from '../session';
 import { InvestmentPortfolio, InvestmentPortfolioApi } from './investment-portfolio-api';
-import { InvestmentPortfolioStateService } from './investment-portfolio-state';
+import {
+  InvestmentPortfolioMutationInProgressError,
+  InvestmentPortfolioStateService,
+} from './investment-portfolio-state';
 import { SessionScopedResponse } from './card-connection-api';
 
 const API_BASE = 'https://api.example.test/proxy/';
@@ -325,6 +328,42 @@ describe('Estado da carteira manual', () => {
     expect(state.view().status).toBe('idle');
     expect(state.view().mutationStatus).toBe('idle');
     backend.expectNone((request) => request.method === 'GET');
+  });
+
+  // Sair da rota cancela apenas a leitura, mantendo o bloqueio enquanto a gravação confirmável segue ativa.
+  it('preserva o estado salvando ao sair da página e bloqueia uma segunda mutação', () => {
+    startSession();
+    state
+      .createInvestment({
+        name: 'Reserva sintética',
+        class: 'fixed_income',
+        appliedAmount: '1.00',
+        currentAmount: '1.00',
+      })
+      .subscribe();
+    const createRequest = backend.expectOne(INVESTMENTS_URL);
+    expect(createRequest.request.method).toBe('POST');
+
+    state.cancelPendingRead();
+
+    expect(state.view().mutationStatus).toBe('saving');
+    let concurrentError: unknown;
+    state
+      .createInvestment({
+        name: 'Outra posição',
+        class: 'fixed_income',
+        appliedAmount: '2.00',
+        currentAmount: '2.00',
+      })
+      .subscribe({ error: (error: unknown) => (concurrentError = error) });
+    expect(concurrentError).toBeInstanceOf(InvestmentPortfolioMutationInProgressError);
+
+    createRequest.flush(investmentResponse(), { status: 201, statusText: 'Created' });
+    const refreshRequest = backend.expectOne(INVESTMENTS_URL);
+    expect(refreshRequest.request.method).toBe('GET');
+    refreshRequest.flush(portfolioResponse());
+    expect(state.view().status).toBe('loaded');
+    expect(state.view().mutationStatus).toBe('idle');
   });
 });
 

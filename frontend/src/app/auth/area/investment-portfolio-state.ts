@@ -111,7 +111,15 @@ export class InvestmentPortfolioStateService {
   cancelPendingRead(): void {
     this.cancelReadRequest();
     const generation = this.session.currentSession()?.generation ?? null;
-    this.state.set(idleState(generation));
+    const previous = this.state();
+    const reset = idleState(generation);
+    this.state.set({
+      ...reset,
+      mutationStatus:
+        previous.generation === generation ? previous.mutationStatus : reset.mutationStatus,
+      mutationFailure:
+        previous.generation === generation ? previous.mutationFailure : reset.mutationFailure,
+    });
   }
 
   // Inicia um GET da geração atual e publica a resposta apenas se request ID e sessão ainda coincidirem.

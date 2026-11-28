@@ -1,0 +1,384 @@
+<!-- Apresenta carteira manual e resumo do backend sem valores demonstrativos nem dependência de cartão. -->
+<section aria-labelledby="investment-portfolio-title" class="min-w-0 space-y-6">
+  <!-- O título descreve os registros manuais, sem sugerir cotação externa ou recomendação. -->
+  <header
+    class="rounded-finora-panel border border-finora-line bg-finora-surface px-6 py-8 sm:px-10 sm:py-10"
+  >
+    <p class="mb-3 text-sm font-semibold text-finora-brand">Área protegida</p>
+    <h1
+      id="investment-portfolio-title"
+      class="font-finora-display text-3xl font-bold tracking-tight sm:text-4xl"
+    >
+      Carteira de investimentos
+    </h1>
+    <p class="mt-4 max-w-3xl text-base leading-7 text-finora-muted">
+      Mantenha posições informadas manualmente. Valores e resumo vêm da sua carteira persistida;
+      esta tela não consulta corretoras, cotações ou movimentos do cartão.
+    </p>
+  </header>
+
+  <!-- Mensagens confirmam a gravação sem afirmar que a releitura subsequente já terminou. -->
+  @if (operationMessage(); as message) {
+    <p
+      class="rounded-finora-control border border-finora-line bg-finora-surface px-4 py-3 text-sm leading-6"
+      role="status"
+      aria-live="polite"
+    >
+      {{ message }}
+    </p>
+  }
+
+  <!-- A releitura mantém juntos os totais conciliados e os valores atuais por classe. -->
+  <section
+    aria-labelledby="investment-summary-title"
+    class="rounded-finora-panel border border-finora-line bg-finora-surface p-5 sm:p-7"
+  >
+    <h2 id="investment-summary-title" class="font-finora-display text-2xl font-bold tracking-tight">
+      Resumo da carteira
+    </h2>
+    <p class="mt-2 text-sm leading-6 text-finora-muted">
+      Diferença simples = valor atual menos valor aplicado. Não representa rentabilidade ajustada a
+      aportes, datas, resgates, taxas ou impostos.
+    </p>
+
+    @if (state().status === 'loading') {
+      <p class="mt-5 text-sm text-finora-muted" role="status" aria-live="polite">
+        @if (state().snapshot === null) {
+          Carregando carteira…
+        } @else {
+          Atualizando valores da carteira…
+        }
+      </p>
+    }
+
+    @if (state().snapshot; as portfolio) {
+      <dl class="mt-5 grid gap-3 sm:grid-cols-3">
+        <div class="min-w-0 rounded-finora-control border border-finora-line bg-finora-bg p-4">
+          <dt class="text-sm text-finora-muted">Total aplicado</dt>
+          <dd class="mt-2 break-words text-xl font-semibold">
+            {{ formatBrl(portfolio.summary.totalAppliedAmount) }}
+          </dd>
+        </div>
+        <div class="min-w-0 rounded-finora-control border border-finora-line bg-finora-bg p-4">
+          <dt class="text-sm text-finora-muted">Total atual</dt>
+          <dd class="mt-2 break-words text-xl font-semibold">
+            {{ formatBrl(portfolio.summary.totalCurrentAmount) }}
+          </dd>
+        </div>
+        <div class="min-w-0 rounded-finora-control border border-finora-line bg-finora-bg p-4">
+          <dt class="text-sm text-finora-muted">Diferença simples</dt>
+          <dd class="mt-2 break-words text-xl font-semibold">
+            {{ formatBrl(portfolio.summary.difference) }}
+          </dd>
+        </div>
+      </dl>
+
+      <dl class="mt-5 grid gap-3 sm:grid-cols-3" aria-label="Valores atuais por classe">
+        @for (classValue of portfolio.summary.currentAmountsByClass; track classValue.class) {
+          <div class="min-w-0 rounded-finora-control border border-finora-line p-4">
+            <dt class="text-sm text-finora-muted">{{ classValue.label }}</dt>
+            <dd class="mt-2 break-words text-lg font-semibold">
+              {{ formatBrl(classValue.currentAmount) }}
+            </dd>
+          </div>
+        }
+      </dl>
+    } @else if (state().status === 'empty') {
+      <p class="mt-5 text-sm text-finora-muted" role="status">
+        A carteira está vazia; não há valores de posições para resumir.
+      </p>
+    }
+
+    @if (state().status === 'error') {
+      <div
+        class="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-finora-control border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"
+        role="alert"
+        aria-live="polite"
+      >
+        <p>{{ readFailureMessage(state().failure) }}</p>
+        <button
+          type="button"
+          class="min-h-11 rounded-finora-control px-3 font-semibold underline underline-offset-4 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+          (click)="retryRead()"
+        >
+          Tentar carregar novamente
+        </button>
+      </div>
+    }
+  </section>
+
+  <!-- O formulário nativo mantém rótulos, validação de teclado e strings monetárias sem conversão. -->
+  <section
+    aria-labelledby="investment-form-title"
+    class="rounded-finora-panel border border-finora-line bg-finora-surface p-5 sm:p-7"
+  >
+    <div>
+      <p class="text-sm font-semibold text-finora-brand">Cadastro manual</p>
+      <h2
+        id="investment-form-title"
+        class="mt-1 font-finora-display text-2xl font-bold tracking-tight"
+      >
+        {{ editingId() === null ? 'Adicionar investimento' : 'Editar investimento' }}
+      </h2>
+    </div>
+
+    @if (state().mutationStatus === 'error') {
+      <p
+        class="mt-4 rounded-finora-control border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"
+        role="alert"
+        aria-live="polite"
+      >
+        {{ mutationFailureMessage(state().mutationFailure) }}
+      </p>
+    }
+    @if (state().mutationStatus === 'saving') {
+      <p class="mt-4 text-sm text-finora-muted" role="status" aria-live="polite">
+        Salvando alteração da carteira. Aguarde a confirmação do servidor…
+      </p>
+    }
+
+    <form
+      class="mt-5 grid gap-4 sm:grid-cols-2"
+      aria-labelledby="investment-form-title"
+      (submit)="submitInvestment($event)"
+    >
+      <div class="sm:col-span-2">
+        <label for="investment-name" class="mb-1 block text-sm font-semibold">Nome</label>
+        <input
+          id="investment-name"
+          name="name"
+          type="text"
+          maxlength="120"
+          required
+          autocomplete="off"
+          [value]="draft().name"
+          [disabled]="isSaving()"
+          (input)="updateTextField('name', $event)"
+          class="min-h-11 w-full rounded-finora-control border border-finora-line bg-white px-3 py-2 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:opacity-60"
+        />
+      </div>
+
+      <div class="sm:col-span-2">
+        <label for="investment-class" class="mb-1 block text-sm font-semibold">Classe</label>
+        <select
+          id="investment-class"
+          name="class"
+          required
+          [value]="draft().class"
+          [disabled]="isSaving()"
+          (change)="updateClass($event)"
+          class="min-h-11 w-full rounded-finora-control border border-finora-line bg-white px-3 py-2 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:opacity-60"
+        >
+          @for (option of classOptions; track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
+          }
+        </select>
+      </div>
+
+      <div>
+        <label for="investment-applied-amount" class="mb-1 block text-sm font-semibold">
+          Valor aplicado (BRL)
+        </label>
+        <input
+          id="investment-applied-amount"
+          name="appliedAmount"
+          type="text"
+          inputmode="decimal"
+          maxlength="20"
+          required
+          [pattern]="moneyPattern"
+          aria-describedby="investment-money-help"
+          [value]="draft().appliedAmount"
+          [disabled]="isSaving()"
+          (input)="updateTextField('appliedAmount', $event)"
+          class="min-h-11 w-full rounded-finora-control border border-finora-line bg-white px-3 py-2 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:opacity-60"
+        />
+      </div>
+
+      <div>
+        <label for="investment-current-amount" class="mb-1 block text-sm font-semibold">
+          Valor atual (BRL)
+        </label>
+        <input
+          id="investment-current-amount"
+          name="currentAmount"
+          type="text"
+          inputmode="decimal"
+          maxlength="20"
+          required
+          [pattern]="moneyPattern"
+          aria-describedby="investment-money-help"
+          [value]="draft().currentAmount"
+          [disabled]="isSaving()"
+          (input)="updateTextField('currentAmount', $event)"
+          class="min-h-11 w-full rounded-finora-control border border-finora-line bg-white px-3 py-2 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:opacity-60"
+        />
+      </div>
+
+      <p id="investment-money-help" class="text-xs leading-5 text-finora-muted sm:col-span-2">
+        Informe BRL com ponto e duas casas, sem separador de milhar (por exemplo, 1234.50). Zero é
+        permitido. Os valores são enviados sem arredondamento.
+      </p>
+
+      <div class="flex flex-wrap gap-3 sm:col-span-2">
+        <button
+          type="submit"
+          [disabled]="isSaving()"
+          class="inline-flex min-h-11 items-center justify-center rounded-finora-control bg-finora-brand px-5 py-3 text-sm font-semibold text-white transition hover:bg-finora-brand-hover outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:cursor-wait disabled:opacity-60"
+        >
+          @if (isSaving()) {
+            Salvando…
+          } @else if (editingId() === null) {
+            Cadastrar investimento
+          } @else {
+            Salvar edição
+          }
+        </button>
+        @if (editingId() !== null) {
+          <button
+            type="button"
+            [disabled]="isSaving()"
+            class="inline-flex min-h-11 items-center justify-center rounded-finora-control border border-finora-line bg-white px-4 py-3 text-sm font-semibold outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:opacity-60"
+            (click)="cancelEdit()"
+          >
+            Cancelar edição
+          </button>
+        }
+      </div>
+    </form>
+  </section>
+
+  <!-- Lista sem itens de cartão; cada ação tem nome acessível e confirmação inline para exclusão. -->
+  <section
+    aria-labelledby="investment-list-title"
+    class="rounded-finora-panel border border-finora-line bg-finora-surface p-5 sm:p-7"
+  >
+    <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <p class="text-sm font-semibold text-finora-brand">Posições manuais</p>
+        <h2
+          id="investment-list-title"
+          class="mt-1 font-finora-display text-2xl font-bold tracking-tight"
+        >
+          Investimentos cadastrados
+        </h2>
+      </div>
+      @if (state().snapshot; as portfolio) {
+        <span
+          class="rounded-finora-control bg-finora-lavender px-3 py-1.5 text-sm font-semibold text-finora-brand"
+        >
+          {{ portfolio.items.length }}
+          {{ portfolio.items.length === 1 ? 'posição' : 'posições' }}
+        </span>
+      }
+    </div>
+
+    @if (state().status === 'loading' && state().snapshot === null) {
+      <p class="py-4 text-sm text-finora-muted" role="status" aria-live="polite">
+        Carregando posições…
+      </p>
+    }
+
+    @if (state().snapshot; as portfolio) {
+      @if (portfolio.items.length === 0) {
+        <p
+          class="rounded-finora-control border border-finora-line bg-finora-bg px-4 py-4 text-sm leading-6 text-finora-muted"
+          role="status"
+        >
+          A carteira está vazia. Os totais zerados não representam ausência de investimentos fora
+          dos registros manuais.
+        </p>
+      } @else {
+        <div class="overflow-x-auto rounded-finora-control border border-finora-line">
+          <table class="w-full min-w-[700px] border-collapse text-left text-sm">
+            <caption class="sr-only">
+              Posições manuais da carteira de investimentos
+            </caption>
+            <thead class="bg-finora-bg text-finora-muted">
+              <tr>
+                <th scope="col" class="px-4 py-3 font-semibold">Nome</th>
+                <th scope="col" class="px-4 py-3 font-semibold">Classe</th>
+                <th scope="col" class="px-4 py-3 text-right font-semibold">Aplicado</th>
+                <th scope="col" class="px-4 py-3 text-right font-semibold">Atual</th>
+                <th scope="col" class="px-4 py-3 font-semibold">Ações</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-finora-line">
+              @for (item of portfolio.items; track item.id) {
+                <tr>
+                  <th scope="row" class="max-w-64 break-words px-4 py-4 font-semibold">
+                    {{ item.name }}
+                  </th>
+                  <td class="px-4 py-4">{{ classLabel(item.class) }}</td>
+                  <td class="whitespace-nowrap px-4 py-4 text-right tabular-nums">
+                    {{ formatBrl(item.appliedAmount) }}
+                  </td>
+                  <td class="whitespace-nowrap px-4 py-4 text-right tabular-nums">
+                    {{ formatBrl(item.currentAmount) }}
+                  </td>
+                  <td class="px-4 py-4">
+                    <div class="flex min-w-44 flex-col items-start gap-2">
+                      <div class="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          [disabled]="isSaving()"
+                          [attr.aria-label]="'Editar ' + item.name"
+                          class="min-h-11 rounded-finora-control px-3 py-2 font-semibold underline underline-offset-4 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:opacity-50"
+                          (click)="editInvestment(item)"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          [disabled]="isSaving()"
+                          [attr.aria-label]="'Excluir ' + item.name"
+                          [attr.aria-expanded]="deleteConfirmationId() === item.id"
+                          aria-controls="investment-delete-confirmation"
+                          class="min-h-11 rounded-finora-control px-3 py-2 font-semibold text-amber-950 underline underline-offset-4 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:opacity-50"
+                          (click)="requestDelete(item.id)"
+                        >
+                          Excluir
+                        </button>
+                      </div>
+                      @if (deleteConfirmationId() === item.id) {
+                        <div
+                          id="investment-delete-confirmation"
+                          class="flex flex-col items-start gap-2"
+                          role="group"
+                          [attr.aria-label]="'Confirmação de exclusão: ' + item.name"
+                        >
+                          <span class="text-xs leading-5 text-amber-950">
+                            Confirmar exclusão desta posição?
+                          </span>
+                          <div class="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              [disabled]="isSaving()"
+                              [attr.aria-label]="'Confirmar exclusão de ' + item.name"
+                              class="min-h-11 rounded-finora-control border border-amber-300 px-3 py-2 font-semibold text-amber-950 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:opacity-50"
+                              (click)="confirmDelete(item.id)"
+                            >
+                              Confirmar
+                            </button>
+                            <button
+                              type="button"
+                              [disabled]="isSaving()"
+                              class="min-h-11 rounded-finora-control px-3 py-2 font-semibold underline underline-offset-4 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:opacity-50"
+                              (click)="cancelDelete()"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      }
+                    </div>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    }
+  </section>
+</section>

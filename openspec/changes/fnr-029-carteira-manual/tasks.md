@@ -20,7 +20,7 @@
 ## 4. Página Angular e navegação
 
 - [x] 4.1 Criar serviço HTTP e estado de carteira ligado à geração da sessão, com descarte de respostas tardias e releitura após mutações confirmadas; verificar falhas, logout/expiração, nova sessão e que o serviço/estado consultem somente a carteira, sem efeitos sobre cartão. A navegação concreta será verificada em 4.3.
-- [ ] 4.2 Construir página protegida `/area/investimentos` com lista, resumo, criação/edição, confirmação de exclusão e estados de carregamento/vazio/erro/salvando; verificar testes de formulário, acessibilidade/teclado, BRL, valores zero e textos que não aleguem rentabilidade ajustada.
+- [x] 4.2 Construir página protegida `/area/investimentos` com lista, resumo, criação/edição, confirmação de exclusão e estados de carregamento/vazio/erro/salvando; verificar testes de formulário, acessibilidade/teclado, BRL, valores zero e textos que não aleguem rentabilidade ajustada. A rota e sua proteção serão ligadas/verificadas em 4.3.
 - [ ] 4.3 Atualizar menu e rotas somente para carteira entregue, sem links de simulador/CSV; verificar testes de menu em sessão válida/inválida, 404, desktop/celular e páginas públicas sem requisição financeira; documentar comportamento e limites da tela em `docs/AMBIENTE.md`.
 
 ## 5. Verificação integrada da mudança
