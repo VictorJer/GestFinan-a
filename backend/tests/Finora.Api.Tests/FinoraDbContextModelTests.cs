@@ -70,6 +70,43 @@ public sealed class FinoraDbContextModelTests
         }
     }
 
+    // O modo explícito de testes usa somente FINORA_TEST_CONNECTION_STRING e permanece desconectado do runtime.
+    [TestMethod]
+    public void DesignTimeFactoryTestModeNeverFallsBackToRuntimeConnection()
+    {
+        const string testConnectionVariable = "FINORA_TEST_CONNECTION_STRING";
+        const string runtimeConnectionVariable = "ConnectionStrings__Finora";
+        const string testConnection =
+            "Host=127.0.0.1;Port=55463;Database=finora_integration_test;Username=finora_test;Password=synthetic";
+        const string runtimeConnection =
+            "Host=127.0.0.1;Database=finora_local;Username=finora;Password=unused";
+        var previousTestConnection = Environment.GetEnvironmentVariable(testConnectionVariable);
+        var previousRuntimeConnection = Environment.GetEnvironmentVariable(runtimeConnectionVariable);
+
+        try
+        {
+            Environment.SetEnvironmentVariable(testConnectionVariable, testConnection);
+            Environment.SetEnvironmentVariable(runtimeConnectionVariable, runtimeConnection);
+
+            using (var context = new FinoraDbContextFactory().CreateDbContext(["--test-connection"]))
+            {
+                Assert.AreEqual("finora_integration_test", context.Database.GetDbConnection().Database);
+                Assert.AreEqual(ConnectionState.Closed, context.Database.GetDbConnection().State);
+            }
+
+            Environment.SetEnvironmentVariable(testConnectionVariable, null);
+            var exception = Assert.Throws<InvalidOperationException>(
+                () => new FinoraDbContextFactory().CreateDbContext(["--test-connection"]));
+            StringAssert.Contains(exception.Message, testConnectionVariable);
+            Assert.AreEqual(runtimeConnection, Environment.GetEnvironmentVariable(runtimeConnectionVariable));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(testConnectionVariable, previousTestConnection);
+            Environment.SetEnvironmentVariable(runtimeConnectionVariable, previousRuntimeConnection);
+        }
+    }
+
     // Tanto a criação padrão pelo Identity quanto a atribuição posterior mantêm o UUID diferente do marcador vazio.
     [TestMethod]
     public void ApplicationUserRequiresNonEmptyGuid()

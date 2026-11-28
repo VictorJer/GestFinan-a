@@ -15,6 +15,7 @@ import { HomePage } from './home/home';
 import { NotFoundPage } from './not-found/not-found';
 
 const API_BASE = 'http://127.0.0.1:5080/api';
+const SYNTHETIC_INVESTMENT_ID = '87b65749-c927-431f-8d51-35fdf3106336';
 
 // Mantém a resposta sintética no contrato allowlisted para testar navegação sem dados reais.
 function dashboardSummaryResponse(): Record<string, unknown> {
@@ -40,6 +41,65 @@ function dashboardSummaryResponse(): Record<string, unknown> {
       latestExecution: null,
     },
     dateBasis: 'TransactionDate',
+  };
+}
+
+// A carteira vazia usa somente strings BRL do contrato, inclusive em classes sem posições.
+function emptyInvestmentPortfolioResponse(): Record<string, unknown> {
+  return {
+    items: [],
+    summary: {
+      totalAppliedAmount: '0.00',
+      totalCurrentAmount: '0.00',
+      difference: '0.00',
+      currentAmountsByClass: [
+        { class: 'fixed_income', label: 'Renda fixa', currentAmount: '0.00' },
+        { class: 'variable_income', label: 'Renda variável', currentAmount: '0.00' },
+        { class: 'real_estate_funds', label: 'Fundos imobiliários', currentAmount: '0.00' },
+      ],
+    },
+  };
+}
+
+// Mantém o item HTTP allowlisted e valores BRL canônicos nas respostas sintéticas da jornada.
+function investmentItemResponse(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: SYNTHETIC_INVESTMENT_ID,
+    name: 'Reserva da jornada',
+    class: 'fixed_income',
+    appliedAmount: '120.50',
+    currentAmount: '125.75',
+    ...overrides,
+  };
+}
+
+// O resumo permanece uma resposta do serviço sintético, nunca calculada pela página Angular.
+function investmentPortfolioResponse(
+  item: Record<string, unknown>,
+  summary: {
+    readonly totalAppliedAmount: string;
+    readonly totalCurrentAmount: string;
+    readonly difference: string;
+    readonly fixedIncome: string;
+    readonly variableIncome: string;
+  },
+): Record<string, unknown> {
+  return {
+    items: [item],
+    summary: {
+      totalAppliedAmount: summary.totalAppliedAmount,
+      totalCurrentAmount: summary.totalCurrentAmount,
+      difference: summary.difference,
+      currentAmountsByClass: [
+        { class: 'fixed_income', label: 'Renda fixa', currentAmount: summary.fixedIncome },
+        {
+          class: 'variable_income',
+          label: 'Renda variável',
+          currentAmount: summary.variableIncome,
+        },
+        { class: 'real_estate_funds', label: 'Fundos imobiliários', currentAmount: '0.00' },
+      ],
+    },
   };
 }
 
@@ -165,9 +225,8 @@ describe('Página inicial pública', () => {
 
     expect(fixture.nativeElement.textContent).toContain('Visão descritiva');
     expect(
-      fixture.nativeElement.querySelector(
-        'app-dashboard-overview-page a[href="/area/movimentos"]',
-      )?.textContent,
+      fixture.nativeElement.querySelector('app-dashboard-overview-page a[href="/area/movimentos"]')
+        ?.textContent,
     ).toContain('Abrir lista de movimentos');
     TestBed.inject(HttpTestingController).expectNone(
       (request) =>
@@ -203,6 +262,10 @@ describe('Página inicial pública', () => {
       '/area/visao',
       '/investments',
       '/simulator',
+      '/simulador',
+      '/area/simulador',
+      '/area/csv',
+      '/area/exportar',
       '/sync',
     ];
 
@@ -212,6 +275,7 @@ describe('Página inicial pública', () => {
       'area',
       'area/movimentos',
       'area/visao',
+      'area/investimentos',
       '**',
     ]);
     expect(navigation.map((link) => link.getAttribute('href'))).toEqual([
@@ -274,27 +338,33 @@ describe('Página inicial pública', () => {
       '/area',
       '/area/movimentos',
       '/area/visao',
+      '/area/investimentos',
       '/',
       '/area',
       '/area/movimentos',
       '/area/visao',
+      '/area/investimentos',
     ]);
     expect(navigation.map((link) => link.getAttribute('aria-label'))).toEqual([
       'Início',
       'Cartões e conexão',
       'Movimentos',
       'Visão descritiva',
+      'Carteira de investimentos',
       'Início',
       'Cartões e conexão',
       'Movimentos',
       'Visão descritiva',
+      'Carteira de investimentos',
     ]);
     expect(navigation[1]?.textContent).toContain('Cartões e conexão');
     expect(navigation[2]?.textContent).toContain('Movimentos');
     expect(navigation[3]?.textContent).toContain('Visão descritiva');
-    expect(navigation[5]?.textContent).toContain('Cartões');
-    expect(navigation[6]?.textContent).toContain('Movimentos');
-    expect(navigation[7]?.textContent).toContain('Visão');
+    expect(navigation[4]?.textContent).toContain('Investimentos');
+    expect(navigation[6]?.textContent).toContain('Cartões');
+    expect(navigation[7]?.textContent).toContain('Movimentos');
+    expect(navigation[8]?.textContent).toContain('Visão');
+    expect(navigation[9]?.textContent).toContain('Carteira');
     expect(shell.querySelector('app-home a[href="/area"]')?.textContent).toContain(
       'Abrir cartões e conexão',
     );
@@ -309,10 +379,277 @@ describe('Página inicial pública', () => {
       linkTargets
         .filter((path) => path?.startsWith('/'))
         .every((path) =>
-          ['/', '/area', '/area/movimentos', '/area/visao', '/login'].includes(path ?? ''),
+          [
+            '/',
+            '/area',
+            '/area/movimentos',
+            '/area/visao',
+            '/area/investimentos',
+            '/login',
+          ].includes(path ?? ''),
         ),
     ).toBe(true);
     TestBed.inject(HttpTestingController).expectNone(() => true);
+    fixture.destroy();
+  });
+
+  // Links desktop e mobile alcançam a carteira e cada entrada emite somente GET /api/investments.
+  it('abre a carteira pelos menus desktop e mobile sem avaliar ou sincronizar cartões', async () => {
+    TestBed.inject(SessionService).startSession({
+      accessToken: 'synthetic-portfolio-navigation-token',
+      tokenType: 'Bearer',
+      expiresIn: 1800,
+      expiresAtUtc: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    });
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    const router = TestBed.inject(Router);
+    const http = TestBed.inject(HttpTestingController);
+    const shell = fixture.nativeElement as HTMLElement;
+    await router.navigateByUrl('/');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const desktopLink = shell.querySelector<HTMLAnchorElement>(
+      'aside nav a[href="/area/investimentos"]',
+    )!;
+    expect(desktopLink).not.toBeNull();
+    desktopLink.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(router.url).toBe('/area/investimentos');
+    expect(desktopLink.getAttribute('aria-current')).toBe('page');
+    const desktopRead = http.expectOne(`${API_BASE}/investments`);
+    expect(desktopRead.request.method).toBe('GET');
+    expect(desktopRead.request.headers.get('Authorization')).toBe(
+      'Bearer synthetic-portfolio-navigation-token',
+    );
+    http.expectNone(() => true);
+    desktopRead.flush(emptyInvestmentPortfolioResponse());
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('A carteira está vazia');
+
+    await router.navigateByUrl('/');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const mobileLink = shell.querySelector<HTMLAnchorElement>(
+      'nav.fixed a[href="/area/investimentos"]',
+    )!;
+    expect(mobileLink).not.toBeNull();
+    expect(mobileLink.textContent).toContain('Carteira');
+    mobileLink.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(router.url).toBe('/area/investimentos');
+    expect(mobileLink.getAttribute('aria-current')).toBe('page');
+    const mobileRead = http.expectOne(`${API_BASE}/investments`);
+    expect(mobileRead.request.method).toBe('GET');
+    http.expectNone(() => true);
+    mobileRead.flush(emptyInvestmentPortfolioResponse());
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('A carteira está vazia');
+    http.expectNone(() => true);
+    fixture.destroy();
+  });
+
+  // Percorre CRUD pela rota real Angular; a saída/volta simula recarga visual com respostas HTTP sintéticas.
+  it('percorre cadastro, resumo, edição, releitura da rota e exclusão autenticados', async () => {
+    TestBed.inject(SessionService).startSession({
+      accessToken: 'synthetic-investment-crud-token',
+      tokenType: 'Bearer',
+      expiresIn: 1800,
+      expiresAtUtc: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    });
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    const shell = fixture.nativeElement as HTMLElement;
+    const router = TestBed.inject(Router);
+    const http = TestBed.inject(HttpTestingController);
+    await router.navigateByUrl('/area/investimentos');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // A primeira leitura é protegida e publica somente o estado vazio devolvido pelo serviço.
+    const firstRead = http.expectOne(`${API_BASE}/investments`);
+    expect(firstRead.request.method).toBe('GET');
+    expect(firstRead.request.headers.get('Authorization')).toBe(
+      'Bearer synthetic-investment-crud-token',
+    );
+    firstRead.flush(emptyInvestmentPortfolioResponse());
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(shell.textContent).toContain('A carteira está vazia');
+    expect(shell.textContent).toContain('R$\u00a00,00');
+
+    // O formulário envia os valores decimais exatamente como texto e a resposta 201 exige releitura.
+    const name = shell.querySelector<HTMLInputElement>('#investment-name')!;
+    const investmentClass = shell.querySelector<HTMLSelectElement>('#investment-class')!;
+    const appliedAmount = shell.querySelector<HTMLInputElement>('#investment-applied-amount')!;
+    const currentAmount = shell.querySelector<HTMLInputElement>('#investment-current-amount')!;
+    name.value = 'Reserva da jornada';
+    name.dispatchEvent(new Event('input', { bubbles: true }));
+    investmentClass.value = 'fixed_income';
+    investmentClass.dispatchEvent(new Event('change', { bubbles: true }));
+    appliedAmount.value = '120.50';
+    appliedAmount.dispatchEvent(new Event('input', { bubbles: true }));
+    currentAmount.value = '125.75';
+    currentAmount.dispatchEvent(new Event('input', { bubbles: true }));
+    fixture.detectChanges();
+    shell.querySelector<HTMLFormElement>('form')!.requestSubmit();
+    fixture.detectChanges();
+
+    const createRequest = http.expectOne(`${API_BASE}/investments`);
+    expect(createRequest.request.method).toBe('POST');
+    expect(createRequest.request.body).toEqual({
+      name: 'Reserva da jornada',
+      class: 'fixed_income',
+      appliedAmount: '120.50',
+      currentAmount: '125.75',
+    });
+    expect(createRequest.request.headers.get('Authorization')).toBe(
+      'Bearer synthetic-investment-crud-token',
+    );
+    createRequest.flush(investmentItemResponse(), { status: 201, statusText: 'Created' });
+    const afterCreateRead = http.expectOne(`${API_BASE}/investments`);
+    expect(afterCreateRead.request.method).toBe('GET');
+    afterCreateRead.flush(
+      investmentPortfolioResponse(investmentItemResponse(), {
+        totalAppliedAmount: '120.50',
+        totalCurrentAmount: '125.75',
+        difference: '5.25',
+        fixedIncome: '125.75',
+        variableIncome: '0.00',
+      }),
+    );
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(shell.textContent).toContain('Reserva da jornada');
+    expect(shell.textContent).toContain('R$\u00a0120,50');
+    expect(shell.textContent).toContain('R$\u00a0125,75');
+    expect(shell.textContent).toContain('R$\u00a05,25');
+
+    // Edição mantém o ID na rota, altera a classe e só atualiza a tela após PUT e novo GET.
+    shell.querySelector<HTMLButtonElement>('[aria-label="Editar Reserva da jornada"]')!.click();
+    fixture.detectChanges();
+    expect(shell.querySelector<HTMLInputElement>('#investment-applied-amount')?.value).toBe(
+      '120.50',
+    );
+    expect(shell.querySelector<HTMLInputElement>('#investment-current-amount')?.value).toBe(
+      '125.75',
+    );
+    const revisedName = shell.querySelector<HTMLInputElement>('#investment-name')!;
+    revisedName.value = 'Reserva revisada';
+    revisedName.dispatchEvent(new Event('input', { bubbles: true }));
+    const revisedClass = shell.querySelector<HTMLSelectElement>('#investment-class')!;
+    revisedClass.value = 'variable_income';
+    revisedClass.dispatchEvent(new Event('change', { bubbles: true }));
+    const revisedCurrentAmount = shell.querySelector<HTMLInputElement>(
+      '#investment-current-amount',
+    )!;
+    revisedCurrentAmount.value = '150.00';
+    revisedCurrentAmount.dispatchEvent(new Event('input', { bubbles: true }));
+    fixture.detectChanges();
+    shell.querySelector<HTMLFormElement>('form')!.requestSubmit();
+    fixture.detectChanges();
+
+    const updateRequest = http.expectOne(`${API_BASE}/investments/${SYNTHETIC_INVESTMENT_ID}`);
+    expect(updateRequest.request.method).toBe('PUT');
+    expect(updateRequest.request.body).toEqual({
+      name: 'Reserva revisada',
+      class: 'variable_income',
+      appliedAmount: '120.50',
+      currentAmount: '150.00',
+    });
+    updateRequest.flush(
+      investmentItemResponse({
+        name: 'Reserva revisada',
+        class: 'variable_income',
+        currentAmount: '150.00',
+      }),
+    );
+    const afterUpdateRead = http.expectOne(`${API_BASE}/investments`);
+    afterUpdateRead.flush(
+      investmentPortfolioResponse(
+        investmentItemResponse({
+          name: 'Reserva revisada',
+          class: 'variable_income',
+          currentAmount: '150.00',
+        }),
+        {
+          totalAppliedAmount: '120.50',
+          totalCurrentAmount: '150.00',
+          difference: '29.50',
+          fixedIncome: '0.00',
+          variableIncome: '150.00',
+        },
+      ),
+    );
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(shell.textContent).toContain('Reserva revisada');
+    expect(shell.textContent).toContain('R$\u00a0150,00');
+    expect(shell.textContent).toContain('R$\u00a029,50');
+    expect(shell.textContent).not.toContain('Reserva da jornada');
+
+    // Sair e reentrar na rota força outra leitura dentro da mesma sessão sintética ainda válida.
+    await router.navigateByUrl('/');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    await router.navigateByUrl('/area/investimentos');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const reloadRead = http.expectOne(`${API_BASE}/investments`);
+    expect(reloadRead.request.method).toBe('GET');
+    expect(reloadRead.request.headers.get('Authorization')).toBe(
+      'Bearer synthetic-investment-crud-token',
+    );
+    reloadRead.flush(
+      investmentPortfolioResponse(
+        investmentItemResponse({
+          name: 'Reserva revisada',
+          class: 'variable_income',
+          currentAmount: '150.00',
+        }),
+        {
+          totalAppliedAmount: '120.50',
+          totalCurrentAmount: '150.00',
+          difference: '29.50',
+          fixedIncome: '0.00',
+          variableIncome: '150.00',
+        },
+      ),
+    );
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(shell.textContent).toContain('Reserva revisada');
+    expect(shell.textContent).toContain('R$\u00a0150,00');
+
+    // Exclusão depende da confirmação explícita e só publica carteira vazia após DELETE 204 + GET.
+    shell.querySelector<HTMLButtonElement>('[aria-label="Excluir Reserva revisada"]')!.click();
+    fixture.detectChanges();
+    shell
+      .querySelector<HTMLButtonElement>('[aria-label="Confirmar exclusão de Reserva revisada"]')!
+      .click();
+    fixture.detectChanges();
+    const deleteRequest = http.expectOne(`${API_BASE}/investments/${SYNTHETIC_INVESTMENT_ID}`);
+    expect(deleteRequest.request.method).toBe('DELETE');
+    expect(deleteRequest.request.headers.get('Authorization')).toBe(
+      'Bearer synthetic-investment-crud-token',
+    );
+    deleteRequest.flush(null, { status: 204, statusText: 'No Content' });
+    const afterDeleteRead = http.expectOne(`${API_BASE}/investments`);
+    expect(afterDeleteRead.request.method).toBe('GET');
+    afterDeleteRead.flush(emptyInvestmentPortfolioResponse());
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(shell.textContent).toContain('A carteira está vazia');
+    expect(shell.textContent).toContain('R$\u00a00,00');
+    expect(shell.querySelector('tbody tr')).toBeNull();
+    http.expectNone(() => true);
     fixture.destroy();
   });
 
@@ -323,7 +660,9 @@ describe('Página inicial pública', () => {
     const router = TestBed.inject(Router);
     await router.navigateByUrl('/login');
     await fixture.whenStable();
-    const outlet = fixture.debugElement.query(By.directive(RouterOutlet)).injector.get(RouterOutlet);
+    const outlet = fixture.debugElement
+      .query(By.directive(RouterOutlet))
+      .injector.get(RouterOutlet);
     const login = outlet.component as LoginPage;
     login.emailControl.setValue('member@example.test');
     login.passwordControl.setValue('synthetic-flow-password');
@@ -341,8 +680,13 @@ describe('Página inicial pública', () => {
 
     expect(router.url).toBe('/area');
     expect(fixture.nativeElement.textContent).toContain('Cartões e conexão');
-    expect(fixture.nativeElement.querySelectorAll('nav a[href="/area/movimentos"]')).toHaveLength(2);
+    expect(fixture.nativeElement.querySelectorAll('nav a[href="/area/movimentos"]')).toHaveLength(
+      2,
+    );
     expect(fixture.nativeElement.querySelectorAll('nav a[href="/area/visao"]')).toHaveLength(2);
+    expect(
+      fixture.nativeElement.querySelectorAll('nav a[href="/area/investimentos"]'),
+    ).toHaveLength(2);
     expect(fixture.nativeElement.innerHTML).not.toContain('synthetic-flow-token');
     flushAuthenticatedAreaStartup(TestBed.inject(HttpTestingController));
     fixture.detectChanges();
@@ -360,8 +704,13 @@ describe('Página inicial pública', () => {
     fixture.detectChanges();
 
     expect(router.url).toBe('/login');
-    expect(fixture.nativeElement.querySelectorAll('nav a[href="/area/movimentos"]')).toHaveLength(0);
+    expect(fixture.nativeElement.querySelectorAll('nav a[href="/area/movimentos"]')).toHaveLength(
+      0,
+    );
     expect(fixture.nativeElement.querySelectorAll('nav a[href="/area/visao"]')).toHaveLength(0);
+    expect(
+      fixture.nativeElement.querySelectorAll('nav a[href="/area/investimentos"]'),
+    ).toHaveLength(0);
     expect(fixture.nativeElement.textContent).toContain('Saída confirmada pelo servidor');
     expect(fixture.nativeElement.querySelector('[role="status"]')?.textContent).toContain(
       'Saída confirmada',
@@ -387,10 +736,12 @@ describe('Página inicial pública', () => {
     flushAuthenticatedAreaStartup(TestBed.inject(HttpTestingController));
     (fixture.nativeElement.querySelector('nav.fixed button') as HTMLButtonElement).click();
     fixture.detectChanges();
-    TestBed.inject(HttpTestingController).expectOne('http://127.0.0.1:5080/api/auth/logout').flush(
-      { detail: 'synthetic-uncertain-server-detail' },
-      { status: 503, statusText: 'Service Unavailable' },
-    );
+    TestBed.inject(HttpTestingController)
+      .expectOne('http://127.0.0.1:5080/api/auth/logout')
+      .flush(
+        { detail: 'synthetic-uncertain-server-detail' },
+        { status: 503, statusText: 'Service Unavailable' },
+      );
     await fixture.whenStable();
     fixture.detectChanges();
 
@@ -417,12 +768,17 @@ describe('Página inicial pública', () => {
     await router.navigateByUrl('/area');
     fixture.detectChanges();
     flushAuthenticatedAreaStartup(TestBed.inject(HttpTestingController));
-    TestBed.inject(HttpClient).get('http://127.0.0.1:5080/api/private/resource').subscribe({
-      error: () => undefined,
-    });
+    TestBed.inject(HttpClient)
+      .get('http://127.0.0.1:5080/api/private/resource')
+      .subscribe({
+        error: () => undefined,
+      });
     TestBed.inject(HttpTestingController)
       .expectOne('http://127.0.0.1:5080/api/private/resource')
-      .flush({ detail: 'synthetic-secret-server-detail' }, { status: 401, statusText: 'Unauthorized' });
+      .flush(
+        { detail: 'synthetic-secret-server-detail' },
+        { status: 401, statusText: 'Unauthorized' },
+      );
     await fixture.whenStable();
     fixture.detectChanges();
 
@@ -447,17 +803,24 @@ describe('Página inicial pública', () => {
     await router.navigateByUrl('/area');
     fixture.detectChanges();
     flushAuthenticatedAreaStartup(TestBed.inject(HttpTestingController));
-    TestBed.inject(HttpClient).get('http://127.0.0.1:5080/api/private/resource').subscribe({
-      error: () => undefined,
-    });
+    TestBed.inject(HttpClient)
+      .get('http://127.0.0.1:5080/api/private/resource')
+      .subscribe({
+        error: () => undefined,
+      });
     TestBed.inject(HttpTestingController)
       .expectOne('http://127.0.0.1:5080/api/private/resource')
-      .flush({ detail: 'synthetic-secret-server-detail' }, { status: 403, statusText: 'Forbidden' });
+      .flush(
+        { detail: 'synthetic-secret-server-detail' },
+        { status: 403, statusText: 'Forbidden' },
+      );
     await fixture.whenStable();
     fixture.detectChanges();
 
     expect(router.url).toBe('/area');
-    expect(TestBed.inject(SessionService).currentSession()?.accessToken).toBe('synthetic-403-token');
+    expect(TestBed.inject(SessionService).currentSession()?.accessToken).toBe(
+      'synthetic-403-token',
+    );
     expect(fixture.nativeElement.textContent).toContain('não tem permissão');
     expect(fixture.nativeElement.textContent).not.toContain('synthetic-secret-server-detail');
     expect(fixture.nativeElement.querySelector('app-authenticated-area')).not.toBeNull();
@@ -488,6 +851,9 @@ describe('Página inicial pública', () => {
 
     expect(router.url).toBe('/login');
     expect(session.currentSession()).toBeNull();
+    expect(
+      fixture.nativeElement.querySelectorAll('nav a[href="/area/investimentos"]'),
+    ).toHaveLength(0);
     expect(fixture.nativeElement.textContent).toContain('Sua sessão expirou');
     expect(fixture.nativeElement.querySelector('[role="alert"]')?.textContent).toContain(
       'Entre novamente',

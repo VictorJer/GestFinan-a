@@ -23,6 +23,8 @@ public static class SyncRunAcceptanceServiceCollectionExtensions
         services.AddScoped<ITransactionAnnotationStore, TransactionAnnotationStore>();
         // O catálogo pessoal compartilha apenas o contexto scoped, sem exigir conexão financeira ou provedor.
         services.AddScoped<ICategoryCatalogStore, CategoryCatalogStore>();
+        // A carteira manual usa o mesmo DbContext autenticado, sem integrar-se às leituras do cartão.
+        services.AddScoped<IInvestmentStore, InvestmentStore>();
         services.AddScoped<ISyncRunStatusReader, SyncRunStatusReader>();
         services.AddScoped<ISyncRunLeaseStore, SyncRunLeaseStore>();
         services.AddScoped<ISyncRunLeaseExecutionGuard, SyncRunLeaseExecutionGuard>();

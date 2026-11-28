@@ -54,8 +54,13 @@ public static class AuthenticationServiceCollectionExtensions
                         || type == typeof(EvaluateTransactionRecurrenceCandidatesHandler)
                         || type == typeof(UpdateTransactionRecurrenceDecisionHandler)
                         || type == typeof(CreatePersonalCategoryHandler)
-                       || type == typeof(GetCategoriesHandler)
-                      || type == typeof(GetSyncRunStatusHandler)));
+                        || type == typeof(GetCategoriesHandler)
+                        // Escritas da carteira são habilitadas somente na composição com autenticação e banco válidos.
+                         || type == typeof(CreateInvestmentHandler)
+                        || type == typeof(UpdateInvestmentHandler)
+                        || type == typeof(DeleteInvestmentHandler)
+                        || type == typeof(GetInvestmentPortfolioHandler)
+                       || type == typeof(GetSyncRunStatusHandler)));
         });
         services.Configure<ApiBehaviorOptions>(options => options.InvalidModelStateResponseFactory = action =>
         {

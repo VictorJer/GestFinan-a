@@ -25,6 +25,7 @@ public sealed class FinancialDataRelationalModelTests
         var transaction = model.FindEntityType(typeof(FinancialTransaction))!;
         var category = model.FindEntityType(typeof(Category))!;
         var annotation = model.FindEntityType(typeof(TransactionAnnotation))!;
+        var investment = model.FindEntityType(typeof(Investment))!;
 
         AssertKeyProperties(connection, isPrimary: true, "Id");
         AssertKeyProperties(connection, isPrimary: false, "Id", "UserId");
@@ -35,6 +36,7 @@ public sealed class FinancialDataRelationalModelTests
         AssertKeyProperties(category, isPrimary: true, "Id");
         AssertKeyProperties(category, isPrimary: false, "Id", "ScopeId");
         AssertKeyProperties(annotation, isPrimary: true, "TransactionId");
+        AssertKeyProperties(investment, isPrimary: true, nameof(Investment.Id));
     }
 
     // Cada aresta do grafo financeiro restringe titular e exclusão sem depender de filtro de consulta.
@@ -86,6 +88,12 @@ public sealed class FinancialDataRelationalModelTests
             new[] { "UserId" },
             new[] { "Id" },
             required: false);
+        AssertForeignKey(
+            model.FindEntityType(typeof(Investment))!,
+            typeof(ApplicationUser),
+            [nameof(Investment.UserId)],
+            [nameof(ApplicationUser.Id)],
+            required: true);
     }
 
     // O trio de movimentos e a decisão vigente usam FKs compostas para provar o mesmo titular no banco.
@@ -217,6 +225,27 @@ public sealed class FinancialDataRelationalModelTests
             "\"CategoryScopeId\" IS NULL",
             "\"CategoryScopeId\" = \"UserId\"",
             "\"CategoryScopeId\" = '00000000-0000-0000-0000-000000000000'::uuid");
+        AssertCheckConstraint(
+            model.FindEntityType(typeof(Investment))!,
+            "CK_Investment_IdsNotEmpty",
+            "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid",
+            "\"UserId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
+        AssertCheckConstraint(
+            model.FindEntityType(typeof(Investment))!,
+            "CK_Investment_Name",
+            "length(btrim(\"Name\")) > 0",
+            "length(\"Name\") <= 120");
+        AssertCheckConstraint(
+            model.FindEntityType(typeof(Investment))!,
+            "CK_Investment_Class",
+            "fixed_income",
+            "variable_income",
+            "real_estate_funds");
+        AssertCheckConstraint(
+            model.FindEntityType(typeof(Investment))!,
+            "CK_Investment_AmountsNonNegative",
+            "\"AppliedAmount\" >= 0",
+            "\"CurrentAmount\" >= 0");
 
         var annotation = model.FindEntityType(typeof(TransactionAnnotation))!;
         Assert.IsTrue(annotation.FindProperty(nameof(TransactionAnnotation.CategoryId))!.IsNullable);
@@ -231,6 +260,9 @@ public sealed class FinancialDataRelationalModelTests
         var model = context.GetService<IDesignTimeModel>().Model;
 
         AssertColumnType(model, typeof(FinancialTransaction), nameof(FinancialTransaction.Amount), "numeric(19,4)");
+        AssertColumnType(model, typeof(Investment), nameof(Investment.AppliedAmount), "numeric(19,2)");
+        AssertColumnType(model, typeof(Investment), nameof(Investment.CurrentAmount), "numeric(19,2)");
+        AssertColumnType(model, typeof(Investment), nameof(Investment.Class), "character varying(32)");
         AssertColumnType(model, typeof(CardAccount), nameof(CardAccount.AvailableCreditLimit), "numeric(19,4)");
         AssertColumnType(model, typeof(CardAccount), nameof(CardAccount.TotalCreditLimit), "numeric(19,4)");
         AssertColumnType(model, typeof(FinancialTransaction), nameof(FinancialTransaction.TransactionDate), "date");
@@ -253,6 +285,7 @@ public sealed class FinancialDataRelationalModelTests
         AssertPropertyCollation(model, typeof(FinancialTransaction), nameof(FinancialTransaction.ExternalId), "C");
         AssertPropertyCollation(model, typeof(FinancialTransaction), nameof(FinancialTransaction.ExternalAccountId), "C");
         AssertPropertyCollation(model, typeof(Category), nameof(Category.NormalizedName), "C");
+        AssertPropertyCollation(model, typeof(Investment), nameof(Investment.Class), "C");
 
         Assert.AreEqual(32, model.FindEntityType(typeof(FinancialConnection))!
             .FindProperty(nameof(FinancialConnection.Provider))!.GetMaxLength());
@@ -260,6 +293,8 @@ public sealed class FinancialDataRelationalModelTests
             .FindProperty(nameof(Category.NormalizedName))!.GetMaxLength());
         Assert.AreEqual(500, model.FindEntityType(typeof(TransactionAnnotation))!
             .FindProperty(nameof(TransactionAnnotation.Note))!.GetMaxLength());
+        Assert.AreEqual(Investment.MaximumNameLength, model.FindEntityType(typeof(Investment))!
+            .FindProperty(nameof(Investment.Name))!.GetMaxLength());
     }
 
     // Índices únicos guardam as identidades opacas; os índices de consulta e convenções cobrem prefixos sem duplicatas.
@@ -273,6 +308,7 @@ public sealed class FinancialDataRelationalModelTests
         var category = model.FindEntityType(typeof(Category))!;
         var annotation = model.FindEntityType(typeof(TransactionAnnotation))!;
         var syncRun = model.FindEntityType(typeof(SyncRun))!;
+        var investment = model.FindEntityType(typeof(Investment))!;
 
         AssertIndex(connection, isUnique: true, nameof(FinancialConnection.UserId), nameof(FinancialConnection.Provider), nameof(FinancialConnection.ExternalItemId));
         AssertIndex(connection, isUnique: false, nameof(FinancialConnection.UserId), allowMissing: true);
@@ -285,6 +321,7 @@ public sealed class FinancialDataRelationalModelTests
         AssertIndex(category, isUnique: true, nameof(Category.ScopeId), nameof(Category.NormalizedName));
         AssertIndex(syncRun, isUnique: false, nameof(SyncRun.ConnectionId), nameof(SyncRun.State));
         AssertIndex(syncRun, isUnique: true, nameof(SyncRun.IdempotencyKeyHash));
+        AssertIndex(investment, isUnique: false, nameof(Investment.UserId), nameof(Investment.Id));
         var idempotencyIndex = syncRun.GetIndexes().Single(index =>
             index.IsUnique && index.Properties.Single().Name == nameof(SyncRun.IdempotencyKeyHash));
         Assert.AreEqual("UX_SyncRun_IdempotencyKeyHash", idempotencyIndex.GetDatabaseName());

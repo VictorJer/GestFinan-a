@@ -9,6 +9,7 @@ import { apiAuthInterceptor } from './auth/api-auth.interceptor';
 import { LoginPage } from './auth/login/login';
 import { SessionService } from './auth/session';
 import { TransactionListPage } from './auth/area/transaction-list-page';
+import { InvestmentPortfolioPage } from './auth/area/investment-portfolio-page';
 import { API_BASE_URL } from './api-base-url.token';
 import { routes } from './app.routes';
 
@@ -35,6 +36,23 @@ function emptyTransactionPage(): object {
       lastSuccessfulImportAtUtc: null,
       lastSuccessfulWindow: null,
       latestExecution: null,
+    },
+  };
+}
+
+// Mantém a resposta da carteira vazia no contrato e confirma zeros sem dados de demonstração.
+function emptyInvestmentPortfolio(): object {
+  return {
+    items: [],
+    summary: {
+      totalAppliedAmount: '0.00',
+      totalCurrentAmount: '0.00',
+      difference: '0.00',
+      currentAmountsByClass: [
+        { class: 'fixed_income', label: 'Renda fixa', currentAmount: '0.00' },
+        { class: 'variable_income', label: 'Renda variável', currentAmount: '0.00' },
+        { class: 'real_estate_funds', label: 'Fundos imobiliários', currentAmount: '0.00' },
+      ],
     },
   };
 }
@@ -96,6 +114,17 @@ describe('Rotas da sessão no navegador', () => {
     backend.expectNone(() => true);
   });
 
+  // A carteira usa o mesmo guard e não envia requisições financeiras para visitante anônimo.
+  it('redireciona para login ao abrir /area/investimentos sem sessão', async () => {
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/area/investimentos', LoginPage);
+
+    expect(TestBed.inject(Router).url).toBe('/login');
+    expect(harness.routeNativeElement?.textContent).toContain('Entrar no Finora');
+    expect(harness.routeNativeElement?.textContent).not.toContain('Carteira de investimentos');
+    backend.expectNone(() => true);
+  });
+
   // A lista lê dados e opções protegidos, mas nunca cria intenção de atualização ao abrir a rota.
   it('abre /area/movimentos com sessão usando somente leituras', async () => {
     startSession();
@@ -123,6 +152,29 @@ describe('Rotas da sessão no navegador', () => {
     categoriesRequest.flush([]);
     transactionsRequest.flush(emptyTransactionPage());
     recurrenceRequest.flush([]);
+    backend.expectNone(() => true);
+  });
+
+  // A carteira protegida consulta somente seu endpoint e não dispara cartão, conexão ou sync.
+  it('abre /area/investimentos com sessão usando somente GET da carteira', async () => {
+    startSession();
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/area/investimentos', InvestmentPortfolioPage);
+
+    expect(TestBed.inject(Router).url).toBe('/area/investimentos');
+    expect(harness.routeNativeElement?.querySelector('h1')?.textContent).toContain(
+      'Carteira de investimentos',
+    );
+    const portfolioRequest = backend.expectOne(`${API_BASE}/api/investments`);
+    expect(portfolioRequest.request.method).toBe('GET');
+    expect(portfolioRequest.request.headers.get('Authorization')).toBe(
+      'Bearer synthetic-area-token',
+    );
+    backend.expectNone(() => true);
+    portfolioRequest.flush(emptyInvestmentPortfolio());
+    harness.fixture.detectChanges();
+
+    expect(harness.routeNativeElement?.textContent).toContain('A carteira está vazia');
     backend.expectNone(() => true);
   });
 

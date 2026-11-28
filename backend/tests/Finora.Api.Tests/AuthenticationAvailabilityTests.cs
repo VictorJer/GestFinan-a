@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Finora.Api;
 using Finora.Application.FinancialData;
 using Finora.Infrastructure.Persistence;
 using MediatR;
@@ -38,6 +39,8 @@ public sealed class AuthenticationAvailabilityTests
                 "/api/transactions/recurrence-candidates/evaluate",
                 "/api/transactions/recurrence-candidates/{candidateId}/decision",
                 "/api/categories",
+                "/api/investments",
+                "/api/investments/{id}",
                 "/api/connections/current/sync",
                 "/api/connections/current/sync/on-entry",
                 "/api/connections/current/sync-state",
@@ -84,6 +87,92 @@ public sealed class AuthenticationAvailabilityTests
         CollectionAssert.AreEqual(new[] { "name" },
             requestPayloadSchema.GetProperty("properties").EnumerateObject()
                 .Select(property => property.Name).ToArray());
+
+        // OpenAPI publica carteira e resumo como um contrato protegido, sem titular ou fonte de movimentos.
+        var investmentsPath = document.RootElement.GetProperty("paths").GetProperty("/api/investments");
+        var getInvestments = investmentsPath.GetProperty("get");
+        var postInvestment = investmentsPath.GetProperty("post");
+        CollectionAssert.AreEquivalent(new[] { "200", "401", "429", "500", "503" },
+            getInvestments.GetProperty("responses").EnumerateObject().Select(property => property.Name).ToArray());
+        CollectionAssert.AreEquivalent(new[] { "201", "400", "401", "429", "500", "503" },
+            postInvestment.GetProperty("responses").EnumerateObject().Select(property => property.Name).ToArray());
+        Assert.IsFalse(getInvestments.TryGetProperty("parameters", out var investmentParameters)
+            && investmentParameters.GetArrayLength() > 0);
+        StringAssert.Contains(getInvestments.GetProperty("description").GetString()!, "diferença simples");
+        StringAssert.Contains(getInvestments.GetProperty("description").GetString()!, "sem percentuais");
+        var portfolioResponse = ResolveSchema(document.RootElement,
+            getInvestments.GetProperty("responses").GetProperty("200")
+                .GetProperty("content").GetProperty("application/json").GetProperty("schema"));
+        CollectionAssert.AreEquivalent(new[] { "items", "summary" },
+            portfolioResponse.GetProperty("properties").EnumerateObject().Select(property => property.Name).ToArray());
+        var portfolioItemSchema = ResolveSchema(document.RootElement,
+            portfolioResponse.GetProperty("properties").GetProperty("items").GetProperty("items"));
+        CollectionAssert.AreEquivalent(new[] { "id", "name", "class", "appliedAmount", "currentAmount" },
+            portfolioItemSchema.GetProperty("properties").EnumerateObject()
+                .Select(property => property.Name).ToArray());
+        foreach (var amountName in new[] { "appliedAmount", "currentAmount" })
+        {
+            var amountSchema = portfolioItemSchema.GetProperty("properties").GetProperty(amountName);
+            Assert.AreEqual("string", amountSchema.GetProperty("type").GetString());
+            Assert.AreEqual(InvestmentHttpMoney.ItemAmountPattern, amountSchema.GetProperty("pattern").GetString());
+        }
+        Assert.IsFalse(portfolioItemSchema.GetProperty("properties").EnumerateObject()
+            .Any(property => property.Name is "userId" or "ownerId"));
+        var portfolioSummarySchema = ResolveSchema(document.RootElement,
+            portfolioResponse.GetProperty("properties").GetProperty("summary"));
+        CollectionAssert.AreEquivalent(new[]
+            {
+                "totalAppliedAmount", "totalCurrentAmount", "difference", "currentAmountsByClass"
+            }, portfolioSummarySchema.GetProperty("properties").EnumerateObject()
+                .Select(property => property.Name).ToArray());
+        var classValueSchema = ResolveSchema(document.RootElement,
+            portfolioSummarySchema.GetProperty("properties").GetProperty("currentAmountsByClass")
+                .GetProperty("items"));
+        CollectionAssert.AreEquivalent(new[] { "class", "label", "currentAmount" },
+            classValueSchema.GetProperty("properties").EnumerateObject()
+                .Select(property => property.Name).ToArray());
+        var classAmountSchema = classValueSchema.GetProperty("properties").GetProperty("currentAmount");
+        Assert.AreEqual("string", classAmountSchema.GetProperty("type").GetString());
+        Assert.AreEqual(InvestmentHttpMoney.SummaryAmountPattern, classAmountSchema.GetProperty("pattern").GetString());
+        Assert.IsFalse(classValueSchema.GetProperty("properties").EnumerateObject()
+            .Any(property => property.Name.Contains("percent", StringComparison.OrdinalIgnoreCase)));
+        foreach (var amountName in new[] { "totalAppliedAmount", "totalCurrentAmount" })
+        {
+            var amountSchema = portfolioSummarySchema.GetProperty("properties").GetProperty(amountName);
+            Assert.AreEqual("string", amountSchema.GetProperty("type").GetString());
+            Assert.AreEqual(InvestmentHttpMoney.SummaryAmountPattern, amountSchema.GetProperty("pattern").GetString());
+        }
+        var differenceSchema = portfolioSummarySchema.GetProperty("properties").GetProperty("difference");
+        Assert.AreEqual("string", differenceSchema.GetProperty("type").GetString());
+        Assert.AreEqual(InvestmentHttpMoney.SignedSummaryAmountPattern, differenceSchema.GetProperty("pattern").GetString());
+        foreach (var investmentOperation in new[] { postInvestment,
+                     document.RootElement.GetProperty("paths").GetProperty("/api/investments/{id}").GetProperty("put") })
+        {
+            var investmentRequestSchema = ResolveSchema(document.RootElement,
+                investmentOperation.GetProperty("requestBody").GetProperty("content")
+                    .GetProperty("application/json").GetProperty("schema"));
+            CollectionAssert.AreEquivalent(new[] { "name", "class", "appliedAmount", "currentAmount" },
+                investmentRequestSchema.GetProperty("properties").EnumerateObject()
+                    .Select(property => property.Name).ToArray());
+            foreach (var amountName in new[] { "appliedAmount", "currentAmount" })
+            {
+                var amountSchema = investmentRequestSchema.GetProperty("properties").GetProperty(amountName);
+                Assert.AreEqual("string", amountSchema.GetProperty("type").GetString());
+                Assert.AreEqual(InvestmentHttpMoney.ItemAmountPattern, amountSchema.GetProperty("pattern").GetString());
+            }
+            Assert.IsFalse(investmentRequestSchema.GetProperty("properties").EnumerateObject()
+                .Any(property => property.Name is "id" or "userId" or "ownerId"));
+            StringAssert.Contains(investmentOperation.GetProperty("requestBody").GetProperty("description")
+                .GetString()!, "duplicados");
+        }
+        var investmentById = document.RootElement.GetProperty("paths").GetProperty("/api/investments/{id}");
+        CollectionAssert.AreEquivalent(new[] { "200", "400", "401", "404", "429", "500", "503" },
+            investmentById.GetProperty("put").GetProperty("responses").EnumerateObject()
+                .Select(property => property.Name).ToArray());
+        CollectionAssert.AreEquivalent(new[] { "204", "400", "401", "404", "429", "500", "503" },
+            investmentById.GetProperty("delete").GetProperty("responses").EnumerateObject()
+                .Select(property => property.Name).ToArray());
+
         CollectionAssert.AreEquivalent(new[] { "200", "400", "401", "404", "409", "429", "500", "503" },
             cardsResponses.EnumerateObject().Select(property => property.Name).ToArray());
         // OpenAPI descreve filtros opcionais, erros e formato paginado sem depender de banco configurado.

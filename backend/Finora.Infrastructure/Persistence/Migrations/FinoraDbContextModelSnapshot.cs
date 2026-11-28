@@ -306,6 +306,49 @@ namespace Finora.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Finora.Domain.FinancialData.Investment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("AppliedAmount")
+                        .HasColumnType("numeric(19,2)");
+
+                    b.Property<string>("Class")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .UseCollation("C");
+
+                    b.Property<decimal>("CurrentAmount")
+                        .HasColumnType("numeric(19,2)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Id")
+                        .HasDatabaseName("IX_Investment_UserId_Id");
+
+                    b.ToTable("Investment", t =>
+                        {
+                            t.HasCheckConstraint("CK_Investment_AmountsNonNegative", "\"AppliedAmount\" >= 0 AND \"CurrentAmount\" >= 0");
+
+                            t.HasCheckConstraint("CK_Investment_Class", "\"Class\" IN ('fixed_income', 'variable_income', 'real_estate_funds')");
+
+                            t.HasCheckConstraint("CK_Investment_IdsNotEmpty", "\"Id\" <> '00000000-0000-0000-0000-000000000000'::uuid AND \"UserId\" <> '00000000-0000-0000-0000-000000000000'::uuid");
+
+                            t.HasCheckConstraint("CK_Investment_Name", "length(btrim(\"Name\")) > 0 AND length(\"Name\") <= 120 AND \"Name\" = btrim(\"Name\")");
+                        });
+                });
+
             modelBuilder.Entity("Finora.Domain.FinancialData.RecurrenceCandidate", b =>
                 {
                     b.Property<Guid>("Id")
@@ -973,6 +1016,15 @@ namespace Finora.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("CardAccountId", "UserId", "ExternalAccountId")
                         .HasPrincipalKey("Id", "UserId", "ExternalId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Finora.Domain.FinancialData.Investment", b =>
+                {
+                    b.HasOne("Finora.Infrastructure.Identity.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

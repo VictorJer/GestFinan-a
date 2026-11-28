@@ -3,7 +3,8 @@
   <a
     class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-finora-control focus:bg-finora-surface focus:px-4 focus:py-3 focus:text-finora-ink focus:shadow-lg focus:outline-3 focus:outline-solid focus:outline-offset-2 focus:outline-finora-brand"
     href="#conteudo"
-  >Pular para o conteúdo</a>
+    >Pular para o conteúdo</a
+  >
 
   <!-- Sidebar escura, completa em desktop e compacta entre 561 e 900 px; foco lavanda contrasta com o fundo. -->
   <aside
@@ -18,7 +19,8 @@
       <span
         aria-hidden="true"
         class="grid size-11 shrink-0 place-items-center rounded-finora-control bg-finora-lavender font-finora-display text-2xl font-extrabold text-finora-brand"
-      >ƒ</span>
+        >ƒ</span
+      >
       <span class="hidden font-finora-display text-xl font-bold tracking-tight wide:inline"
         >finora<span class="text-finora-lavender">.</span></span
       >
@@ -59,8 +61,19 @@
           routerLink="/area"
           routerLinkActive="bg-finora-nav-active text-white"
         >
-          <svg aria-hidden="true" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3 4.5 6v5c0 5 3.2 8.3 7.5 10 4.3-1.7 7.5-5 7.5-10V6L12 3Z"></path>
+          <svg
+            aria-hidden="true"
+            class="size-5 shrink-0"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M12 3 4.5 6v5c0 5 3.2 8.3 7.5 10 4.3-1.7 7.5-5 7.5-10V6L12 3Z"
+            ></path>
             <path stroke-linecap="round" stroke-linejoin="round" d="m9 12 2 2 4-4"></path>
           </svg>
           <span class="sr-only wide:not-sr-only">Cartões e conexão</span>
@@ -72,7 +85,15 @@
           routerLink="/area/movimentos"
           routerLinkActive="bg-finora-nav-active text-white"
         >
-          <svg aria-hidden="true" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8" viewBox="0 0 24 24">
+          <svg
+            aria-hidden="true"
+            class="size-5 shrink-0"
+            fill="none"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-width="1.8"
+            viewBox="0 0 24 24"
+          >
             <path d="M9 6h11M9 12h11M9 18h11"></path>
             <circle cx="4" cy="6" r="1"></circle>
             <circle cx="4" cy="12" r="1"></circle>
@@ -87,12 +108,46 @@
           routerLink="/area/visao"
           routerLinkActive="bg-finora-nav-active text-white"
         >
-          <svg aria-hidden="true" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" viewBox="0 0 24 24">
+          <svg
+            aria-hidden="true"
+            class="size-5 shrink-0"
+            fill="none"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="1.8"
+            viewBox="0 0 24 24"
+          >
             <path d="M4 19V5"></path>
             <path d="M4 19h16"></path>
             <path d="m7 15 4-4 3 2 5-6"></path>
           </svg>
           <span class="sr-only wide:not-sr-only">Visão descritiva</span>
+        </a>
+        <!-- A carteira própria é o único novo destino e aparece somente durante sessão autenticada. -->
+        <a
+          aria-label="Carteira de investimentos"
+          ariaCurrentWhenActive="page"
+          class="flex min-h-11 items-center justify-center gap-3 rounded-finora-control px-3 py-2 text-sm font-semibold text-white/80 transition-colors hover:bg-white/10 outline-finora-focus focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 wide:justify-start"
+          routerLink="/area/investimentos"
+          routerLinkActive="bg-finora-nav-active text-white"
+        >
+          <svg
+            aria-hidden="true"
+            class="size-5 shrink-0"
+            fill="none"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="1.8"
+            viewBox="0 0 24 24"
+          >
+            <rect x="3" y="7" width="18" height="13" rx="2"></rect>
+            <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            <path d="M3 12h18"></path>
+            <path d="M10 12v2h4v-2"></path>
+          </svg>
+          <span class="sr-only wide:not-sr-only">Investimentos</span>
         </a>
         <button
           type="button"
@@ -101,7 +156,16 @@
           [disabled]="isLoggingOut()"
           (click)="logout()"
         >
-          <svg aria-hidden="true" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" viewBox="0 0 24 24">
+          <svg
+            aria-hidden="true"
+            class="size-5 shrink-0"
+            fill="none"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="1.8"
+            viewBox="0 0 24 24"
+          >
             <path d="M10 17l5-5-5-5"></path>
             <path d="M15 12H3"></path>
             <path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"></path>
@@ -116,7 +180,15 @@
           routerLink="/login"
           routerLinkActive="bg-finora-nav-active text-white"
         >
-          <svg aria-hidden="true" class="size-5 shrink-0" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8" viewBox="0 0 24 24">
+          <svg
+            aria-hidden="true"
+            class="size-5 shrink-0"
+            fill="none"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-width="1.8"
+            viewBox="0 0 24 24"
+          >
             <circle cx="12" cy="8" r="4"></circle>
             <path d="M5 21a7 7 0 0 1 14 0"></path>
           </svg>
@@ -145,7 +217,8 @@
         <span
           aria-hidden="true"
           class="grid size-9 place-items-center rounded-finora-control bg-finora-lavender font-finora-display text-xl font-extrabold text-finora-brand"
-        >ƒ</span>
+          >ƒ</span
+        >
         <span class="font-finora-display text-lg font-bold tracking-tight"
           >finora<span class="text-finora-brand">.</span></span
         >
@@ -167,22 +240,36 @@
       <div class="mx-auto w-full max-w-5xl">
         <!-- Publica avisos seguros de sessão com ação de dispensa operável por teclado. -->
         @if (sessionNoticeMessage(); as noticeMessage) {
-          <div class="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-finora-control border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950" role="alert" aria-live="assertive">
+          <div
+            class="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-finora-control border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"
+            role="alert"
+            aria-live="assertive"
+          >
             <p>{{ noticeMessage }}</p>
             <button
               type="button"
               class="min-h-11 rounded-finora-control px-3 font-semibold underline underline-offset-4 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
               (click)="clearSessionNotice()"
-            >Fechar aviso</button>
+            >
+              Fechar aviso
+            </button>
           </div>
         }
         <!-- Diferencia apenas a confirmação contratual 204 da saída remota incerta. -->
         @if (logoutOutcome() === 'confirmed') {
-          <p class="mb-6 rounded-finora-control border border-green-200 bg-green-50 px-4 py-3 text-sm leading-6 text-green-900" role="status" aria-live="polite">
+          <p
+            class="mb-6 rounded-finora-control border border-green-200 bg-green-50 px-4 py-3 text-sm leading-6 text-green-900"
+            role="status"
+            aria-live="polite"
+          >
             Saída confirmada pelo servidor.
           </p>
         } @else if (logoutOutcome() === 'uncertain') {
-          <p class="mb-6 rounded-finora-control border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950" role="status" aria-live="polite">
+          <p
+            class="mb-6 rounded-finora-control border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"
+            role="status"
+            aria-live="polite"
+          >
             A sessão local foi encerrada, mas não foi possível confirmar a saída no servidor.
           </p>
         }
@@ -237,34 +324,49 @@
         [routerLinkActiveOptions]="{ exact: true }"
         routerLink="/area"
         routerLinkActive="text-finora-brand"
-      >Cartões</a>
+        >Cartões</a
+      >
       <a
         aria-label="Movimentos"
         ariaCurrentWhenActive="page"
         class="flex min-h-11 min-w-0 flex-1 items-center justify-center rounded-finora-control px-1 py-2 text-xs font-semibold text-finora-muted transition-colors hover:bg-finora-lavender outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
         routerLink="/area/movimentos"
         routerLinkActive="text-finora-brand"
-      >Movimentos</a>
+        >Movimentos</a
+      >
       <a
         aria-label="Visão descritiva"
         ariaCurrentWhenActive="page"
         class="flex min-h-11 min-w-0 flex-1 items-center justify-center rounded-finora-control px-1 py-2 text-xs font-semibold text-finora-muted transition-colors hover:bg-finora-lavender outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
         routerLink="/area/visao"
         routerLinkActive="text-finora-brand"
-      >Visão</a>
+        >Visão</a
+      >
+      <!-- O rótulo curto cabe na barra móvel e o nome acessível informa a página completa. -->
+      <a
+        aria-label="Carteira de investimentos"
+        ariaCurrentWhenActive="page"
+        class="flex min-h-11 min-w-0 flex-1 items-center justify-center rounded-finora-control px-1 py-2 text-xs font-semibold text-finora-muted transition-colors hover:bg-finora-lavender outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+        routerLink="/area/investimentos"
+        routerLinkActive="text-finora-brand"
+        >Carteira</a
+      >
       <button
         type="button"
         class="flex min-h-11 min-w-0 flex-1 items-center justify-center rounded-finora-control px-2 py-2 text-xs font-semibold text-finora-muted transition-colors hover:bg-finora-lavender outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:cursor-wait disabled:opacity-60"
         [disabled]="isLoggingOut()"
         (click)="logout()"
-      >{{ isLoggingOut() ? 'Saindo…' : 'Sair' }}</button>
+      >
+        {{ isLoggingOut() ? 'Saindo…' : 'Sair' }}
+      </button>
     } @else {
       <a
         ariaCurrentWhenActive="page"
         class="flex min-h-11 min-w-0 flex-1 items-center justify-center rounded-finora-control px-2 py-2 text-xs font-semibold text-finora-muted transition-colors hover:bg-finora-lavender outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
         routerLink="/login"
         routerLinkActive="text-finora-brand"
-      >Entrar</a>
+        >Entrar</a
+      >
     }
   </nav>
 </div>

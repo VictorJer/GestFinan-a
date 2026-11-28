@@ -14,19 +14,19 @@ O aplicativo SHALL abrir uma página inicial pública em português que identifi
 - **THEN** a página inicial é exibida sem exigir backend e sem valores, cartões, login simulado ou confirmação de conexão
 
 ### Requirement: Navegação corresponde às páginas entregues
-O aplicativo SHALL oferecer início e login públicos e, durante sessão válida, acesso à área protegida de cartão/conexão, à lista de movimentos e à visão descritiva integrada. Caminhos desconhecidos SHALL informar que a página não existe e oferecer retorno à página inicial. Investimentos e ações ainda não entregues SHALL não ser apresentados como disponíveis.
+O aplicativo SHALL oferecer início e login públicos e, durante sessão válida, acesso à área protegida de cartão/conexão, à lista de movimentos, à visão descritiva integrada e à carteira manual de investimentos. Caminhos desconhecidos SHALL informar que a página não existe e oferecer retorno à página inicial. Simulador e ações ainda não entregues SHALL não ser apresentados como disponíveis.
 
 #### Scenario: Caminho inexistente
 - **WHEN** a pessoa visita um caminho não reconhecido
 - **THEN** recebe uma página de não encontrado com link funcional para o início
 
 #### Scenario: Recursos futuros
-- **WHEN** a pessoa consulta o menu após a entrega da visão descritiva integrada
-- **THEN** encontra acesso ao login ou, conforme sua sessão local, à área protegida de cartão/conexão, à lista de movimentos e à visão descritiva, mas não encontra links ativos para investimentos ou outras funções não implementadas
+- **WHEN** a pessoa consulta o menu após a entrega da visão descritiva integrada e da carteira manual
+- **THEN** encontra acesso ao login ou, conforme sua sessão local, à área protegida de cartão/conexão, à lista de movimentos, à visão descritiva e à carteira de investimentos, mas não encontra links ativos para simulador ou outras funções não implementadas
 
 #### Scenario: Estado do menu após saída ou expiração
 - **WHEN** a sessão local termina por logout ou expiração
-- **THEN** o menu deixa de oferecer acesso à área protegida, inclusive à lista de movimentos e à visão descritiva, e volta a oferecer login, sem apresentar a sessão como ativa
+- **THEN** o menu deixa de oferecer acesso à área protegida, inclusive à lista de movimentos, à visão descritiva e à carteira, e volta a oferecer login, sem apresentar a sessão como ativa
 
 #### Scenario: Acesso público sem intenção de atualização
 - **WHEN** uma pessoa abre a página inicial ou o login sem sessão válida
@@ -41,6 +41,11 @@ O aplicativo SHALL oferecer início e login públicos e, durante sessão válida
 - **GIVEN** há sessão local válida
 - **WHEN** o titular abre a visão descritiva pelo menu em desktop ou celular
 - **THEN** alcança a página protegida de resumo, sem solicitar avaliação automática ou importação por causa da navegação
+
+#### Scenario: Navegação para carteira
+- **GIVEN** há sessão local válida
+- **WHEN** o titular abre a carteira pelo menu em desktop ou celular
+- **THEN** alcança a página protegida de investimentos próprios, sem solicitar atualização ou importação dos movimentos do cartão
 
 ### Requirement: Estrutura responsiva e acessível
 O aplicativo SHALL manter a página e sua navegação legíveis e utilizáveis por teclado em telas pequenas e grandes, com região principal, identificação da navegação, foco visível e textos que não dependem apenas de cor para transmitir seu significado.
