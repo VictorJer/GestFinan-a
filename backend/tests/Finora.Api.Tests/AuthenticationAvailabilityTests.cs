@@ -41,12 +41,72 @@ public sealed class AuthenticationAvailabilityTests
                 "/api/categories",
                 "/api/investments",
                 "/api/investments/{id}",
+                "/api/simulations/calculate",
                 "/api/connections/current/sync",
                 "/api/connections/current/sync/on-entry",
                 "/api/connections/current/sync-state",
                 "/api/sync-runs/{syncRunId}"
             },
             document.RootElement.GetProperty("paths").EnumerateObject().Select(property => property.Name).ToArray());
+        var simulation = document.RootElement.GetProperty("paths").GetProperty("/api/simulations/calculate")
+            .GetProperty("post");
+        CollectionAssert.AreEquivalent(new[] { "200", "400", "401", "429", "500", "503" },
+            simulation.GetProperty("responses").EnumerateObject().Select(property => property.Name).ToArray());
+        StringAssert.Contains(simulation.GetProperty("description").GetString()!, "nominal");
+        StringAssert.Contains(simulation.GetProperty("description").GetString()!, "não lê nem altera a carteira");
+        var simulationSecurity = simulation.GetProperty("security").EnumerateArray().Single().EnumerateObject().Single();
+        Assert.AreEqual("Bearer", simulationSecurity.Name);
+        var simulationBody = simulation.GetProperty("requestBody");
+        Assert.IsTrue(simulationBody.GetProperty("required").GetBoolean());
+        StringAssert.Contains(simulationBody.GetProperty("description").GetString()!, "duplicatas");
+        var simulationRequestSchema = ResolveSchema(document.RootElement,
+            simulationBody.GetProperty("content").GetProperty("application/json").GetProperty("schema"));
+        CollectionAssert.AreEquivalent(new[] { "initialAmount", "monthlyContribution", "annualRatePercent", "years" },
+            simulationRequestSchema.GetProperty("properties").EnumerateObject()
+                .Select(property => property.Name).ToArray());
+        CollectionAssert.AreEquivalent(new[] { "initialAmount", "monthlyContribution", "annualRatePercent", "years" },
+            simulationRequestSchema.GetProperty("required").EnumerateArray()
+                .Select(property => property.GetString()!).ToArray());
+        foreach (var name in new[] { "initialAmount", "monthlyContribution", "annualRatePercent" })
+        {
+            var amountSchema = simulationRequestSchema.GetProperty("properties").GetProperty(name);
+            Assert.AreEqual("string", amountSchema.GetProperty("type").GetString());
+            Assert.AreEqual(InvestmentHttpMoney.SummaryAmountPattern, amountSchema.GetProperty("pattern").GetString());
+            Assert.IsFalse(string.IsNullOrWhiteSpace(amountSchema.GetProperty("description").GetString()));
+        }
+        var simulationYearsSchema = simulationRequestSchema.GetProperty("properties").GetProperty("years");
+        var simulationYearsType = simulationYearsSchema.GetProperty("type");
+        Assert.IsTrue(simulationYearsType.ValueKind == JsonValueKind.String
+            ? simulationYearsType.GetString() == "integer"
+            : simulationYearsType.EnumerateArray().Any(type => type.GetString() == "integer"));
+        Assert.AreEqual(1, simulationYearsSchema.GetProperty("minimum").GetInt32());
+        Assert.AreEqual(30, simulationYearsSchema.GetProperty("maximum").GetInt32());
+
+        var simulationResponseSchema = ResolveSchema(document.RootElement,
+            simulation.GetProperty("responses").GetProperty("200")
+                .GetProperty("content").GetProperty("application/json").GetProperty("schema"));
+        CollectionAssert.AreEquivalent(new[] { "points", "totalContributed", "projectedValue", "projectedReturn" },
+            simulationResponseSchema.GetProperty("properties").EnumerateObject()
+                .Select(property => property.Name).ToArray());
+        var simulationPointSchema = ResolveSchema(document.RootElement,
+            simulationResponseSchema.GetProperty("properties").GetProperty("points").GetProperty("items"));
+        CollectionAssert.AreEquivalent(new[] { "month", "totalContributed", "projectedValue" },
+            simulationPointSchema.GetProperty("properties").EnumerateObject()
+                .Select(property => property.Name).ToArray());
+        foreach (var amountName in new[] { "totalContributed", "projectedValue" })
+        {
+            var amountSchema = simulationPointSchema.GetProperty("properties").GetProperty(amountName);
+            Assert.AreEqual("string", amountSchema.GetProperty("type").GetString());
+            Assert.AreEqual(InvestmentHttpMoney.SummaryAmountPattern, amountSchema.GetProperty("pattern").GetString());
+        }
+        foreach (var amountName in new[] { "totalContributed", "projectedValue", "projectedReturn" })
+        {
+            var amountSchema = simulationResponseSchema.GetProperty("properties").GetProperty(amountName);
+            Assert.AreEqual("string", amountSchema.GetProperty("type").GetString());
+            Assert.AreEqual(InvestmentHttpMoney.SummaryAmountPattern, amountSchema.GetProperty("pattern").GetString());
+        }
+        Assert.IsFalse(simulationResponseSchema.GetProperty("properties").EnumerateObject()
+            .Any(property => property.Name is "userId" or "ownerId" or "portfolio"));
         var syncParameters = document.RootElement.GetProperty("paths")
             .GetProperty("/api/connections/current/sync").GetProperty("post").GetProperty("parameters");
         var idempotencyHeader = syncParameters.EnumerateArray().Single(parameter =>

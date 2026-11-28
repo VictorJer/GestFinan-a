@@ -1,0 +1,608 @@
+<!-- A página separa projeções nominais da carteira e identifica que os valores iniciais são apenas exemplos. -->
+<section aria-labelledby="investment-simulation-title" class="min-w-0 space-y-6">
+  <header
+    class="rounded-finora-panel border border-finora-line bg-finora-surface px-6 py-8 sm:px-10 sm:py-10"
+  >
+    <p class="mb-3 text-sm font-semibold text-finora-brand">Área protegida</p>
+    <h1
+      id="investment-simulation-title"
+      class="font-finora-display text-3xl font-bold tracking-tight sm:text-4xl"
+    >
+      Simulador de aportes
+    </h1>
+    <p class="mt-4 max-w-3xl text-base leading-7 text-finora-muted">
+      Explore uma projeção nominal baseada nos valores informados. Os exemplos iniciais não são
+      dados da sua carteira e podem ser substituídos a qualquer momento.
+    </p>
+  </header>
+
+  <!-- Cada entrada é validada individualmente; dinheiro permanece como texto decimal canônico. -->
+  <section
+    aria-labelledby="simulation-input-title"
+    class="rounded-finora-panel border border-finora-line bg-finora-surface p-5 sm:p-7"
+  >
+    <div>
+      <p class="text-sm font-semibold text-finora-brand">Cenário atual</p>
+      <h2
+        id="simulation-input-title"
+        class="mt-1 font-finora-display text-2xl font-bold tracking-tight"
+      >
+        Entradas da projeção
+      </h2>
+    </div>
+
+    <form
+      class="mt-5 grid min-w-0 gap-4 sm:grid-cols-2"
+      aria-labelledby="simulation-input-title"
+      autocomplete="off"
+      (submit)="preventSubmission($event)"
+    >
+      <div class="min-w-0">
+        <label for="simulation-initial-amount" class="mb-1 block text-sm font-semibold">
+          Valor inicial (BRL)
+        </label>
+        <input
+          id="simulation-initial-amount"
+          name="initialAmount"
+          type="text"
+          inputmode="decimal"
+          maxlength="11"
+          required
+          [pattern]="initialAmountPattern"
+          [attr.aria-invalid]="fieldErrors().initialAmount !== null"
+          [attr.aria-describedby]="
+            fieldErrors().initialAmount
+              ? 'simulation-initial-help simulation-initial-error'
+              : 'simulation-initial-help'
+          "
+          [value]="draft().initialAmount"
+          (input)="updateTextField('initialAmount', $event)"
+          class="min-h-11 w-full rounded-finora-control border border-finora-line bg-white px-3 py-2 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+        />
+        <p id="simulation-initial-help" class="mt-1 text-xs leading-5 text-finora-muted">
+          De R$ 0,00 a R$ 10.000.000,00. Zero é permitido.
+        </p>
+        @if (fieldErrors().initialAmount; as error) {
+          <p
+            id="simulation-initial-error"
+            class="mt-1 text-sm leading-5 text-amber-950"
+            role="alert"
+          >
+            {{ error }}
+          </p>
+        }
+      </div>
+
+      <div class="min-w-0">
+        <label for="simulation-monthly-contribution" class="mb-1 block text-sm font-semibold">
+          Aporte mensal (BRL)
+        </label>
+        <input
+          id="simulation-monthly-contribution"
+          name="monthlyContribution"
+          type="text"
+          inputmode="decimal"
+          maxlength="10"
+          required
+          [pattern]="monthlyContributionPattern"
+          [attr.aria-invalid]="fieldErrors().monthlyContribution !== null"
+          [attr.aria-describedby]="
+            fieldErrors().monthlyContribution
+              ? 'simulation-contribution-help simulation-contribution-error'
+              : 'simulation-contribution-help'
+          "
+          [value]="draft().monthlyContribution"
+          (input)="updateTextField('monthlyContribution', $event)"
+          class="min-h-11 w-full rounded-finora-control border border-finora-line bg-white px-3 py-2 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+        />
+        <p id="simulation-contribution-help" class="mt-1 text-xs leading-5 text-finora-muted">
+          De R$ 0,00 a R$ 1.000.000,00; aplicado ao fim de cada mês.
+        </p>
+        @if (fieldErrors().monthlyContribution; as error) {
+          <p
+            id="simulation-contribution-error"
+            class="mt-1 text-sm leading-5 text-amber-950"
+            role="alert"
+          >
+            {{ error }}
+          </p>
+        }
+      </div>
+
+      <div class="min-w-0">
+        <label for="simulation-annual-rate" class="mb-1 block text-sm font-semibold">
+          Taxa anual efetiva (%)
+        </label>
+        <input
+          id="simulation-annual-rate"
+          name="annualRatePercent"
+          type="text"
+          inputmode="decimal"
+          maxlength="5"
+          required
+          [pattern]="annualRatePattern"
+          [attr.aria-invalid]="fieldErrors().annualRatePercent !== null"
+          [attr.aria-describedby]="
+            fieldErrors().annualRatePercent
+              ? 'simulation-rate-help simulation-rate-error'
+              : 'simulation-rate-help'
+          "
+          [value]="draft().annualRatePercent"
+          (input)="updateTextField('annualRatePercent', $event)"
+          class="min-h-11 w-full rounded-finora-control border border-finora-line bg-white px-3 py-2 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+        />
+        <p id="simulation-rate-help" class="mt-1 text-xs leading-5 text-finora-muted">
+          De 0,00% a 50,00%, informada pelo titular.
+        </p>
+        @if (fieldErrors().annualRatePercent; as error) {
+          <p id="simulation-rate-error" class="mt-1 text-sm leading-5 text-amber-950" role="alert">
+            {{ error }}
+          </p>
+        }
+      </div>
+
+      <div class="min-w-0">
+        <label for="simulation-years" class="mb-1 block text-sm font-semibold">Prazo (anos)</label>
+        <input
+          id="simulation-years"
+          name="years"
+          type="text"
+          inputmode="numeric"
+          maxlength="2"
+          required
+          [pattern]="yearsPattern"
+          [attr.aria-invalid]="fieldErrors().years !== null"
+          [attr.aria-describedby]="
+            fieldErrors().years
+              ? 'simulation-years-help simulation-years-error'
+              : 'simulation-years-help'
+          "
+          [value]="draft().years"
+          (input)="updateTextField('years', $event)"
+          class="min-h-11 w-full rounded-finora-control border border-finora-line bg-white px-3 py-2 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+        />
+        <p id="simulation-years-help" class="mt-1 text-xs leading-5 text-finora-muted">
+          Informe um prazo inteiro entre 1 e 30 anos.
+        </p>
+        @if (fieldErrors().years; as error) {
+          <p id="simulation-years-error" class="mt-1 text-sm leading-5 text-amber-950" role="alert">
+            {{ error }}
+          </p>
+        }
+      </div>
+
+      <p class="text-xs leading-5 text-finora-muted sm:col-span-2">
+        Valores monetários e taxa usam ponto e duas casas decimais, sem separador de milhar (por
+        exemplo, 1234.50). A projeção é atualizada após uma breve pausa na edição.
+      </p>
+    </form>
+
+    <!-- A leitura da carteira só começa pelo acionamento explícito deste botão. -->
+    <div class="mt-4 flex flex-wrap items-center gap-3">
+      <button
+        type="button"
+        [disabled]="portfolioReadStatus() === 'loading'"
+        class="inline-flex min-h-11 items-center justify-center rounded-finora-control border border-finora-line bg-white px-4 py-2 text-sm font-semibold outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:cursor-wait disabled:opacity-60"
+        (click)="copyPortfolioValue()"
+      >
+        @if (portfolioReadStatus() === 'loading') {
+          Consultando carteira…
+        } @else {
+          Usar valor da carteira
+        }
+      </button>
+      @if (portfolioReadMessage(); as message) {
+        <p
+          class="min-w-0 flex-1 text-sm leading-6"
+          [class.text-amber-950]="portfolioReadStatus() === 'error'"
+          [class.text-finora-muted]="portfolioReadStatus() !== 'error'"
+          [attr.role]="portfolioReadStatus() === 'error' ? 'alert' : 'status'"
+          aria-live="polite"
+        >
+          {{ message }}
+        </p>
+      }
+    </div>
+  </section>
+
+  <!-- Estados do backend nunca reaproveitam a última resposta para entradas novas ou inválidas. -->
+  <section
+    aria-labelledby="simulation-result-title"
+    class="min-w-0 rounded-finora-panel border border-finora-line bg-finora-surface p-5 sm:p-7"
+  >
+    <div>
+      <p class="text-sm font-semibold text-finora-brand">Resultado do servidor</p>
+      <h2
+        id="simulation-result-title"
+        class="mt-1 font-finora-display text-2xl font-bold tracking-tight"
+      >
+        Projeção nominal
+      </h2>
+    </div>
+
+    @if (state().status === 'debouncing' || state().status === 'loading') {
+      <p class="mt-4 text-sm leading-6 text-finora-muted" role="status" aria-live="polite">
+        @if (state().status === 'debouncing') {
+          Aguardando o fim da edição para atualizar a projeção…
+        } @else {
+          Calculando no servidor…
+        }
+      </p>
+    } @else if (state().status === 'error') {
+      <p
+        class="mt-4 rounded-finora-control border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"
+        role="alert"
+        aria-live="polite"
+      >
+        {{ failureMessage(state().failure) }}
+      </p>
+    } @else if (state().status === 'idle') {
+      <p class="mt-4 text-sm leading-6 text-finora-muted" role="status" aria-live="polite">
+        Corrija os campos destacados para solicitar uma nova projeção. Nenhum resultado anterior
+        está sendo exibido.
+      </p>
+    }
+
+    @if (state().status === 'confirmed') {
+      @if (state().result; as result) {
+        <dl class="mt-5 grid min-w-0 gap-3 sm:grid-cols-3">
+          <div class="min-w-0 rounded-finora-control border border-finora-line bg-finora-bg p-4">
+            <dt class="text-sm text-finora-muted">Total aportado</dt>
+            <dd class="mt-2 break-words text-xl font-semibold tabular-nums">
+              {{ formatBrl(result.totalContributed) }}
+            </dd>
+          </div>
+          <div class="min-w-0 rounded-finora-control border border-finora-line bg-finora-bg p-4">
+            <dt class="text-sm text-finora-muted">Patrimônio projetado</dt>
+            <dd class="mt-2 break-words text-xl font-semibold tabular-nums">
+              {{ formatBrl(result.projectedValue) }}
+            </dd>
+          </div>
+          <div class="min-w-0 rounded-finora-control border border-finora-line bg-finora-bg p-4">
+            <dt class="text-sm text-finora-muted">Rendimento projetado</dt>
+            <dd class="mt-2 break-words text-xl font-semibold tabular-nums">
+              {{ formatBrl(result.projectedReturn) }}
+            </dd>
+          </div>
+        </dl>
+
+        <!-- O SVG compara patrimônio e aportes; os números da série continuam os textos exatos da API. -->
+        @if (chartGeometry(); as chart) {
+          <figure
+            class="mt-6 min-w-0 rounded-finora-control border border-finora-line bg-finora-bg p-3 sm:p-5"
+          >
+            <svg
+              class="h-auto w-full"
+              viewBox="0 0 640 240"
+              preserveAspectRatio="xMidYMid meet"
+              role="img"
+              aria-labelledby="simulation-chart-title simulation-chart-description"
+            >
+              <title id="simulation-chart-title">Patrimônio projetado e valores aportados</title>
+              <desc id="simulation-chart-description">
+                Gráfico mensal do mês zero ao mês {{ chart.maximumMonth }}. Consulte a tabela de
+                série abaixo para os valores exatos de cada ponto.
+              </desc>
+              <line
+                [attr.x1]="18"
+                [attr.y1]="208"
+                [attr.x2]="622"
+                [attr.y2]="208"
+                stroke="#cbd5e1"
+                stroke-width="1"
+              />
+              <polyline
+                [attr.points]="chart.contributions"
+                fill="none"
+                stroke="#7659a6"
+                stroke-width="3"
+                stroke-dasharray="8 6"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <polyline
+                [attr.points]="chart.projectedValue"
+                fill="none"
+                stroke="#315c48"
+                stroke-width="3"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <text x="18" y="232" fill="currentColor" font-size="12">Mês 0</text>
+              <text x="622" y="232" fill="currentColor" font-size="12" text-anchor="end">
+                Mês {{ chart.maximumMonth }}
+              </text>
+            </svg>
+            <figcaption class="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm leading-6">
+              <span class="inline-flex items-center gap-2">
+                <span aria-hidden="true" class="w-8 border-t-2 border-[#315c48]"></span>
+                Patrimônio projetado
+              </span>
+              <span class="inline-flex items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  class="w-8 border-t-2 border-dashed border-[#7659a6]"
+                ></span>
+                Total aportado acumulado
+              </span>
+            </figcaption>
+          </figure>
+        }
+
+        <details class="mt-4 rounded-finora-control border border-finora-line p-4">
+          <summary
+            class="min-h-11 cursor-pointer py-2 font-semibold underline underline-offset-4 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+          >
+            Consultar a série mensal em tabela acessível
+          </summary>
+          <div class="mt-3 overflow-x-auto rounded-finora-control border border-finora-line">
+            <table class="w-full min-w-[520px] border-collapse text-left text-sm">
+              <caption class="sr-only">
+                Valores exatos da projeção mensal confirmada pelo servidor
+              </caption>
+              <thead class="bg-finora-bg text-finora-muted">
+                <tr>
+                  <th scope="col" class="px-4 py-3 font-semibold">Período</th>
+                  <th scope="col" class="px-4 py-3 text-right font-semibold">Total aportado</th>
+                  <th scope="col" class="px-4 py-3 text-right font-semibold">
+                    Patrimônio projetado
+                  </th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-finora-line">
+                @for (point of result.points; track point.month) {
+                  <tr>
+                    <th scope="row" class="whitespace-nowrap px-4 py-3 font-medium">
+                      Mês {{ point.month }}
+                    </th>
+                    <td class="whitespace-nowrap px-4 py-3 text-right tabular-nums">
+                      {{ formatBrl(point.totalContributed) }}
+                    </td>
+                    <td class="whitespace-nowrap px-4 py-3 text-right tabular-nums">
+                      {{ formatBrl(point.projectedValue) }}
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </details>
+
+        <div class="mt-5 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            [disabled]="savedScenarios().length >= 5"
+            class="inline-flex min-h-11 items-center justify-center rounded-finora-control bg-finora-brand px-5 py-3 text-sm font-semibold text-white transition hover:bg-finora-brand-hover outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+            (click)="saveCurrentScenario()"
+          >
+            Guardar este cenário
+          </button>
+          @if (savedScenarios().length >= 5) {
+            <p class="text-sm leading-6 text-finora-muted">
+              Limite de cinco cenários. Remova um ou limpe a lista para guardar outro.
+            </p>
+          }
+        </div>
+      }
+    }
+
+    <!-- Premissas são visíveis junto ao resultado, sem sugerir rendimento real ou recomendação. -->
+    <aside
+      class="mt-5 rounded-finora-control border border-finora-line bg-finora-bg px-4 py-4 text-sm leading-6 text-finora-muted"
+      aria-label="Premissas da projeção"
+    >
+      <h3 class="font-semibold text-finora-text">Premissas importantes</h3>
+      <p class="mt-1">
+        Esta é uma projeção nominal baseada exclusivamente na taxa informada, com aportes no fim de
+        cada mês. Não é promessa, garantia nem recomendação de investimento.
+      </p>
+      <p class="mt-2">
+        A projeção não desconta impostos, taxas ou inflação e não representa o valor real futuro.
+        Calcular não grava cenários na carteira nem importa dados bancários.
+      </p>
+    </aside>
+  </section>
+
+  <!-- Cenários confirmados são comparáveis e navegáveis, mas existem somente na memória desta sessão. -->
+  <section
+    aria-labelledby="simulation-scenarios-title"
+    class="min-w-0 rounded-finora-panel border border-finora-line bg-finora-surface p-5 sm:p-7"
+  >
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <p class="text-sm font-semibold text-finora-brand">Comparação temporária</p>
+        <h2
+          id="simulation-scenarios-title"
+          class="mt-1 font-finora-display text-2xl font-bold tracking-tight"
+        >
+          Cenários desta sessão
+        </h2>
+        <p class="mt-2 text-sm leading-6 text-finora-muted">
+          As cópias ficam somente na memória desta sessão e desaparecem ao sair, expirar ou
+          recarregar a página.
+        </p>
+      </div>
+      @if (savedScenarios().length > 0) {
+        <button
+          type="button"
+          class="min-h-11 rounded-finora-control px-3 py-2 text-sm font-semibold underline underline-offset-4 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+          (click)="clearScenarios()"
+        >
+          Limpar cenários
+        </button>
+      }
+    </div>
+
+    @if (scenarioMessage(); as message) {
+      <p class="mt-4 text-sm leading-6" role="status" aria-live="polite">{{ message }}</p>
+    }
+
+    @if (savedScenarios().length === 0) {
+      <p
+        class="mt-5 rounded-finora-control border border-finora-line bg-finora-bg px-4 py-4 text-sm leading-6 text-finora-muted"
+        role="status"
+      >
+        Nenhum cenário guardado. Confirme uma projeção e escolha “Guardar este cenário” para
+        compará-la.
+      </p>
+    } @else {
+      @if (state().status === 'confirmed') {
+        @if (state().result; as currentResult) {
+          <div class="mt-5 overflow-x-auto rounded-finora-control border border-finora-line">
+            <table class="w-full min-w-[620px] border-collapse text-left text-sm">
+              <caption class="sr-only">
+                Comparação dos totais da projeção atual e dos cenários guardados
+              </caption>
+              <thead class="bg-finora-bg text-finora-muted">
+                <tr>
+                  <th scope="col" class="px-4 py-3 font-semibold">Medida</th>
+                  <th scope="col" class="px-4 py-3 text-right font-semibold">Cenário atual</th>
+                  @for (scenario of savedScenarios(); track scenario.id; let index = $index) {
+                    <th scope="col" class="px-4 py-3 text-right font-semibold">
+                      Guardado {{ index + 1 }}
+                    </th>
+                  }
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-finora-line">
+                <tr>
+                  <th scope="row" class="px-4 py-3 font-semibold">Total aportado</th>
+                  <td class="whitespace-nowrap px-4 py-3 text-right tabular-nums">
+                    {{ formatBrl(currentResult.totalContributed) }}
+                  </td>
+                  @for (scenario of savedScenarios(); track scenario.id) {
+                    <td class="whitespace-nowrap px-4 py-3 text-right tabular-nums">
+                      {{ formatBrl(scenario.result.totalContributed) }}
+                    </td>
+                  }
+                </tr>
+                <tr>
+                  <th scope="row" class="px-4 py-3 font-semibold">Patrimônio projetado</th>
+                  <td class="whitespace-nowrap px-4 py-3 text-right tabular-nums">
+                    {{ formatBrl(currentResult.projectedValue) }}
+                  </td>
+                  @for (scenario of savedScenarios(); track scenario.id) {
+                    <td class="whitespace-nowrap px-4 py-3 text-right tabular-nums">
+                      {{ formatBrl(scenario.result.projectedValue) }}
+                    </td>
+                  }
+                </tr>
+                <tr>
+                  <th scope="row" class="px-4 py-3 font-semibold">Rendimento projetado</th>
+                  <td class="whitespace-nowrap px-4 py-3 text-right tabular-nums">
+                    {{ formatBrl(currentResult.projectedReturn) }}
+                  </td>
+                  @for (scenario of savedScenarios(); track scenario.id) {
+                    <td class="whitespace-nowrap px-4 py-3 text-right tabular-nums">
+                      {{ formatBrl(scenario.result.projectedReturn) }}
+                    </td>
+                  }
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        }
+      } @else {
+        <p class="mt-5 text-sm leading-6 text-finora-muted" role="status">
+          Confirme uma projeção válida para comparar os totais com o cenário atual.
+        </p>
+      }
+
+      <ul class="mt-5 space-y-4">
+        @for (scenario of savedScenarios(); track scenario.id; let index = $index) {
+          <li
+            class="min-w-0 rounded-finora-control border border-finora-line bg-finora-bg p-4 sm:p-5"
+          >
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div class="min-w-0">
+                <h3 class="font-semibold">Cenário guardado {{ index + 1 }}</h3>
+                <p class="mt-1 break-words text-sm leading-6 text-finora-muted">
+                  {{ scenarioDescription(scenario) }}
+                </p>
+              </div>
+              <button
+                type="button"
+                [attr.aria-label]="'Remover cenário guardado ' + (index + 1)"
+                class="min-h-11 rounded-finora-control px-3 py-2 text-sm font-semibold underline underline-offset-4 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+                (click)="removeScenario(scenario)"
+              >
+                Remover
+              </button>
+            </div>
+
+            <dl class="mt-4 grid min-w-0 gap-3 sm:grid-cols-3">
+              <div
+                class="min-w-0 rounded-finora-control border border-finora-line bg-finora-surface p-3"
+              >
+                <dt class="text-xs text-finora-muted">Total aportado</dt>
+                <dd class="mt-1 break-words font-semibold tabular-nums">
+                  {{ formatBrl(scenario.result.totalContributed) }}
+                </dd>
+              </div>
+              <div
+                class="min-w-0 rounded-finora-control border border-finora-line bg-finora-surface p-3"
+              >
+                <dt class="text-xs text-finora-muted">Patrimônio projetado</dt>
+                <dd class="mt-1 break-words font-semibold tabular-nums">
+                  {{ formatBrl(scenario.result.projectedValue) }}
+                </dd>
+              </div>
+              <div
+                class="min-w-0 rounded-finora-control border border-finora-line bg-finora-surface p-3"
+              >
+                <dt class="text-xs text-finora-muted">Rendimento projetado</dt>
+                <dd class="mt-1 break-words font-semibold tabular-nums">
+                  {{ formatBrl(scenario.result.projectedReturn) }}
+                </dd>
+              </div>
+            </dl>
+
+            <details
+              class="mt-4 rounded-finora-control border border-finora-line bg-finora-surface p-4"
+            >
+              <summary
+                class="min-h-11 cursor-pointer py-2 font-semibold underline underline-offset-4 outline-finora-brand focus-visible:outline-3 focus-visible:outline-solid focus-visible:outline-offset-2"
+              >
+                Consultar série mensal do cenário guardado {{ index + 1 }}
+              </summary>
+              <div class="mt-3 overflow-x-auto rounded-finora-control border border-finora-line">
+                <table class="w-full min-w-[520px] border-collapse text-left text-sm">
+                  <caption class="sr-only">
+                    Série mensal exata do cenário guardado
+                    {{
+                      index + 1
+                    }}
+                  </caption>
+                  <thead class="bg-finora-bg text-finora-muted">
+                    <tr>
+                      <th scope="col" class="px-4 py-3 font-semibold">Período</th>
+                      <th scope="col" class="px-4 py-3 text-right font-semibold">Total aportado</th>
+                      <th scope="col" class="px-4 py-3 text-right font-semibold">
+                        Patrimônio projetado
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-finora-line">
+                    @for (point of scenario.result.points; track point.month) {
+                      <tr>
+                        <th scope="row" class="whitespace-nowrap px-4 py-3 font-medium">
+                          Mês {{ point.month }}
+                        </th>
+                        <td class="whitespace-nowrap px-4 py-3 text-right tabular-nums">
+                          {{ formatBrl(point.totalContributed) }}
+                        </td>
+                        <td class="whitespace-nowrap px-4 py-3 text-right tabular-nums">
+                          {{ formatBrl(point.projectedValue) }}
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          </li>
+        }
+      </ul>
+    }
+  </section>
+</section>

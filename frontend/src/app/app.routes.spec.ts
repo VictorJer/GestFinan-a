@@ -10,6 +10,7 @@ import { LoginPage } from './auth/login/login';
 import { SessionService } from './auth/session';
 import { TransactionListPage } from './auth/area/transaction-list-page';
 import { InvestmentPortfolioPage } from './auth/area/investment-portfolio-page';
+import { InvestmentSimulationPage } from './auth/area/investment-simulation-page';
 import { API_BASE_URL } from './api-base-url.token';
 import { routes } from './app.routes';
 
@@ -54,6 +55,23 @@ function emptyInvestmentPortfolio(): object {
         { class: 'real_estate_funds', label: 'Fundos imobiliários', currentAmount: '0.00' },
       ],
     },
+  };
+}
+
+// O resultado respeita cardinalidade e formato HTTP sem transformar a fixture em evidência financeira real.
+function investmentSimulationResponse(years = 5): object {
+  const points = Array.from({ length: years * 12 + 1 }, (_, month) => ({
+    month,
+    totalContributed: `${10000 + month * 500}.00`,
+    projectedValue: `${10000 + month * 520}.00`,
+  }));
+  const finalPoint = points[points.length - 1]!;
+
+  return {
+    points,
+    totalContributed: finalPoint.totalContributed,
+    projectedValue: finalPoint.projectedValue,
+    projectedReturn: `${years * 240}.00`,
   };
 }
 
@@ -125,6 +143,17 @@ describe('Rotas da sessão no navegador', () => {
     backend.expectNone(() => true);
   });
 
+  // A rota do simulador usa o guard antes de carregar componente ou enviar qualquer request.
+  it('redireciona para login ao abrir /area/simulador sem sessão', async () => {
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/area/simulador', LoginPage);
+
+    expect(TestBed.inject(Router).url).toBe('/login');
+    expect(harness.routeNativeElement?.textContent).toContain('Entrar no Finora');
+    expect(harness.routeNativeElement?.textContent).not.toContain('Simulador de aportes');
+    backend.expectNone(() => true);
+  });
+
   // A lista lê dados e opções protegidos, mas nunca cria intenção de atualização ao abrir a rota.
   it('abre /area/movimentos com sessão usando somente leituras', async () => {
     startSession();
@@ -176,6 +205,42 @@ describe('Rotas da sessão no navegador', () => {
 
     expect(harness.routeNativeElement?.textContent).toContain('A carteira está vazia');
     backend.expectNone(() => true);
+  });
+
+  // A rota lazy autenticada só calcula no endpoint próprio, sem consultar carteira ou iniciar sync.
+  it('abre o simulador autenticado sem ler carteira nem solicitar sincronização', async () => {
+    startSession();
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/area/simulador', InvestmentSimulationPage);
+
+    expect(TestBed.inject(Router).url).toBe('/area/simulador');
+    expect(harness.routeNativeElement?.querySelector('h1')?.textContent).toContain(
+      'Simulador de aportes',
+    );
+    backend.expectNone((request) => request.url.endsWith('/api/investments'));
+    backend.expectNone((request) => request.url.toLowerCase().includes('/sync'));
+
+    // Aguarda o debounce real para não interceptar timers usados pela navegação lazy do Angular.
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    harness.fixture.detectChanges();
+    const calculation = backend.expectOne(`${API_BASE}/api/simulations/calculate`);
+    expect(calculation.request.method).toBe('POST');
+    expect(calculation.request.headers.get('Authorization')).toBe('Bearer synthetic-area-token');
+    expect(calculation.request.body).toEqual({
+      initialAmount: '10000.00',
+      monthlyContribution: '500.00',
+      annualRatePercent: '10.00',
+      years: 5,
+    });
+    backend.expectNone((request) => request.url.endsWith('/api/investments'));
+    backend.expectNone((request) => request.url.toLowerCase().includes('/sync'));
+    calculation.flush(investmentSimulationResponse());
+    await harness.fixture.whenStable();
+    harness.fixture.detectChanges();
+
+    expect(harness.routeNativeElement?.textContent).toContain('R$\u00a041.200,00');
+    backend.expectNone(() => true);
+    harness.fixture.destroy();
   });
 
   // Voltar entre as duas rotas protegidas não repete o POST de avaliação já enviado na entrada.
