@@ -53,11 +53,12 @@ public sealed class ExplorationTests
                 "/api/transactions/recurrence-candidates/{candidateId}/decision",
                 "/api/investments", // A carteira manual FNR-029 publica consulta e cadastro.
                 "/api/investments/{id}", // Edição e exclusão continuam protegidas pelo mesmo contrato.
+                "/api/simulations/calculate", // O cálculo FNR-030 integra a superfície protegida publicada.
                 "/api/connections/current/sync", "/api/connections/current/sync/on-entry",
                 "/api/connections/current/sync-state", "/api/sync-runs/{syncRunId}"
             },
             paths.EnumerateObject().Select(p => p.Name).ToArray());
-        // A matriz exercita método e rota; cada proteção precisa resolver o esquema sem criar alternativas duplicadas.
+        // A matriz mantém o simulador protegido por Bearer e exige um único esquema resolvível por operação.
         var protectedOperations = new (string Path, string Method)[]
         {
             ("/api/auth/logout", "post"),
@@ -74,6 +75,7 @@ public sealed class ExplorationTests
             ("/api/investments", "post"),
             ("/api/investments/{id}", "put"),
             ("/api/investments/{id}", "delete"),
+            ("/api/simulations/calculate", "post"),
             ("/api/connections/current/sync", "post"),
             ("/api/connections/current/sync/on-entry", "post"),
             ("/api/connections/current/sync-state", "get"),
