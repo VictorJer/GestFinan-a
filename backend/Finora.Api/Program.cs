@@ -82,6 +82,8 @@ builder.Services.AddOpenApi(options =>
     options.AddOperationTransformer<TransactionAnnotationOpenApiTransformer>();
     options.AddOperationTransformer<TransactionRecurrenceDecisionOpenApiTransformer>();
     options.AddOperationTransformer<InvestmentOpenApiTransformer>();
+    // Os corpos lidos manualmente mantêm schemas explícitos sem relaxar os parsers HTTP estritos.
+    options.AddOperationTransformer<InvestmentSimulationOpenApiTransformer>();
     options.AddOperationTransformer<BearerSecurityOperationOpenApiTransformer>();
 });
 
