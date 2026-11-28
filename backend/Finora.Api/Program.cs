@@ -81,6 +81,7 @@ builder.Services.AddOpenApi(options =>
     options.AddDocumentTransformer<BearerSecuritySchemeOpenApiDocumentTransformer>();
     options.AddOperationTransformer<TransactionAnnotationOpenApiTransformer>();
     options.AddOperationTransformer<TransactionRecurrenceDecisionOpenApiTransformer>();
+    options.AddOperationTransformer<InvestmentOpenApiTransformer>();
     options.AddOperationTransformer<BearerSecurityOperationOpenApiTransformer>();
 });
 
