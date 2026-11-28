@@ -82,6 +82,25 @@ public sealed class FinoraDbContextSaveValidationTests
         Assert.AreEqual(ConnectionState.Closed, context.Database.GetDbConnection().State);
     }
 
+    // A carteira também revalida alterações após tracking antes de o PostgreSQL arredondar a escala.
+    [TestMethod]
+    public async Task SaveChangesAsyncRejectsModifiedInvestmentAmountBeforeOpeningConnection()
+    {
+        await using var context = CreateContext();
+        var investment = Investment.Create(
+            Guid.NewGuid(),
+            UserId,
+            "Investimento sintético",
+            InvestmentClassCatalog.FixedIncome,
+            1m,
+            1m);
+        context.Add(investment);
+        context.Entry(investment).Property(nameof(Investment.CurrentAmount)).CurrentValue = 1.234m;
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => context.SaveChangesAsync());
+        Assert.AreEqual(ConnectionState.Closed, context.Database.GetDbConnection().State);
+    }
+
     // Cria contextos com configuração real de Npgsql e identidade, mas a connection string nunca é usada.
     private static FinoraDbContext CreateContext()
     {

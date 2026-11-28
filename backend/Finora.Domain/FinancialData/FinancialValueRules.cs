@@ -6,6 +6,7 @@ namespace Finora.Domain.FinancialData;
 internal static class FinancialValueRules
 {
     private const decimal MaximumNumeric19Scale4 = 999_999_999_999_999.9999m;
+    private const decimal MaximumNumeric19Scale2 = 99_999_999_999_999_999.99m;
     private const int MaximumExternalIdUtf8Bytes = 1_024;
     private const int MaximumProviderCodeLength = 32;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
@@ -22,6 +23,26 @@ internal static class FinancialValueRules
                 parameterName,
                 value,
                 "O valor precisa caber em numeric(19,4) sem arredondamento.");
+        }
+
+        return value;
+    }
+
+    // Valores da carteira aceitam zeros à direita, mas recusam negativos, overflow e fração que seria arredondada.
+    internal static decimal EnsureNonNegativeNumeric19Scale2(decimal value, string parameterName)
+    {
+        if (value < 0)
+        {
+            throw new ArgumentOutOfRangeException(parameterName, value, "O valor da carteira não pode ser negativo.");
+        }
+
+        var rounded = decimal.Round(value, 2, MidpointRounding.ToZero);
+        if (value > MaximumNumeric19Scale2 || rounded != value)
+        {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                value,
+                "O valor precisa caber em numeric(19,2) sem arredondamento.");
         }
 
         return value;

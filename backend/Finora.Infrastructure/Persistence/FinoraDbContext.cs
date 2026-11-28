@@ -103,6 +103,13 @@ public sealed class FinoraDbContext(DbContextOptions<FinoraDbContext> options)
             entry.Entity.ValidateForPersistence();
         }
 
+        // Investimentos manuais compartilham a barreira do contexto para impedir arredondamento pelo provider.
+        foreach (var entry in ChangeTracker.Entries<Investment>()
+                     .Where(entry => entry.State is EntityState.Added or EntityState.Modified))
+        {
+            entry.Entity.ValidateForPersistence();
+        }
+
         foreach (var entry in ChangeTracker.Entries<SyncRun>()
                      .Where(entry => entry.State is EntityState.Added or EntityState.Modified))
         {
