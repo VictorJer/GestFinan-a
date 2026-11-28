@@ -34,7 +34,8 @@ public sealed class PostgreSqlSyncRunExecutionMigrationTests
                 ExecutionMigrationId,
                 RecoveryMigrationId,
                 "20261124043312_Fnr016InitialCategories", // A migração de dados FNR-016 estende a sequência atual.
-                "20261126003137_Fnr038RecurrenceAssistance" // A migration mais recente cria o schema de recorrência.
+                "20261126003137_Fnr038RecurrenceAssistance", // A migration cria o schema de recorrência.
+                "20261128011938_AddInvestmentPortfolio" // A migration FNR-029 integra a cadeia aplicada a schema vazio.
             },
             (await fixture.Context.Database.GetAppliedMigrationsAsync()).ToArray());
         Assert.AreEqual(0, await fixture.Context.Set<SyncRunLease>().CountAsync());
