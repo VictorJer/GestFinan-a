@@ -51,6 +51,8 @@ public sealed class ExplorationTests
                 "/api/transactions/recurrence-candidates", // A recorrência FNR-038 publica consulta, reavaliação e decisão protegidas.
                 "/api/transactions/recurrence-candidates/evaluate",
                 "/api/transactions/recurrence-candidates/{candidateId}/decision",
+                "/api/investments", // A carteira manual FNR-029 publica consulta e cadastro.
+                "/api/investments/{id}", // Edição e exclusão continuam protegidas pelo mesmo contrato.
                 "/api/connections/current/sync", "/api/connections/current/sync/on-entry",
                 "/api/connections/current/sync-state", "/api/sync-runs/{syncRunId}"
             },
@@ -68,6 +70,10 @@ public sealed class ExplorationTests
             ("/api/transactions/recurrence-candidates", "get"),
             ("/api/transactions/recurrence-candidates/evaluate", "post"),
             ("/api/transactions/recurrence-candidates/{candidateId}/decision", "put"),
+            ("/api/investments", "get"),
+            ("/api/investments", "post"),
+            ("/api/investments/{id}", "put"),
+            ("/api/investments/{id}", "delete"),
             ("/api/connections/current/sync", "post"),
             ("/api/connections/current/sync/on-entry", "post"),
             ("/api/connections/current/sync-state", "get"),

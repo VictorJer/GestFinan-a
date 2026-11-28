@@ -25,8 +25,8 @@
 
 ## 5. Verificação integrada da mudança
 
-- [ ] 5.1 Executar restore/build e suítes backend pertinentes (sem PostgreSQL e com PostgreSQL descartável) e testes/build frontend; registrar comandos, resultados e falhas reais, diferenciando fixtures de evidência com dados reais e checks remotos.
-- [ ] 5.2 Validar OpenSpec da mudança estritamente, links/diff e o fluxo local autenticado cadastro → resumo → edição → recarga → exclusão com dados sintéticos; conferir que P0, FNR-030/031, MQ e publicação não sejam declarados concluídos e apresentar evidência para aceite da implementação.
+- [x] 5.1 Executar restore/build e suítes backend pertinentes (sem PostgreSQL e com PostgreSQL descartável) e testes/build frontend; registrar comandos, resultados e falhas reais, diferenciando fixtures de evidência com dados reais e checks remotos.
+- [x] 5.2 Validar OpenSpec da mudança estritamente, links/diff e o fluxo local autenticado cadastro → resumo → edição → recarga → exclusão com dados sintéticos; conferir que P0, FNR-030/031, MQ e publicação não sejam declarados concluídos e apresentar evidência para aceite da implementação.
 
 ## Workflow follow-up
 

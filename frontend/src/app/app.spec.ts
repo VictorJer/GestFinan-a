@@ -15,6 +15,7 @@ import { HomePage } from './home/home';
 import { NotFoundPage } from './not-found/not-found';
 
 const API_BASE = 'http://127.0.0.1:5080/api';
+const SYNTHETIC_INVESTMENT_ID = '87b65749-c927-431f-8d51-35fdf3106336';
 
 // Mantém a resposta sintética no contrato allowlisted para testar navegação sem dados reais.
 function dashboardSummaryResponse(): Record<string, unknown> {
@@ -54,6 +55,48 @@ function emptyInvestmentPortfolioResponse(): Record<string, unknown> {
       currentAmountsByClass: [
         { class: 'fixed_income', label: 'Renda fixa', currentAmount: '0.00' },
         { class: 'variable_income', label: 'Renda variável', currentAmount: '0.00' },
+        { class: 'real_estate_funds', label: 'Fundos imobiliários', currentAmount: '0.00' },
+      ],
+    },
+  };
+}
+
+// Mantém o item HTTP allowlisted e valores BRL canônicos nas respostas sintéticas da jornada.
+function investmentItemResponse(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: SYNTHETIC_INVESTMENT_ID,
+    name: 'Reserva da jornada',
+    class: 'fixed_income',
+    appliedAmount: '120.50',
+    currentAmount: '125.75',
+    ...overrides,
+  };
+}
+
+// O resumo permanece uma resposta do serviço sintético, nunca calculada pela página Angular.
+function investmentPortfolioResponse(
+  item: Record<string, unknown>,
+  summary: {
+    readonly totalAppliedAmount: string;
+    readonly totalCurrentAmount: string;
+    readonly difference: string;
+    readonly fixedIncome: string;
+    readonly variableIncome: string;
+  },
+): Record<string, unknown> {
+  return {
+    items: [item],
+    summary: {
+      totalAppliedAmount: summary.totalAppliedAmount,
+      totalCurrentAmount: summary.totalCurrentAmount,
+      difference: summary.difference,
+      currentAmountsByClass: [
+        { class: 'fixed_income', label: 'Renda fixa', currentAmount: summary.fixedIncome },
+        {
+          class: 'variable_income',
+          label: 'Renda variável',
+          currentAmount: summary.variableIncome,
+        },
         { class: 'real_estate_funds', label: 'Fundos imobiliários', currentAmount: '0.00' },
       ],
     },
@@ -409,6 +452,203 @@ describe('Página inicial pública', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('A carteira está vazia');
+    http.expectNone(() => true);
+    fixture.destroy();
+  });
+
+  // Percorre CRUD pela rota real Angular; a saída/volta simula recarga visual com respostas HTTP sintéticas.
+  it('percorre cadastro, resumo, edição, releitura da rota e exclusão autenticados', async () => {
+    TestBed.inject(SessionService).startSession({
+      accessToken: 'synthetic-investment-crud-token',
+      tokenType: 'Bearer',
+      expiresIn: 1800,
+      expiresAtUtc: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    });
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    const shell = fixture.nativeElement as HTMLElement;
+    const router = TestBed.inject(Router);
+    const http = TestBed.inject(HttpTestingController);
+    await router.navigateByUrl('/area/investimentos');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // A primeira leitura é protegida e publica somente o estado vazio devolvido pelo serviço.
+    const firstRead = http.expectOne(`${API_BASE}/investments`);
+    expect(firstRead.request.method).toBe('GET');
+    expect(firstRead.request.headers.get('Authorization')).toBe(
+      'Bearer synthetic-investment-crud-token',
+    );
+    firstRead.flush(emptyInvestmentPortfolioResponse());
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(shell.textContent).toContain('A carteira está vazia');
+    expect(shell.textContent).toContain('R$\u00a00,00');
+
+    // O formulário envia os valores decimais exatamente como texto e a resposta 201 exige releitura.
+    const name = shell.querySelector<HTMLInputElement>('#investment-name')!;
+    const investmentClass = shell.querySelector<HTMLSelectElement>('#investment-class')!;
+    const appliedAmount = shell.querySelector<HTMLInputElement>('#investment-applied-amount')!;
+    const currentAmount = shell.querySelector<HTMLInputElement>('#investment-current-amount')!;
+    name.value = 'Reserva da jornada';
+    name.dispatchEvent(new Event('input', { bubbles: true }));
+    investmentClass.value = 'fixed_income';
+    investmentClass.dispatchEvent(new Event('change', { bubbles: true }));
+    appliedAmount.value = '120.50';
+    appliedAmount.dispatchEvent(new Event('input', { bubbles: true }));
+    currentAmount.value = '125.75';
+    currentAmount.dispatchEvent(new Event('input', { bubbles: true }));
+    fixture.detectChanges();
+    shell.querySelector<HTMLFormElement>('form')!.requestSubmit();
+    fixture.detectChanges();
+
+    const createRequest = http.expectOne(`${API_BASE}/investments`);
+    expect(createRequest.request.method).toBe('POST');
+    expect(createRequest.request.body).toEqual({
+      name: 'Reserva da jornada',
+      class: 'fixed_income',
+      appliedAmount: '120.50',
+      currentAmount: '125.75',
+    });
+    expect(createRequest.request.headers.get('Authorization')).toBe(
+      'Bearer synthetic-investment-crud-token',
+    );
+    createRequest.flush(investmentItemResponse(), { status: 201, statusText: 'Created' });
+    const afterCreateRead = http.expectOne(`${API_BASE}/investments`);
+    expect(afterCreateRead.request.method).toBe('GET');
+    afterCreateRead.flush(
+      investmentPortfolioResponse(investmentItemResponse(), {
+        totalAppliedAmount: '120.50',
+        totalCurrentAmount: '125.75',
+        difference: '5.25',
+        fixedIncome: '125.75',
+        variableIncome: '0.00',
+      }),
+    );
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(shell.textContent).toContain('Reserva da jornada');
+    expect(shell.textContent).toContain('R$\u00a0120,50');
+    expect(shell.textContent).toContain('R$\u00a0125,75');
+    expect(shell.textContent).toContain('R$\u00a05,25');
+
+    // Edição mantém o ID na rota, altera a classe e só atualiza a tela após PUT e novo GET.
+    shell.querySelector<HTMLButtonElement>('[aria-label="Editar Reserva da jornada"]')!.click();
+    fixture.detectChanges();
+    expect(shell.querySelector<HTMLInputElement>('#investment-applied-amount')?.value).toBe(
+      '120.50',
+    );
+    expect(shell.querySelector<HTMLInputElement>('#investment-current-amount')?.value).toBe(
+      '125.75',
+    );
+    const revisedName = shell.querySelector<HTMLInputElement>('#investment-name')!;
+    revisedName.value = 'Reserva revisada';
+    revisedName.dispatchEvent(new Event('input', { bubbles: true }));
+    const revisedClass = shell.querySelector<HTMLSelectElement>('#investment-class')!;
+    revisedClass.value = 'variable_income';
+    revisedClass.dispatchEvent(new Event('change', { bubbles: true }));
+    const revisedCurrentAmount = shell.querySelector<HTMLInputElement>(
+      '#investment-current-amount',
+    )!;
+    revisedCurrentAmount.value = '150.00';
+    revisedCurrentAmount.dispatchEvent(new Event('input', { bubbles: true }));
+    fixture.detectChanges();
+    shell.querySelector<HTMLFormElement>('form')!.requestSubmit();
+    fixture.detectChanges();
+
+    const updateRequest = http.expectOne(`${API_BASE}/investments/${SYNTHETIC_INVESTMENT_ID}`);
+    expect(updateRequest.request.method).toBe('PUT');
+    expect(updateRequest.request.body).toEqual({
+      name: 'Reserva revisada',
+      class: 'variable_income',
+      appliedAmount: '120.50',
+      currentAmount: '150.00',
+    });
+    updateRequest.flush(
+      investmentItemResponse({
+        name: 'Reserva revisada',
+        class: 'variable_income',
+        currentAmount: '150.00',
+      }),
+    );
+    const afterUpdateRead = http.expectOne(`${API_BASE}/investments`);
+    afterUpdateRead.flush(
+      investmentPortfolioResponse(
+        investmentItemResponse({
+          name: 'Reserva revisada',
+          class: 'variable_income',
+          currentAmount: '150.00',
+        }),
+        {
+          totalAppliedAmount: '120.50',
+          totalCurrentAmount: '150.00',
+          difference: '29.50',
+          fixedIncome: '0.00',
+          variableIncome: '150.00',
+        },
+      ),
+    );
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(shell.textContent).toContain('Reserva revisada');
+    expect(shell.textContent).toContain('R$\u00a0150,00');
+    expect(shell.textContent).toContain('R$\u00a029,50');
+    expect(shell.textContent).not.toContain('Reserva da jornada');
+
+    // Sair e reentrar na rota força outra leitura dentro da mesma sessão sintética ainda válida.
+    await router.navigateByUrl('/');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    await router.navigateByUrl('/area/investimentos');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const reloadRead = http.expectOne(`${API_BASE}/investments`);
+    expect(reloadRead.request.method).toBe('GET');
+    expect(reloadRead.request.headers.get('Authorization')).toBe(
+      'Bearer synthetic-investment-crud-token',
+    );
+    reloadRead.flush(
+      investmentPortfolioResponse(
+        investmentItemResponse({
+          name: 'Reserva revisada',
+          class: 'variable_income',
+          currentAmount: '150.00',
+        }),
+        {
+          totalAppliedAmount: '120.50',
+          totalCurrentAmount: '150.00',
+          difference: '29.50',
+          fixedIncome: '0.00',
+          variableIncome: '150.00',
+        },
+      ),
+    );
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(shell.textContent).toContain('Reserva revisada');
+    expect(shell.textContent).toContain('R$\u00a0150,00');
+
+    // Exclusão depende da confirmação explícita e só publica carteira vazia após DELETE 204 + GET.
+    shell.querySelector<HTMLButtonElement>('[aria-label="Excluir Reserva revisada"]')!.click();
+    fixture.detectChanges();
+    shell
+      .querySelector<HTMLButtonElement>('[aria-label="Confirmar exclusão de Reserva revisada"]')!
+      .click();
+    fixture.detectChanges();
+    const deleteRequest = http.expectOne(`${API_BASE}/investments/${SYNTHETIC_INVESTMENT_ID}`);
+    expect(deleteRequest.request.method).toBe('DELETE');
+    expect(deleteRequest.request.headers.get('Authorization')).toBe(
+      'Bearer synthetic-investment-crud-token',
+    );
+    deleteRequest.flush(null, { status: 204, statusText: 'No Content' });
+    const afterDeleteRead = http.expectOne(`${API_BASE}/investments`);
+    expect(afterDeleteRead.request.method).toBe('GET');
+    afterDeleteRead.flush(emptyInvestmentPortfolioResponse());
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(shell.textContent).toContain('A carteira está vazia');
+    expect(shell.textContent).toContain('R$\u00a00,00');
+    expect(shell.querySelector('tbody tr')).toBeNull();
     http.expectNone(() => true);
     fixture.destroy();
   });
