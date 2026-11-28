@@ -43,6 +43,23 @@ function dashboardSummaryResponse(): Record<string, unknown> {
   };
 }
 
+// A carteira vazia usa somente strings BRL do contrato, inclusive em classes sem posições.
+function emptyInvestmentPortfolioResponse(): Record<string, unknown> {
+  return {
+    items: [],
+    summary: {
+      totalAppliedAmount: '0.00',
+      totalCurrentAmount: '0.00',
+      difference: '0.00',
+      currentAmountsByClass: [
+        { class: 'fixed_income', label: 'Renda fixa', currentAmount: '0.00' },
+        { class: 'variable_income', label: 'Renda variável', currentAmount: '0.00' },
+        { class: 'real_estate_funds', label: 'Fundos imobiliários', currentAmount: '0.00' },
+      ],
+    },
+  };
+}
+
 // Responde às três chamadas permitidas ao abrir /area sem depender de uma API real.
 function flushAuthenticatedAreaStartup(http: HttpTestingController): void {
   const cards = http.expectOne(`${API_BASE}/cards`);
@@ -165,9 +182,8 @@ describe('Página inicial pública', () => {
 
     expect(fixture.nativeElement.textContent).toContain('Visão descritiva');
     expect(
-      fixture.nativeElement.querySelector(
-        'app-dashboard-overview-page a[href="/area/movimentos"]',
-      )?.textContent,
+      fixture.nativeElement.querySelector('app-dashboard-overview-page a[href="/area/movimentos"]')
+        ?.textContent,
     ).toContain('Abrir lista de movimentos');
     TestBed.inject(HttpTestingController).expectNone(
       (request) =>
@@ -203,6 +219,10 @@ describe('Página inicial pública', () => {
       '/area/visao',
       '/investments',
       '/simulator',
+      '/simulador',
+      '/area/simulador',
+      '/area/csv',
+      '/area/exportar',
       '/sync',
     ];
 
@@ -212,6 +232,7 @@ describe('Página inicial pública', () => {
       'area',
       'area/movimentos',
       'area/visao',
+      'area/investimentos',
       '**',
     ]);
     expect(navigation.map((link) => link.getAttribute('href'))).toEqual([
@@ -274,27 +295,33 @@ describe('Página inicial pública', () => {
       '/area',
       '/area/movimentos',
       '/area/visao',
+      '/area/investimentos',
       '/',
       '/area',
       '/area/movimentos',
       '/area/visao',
+      '/area/investimentos',
     ]);
     expect(navigation.map((link) => link.getAttribute('aria-label'))).toEqual([
       'Início',
       'Cartões e conexão',
       'Movimentos',
       'Visão descritiva',
+      'Carteira de investimentos',
       'Início',
       'Cartões e conexão',
       'Movimentos',
       'Visão descritiva',
+      'Carteira de investimentos',
     ]);
     expect(navigation[1]?.textContent).toContain('Cartões e conexão');
     expect(navigation[2]?.textContent).toContain('Movimentos');
     expect(navigation[3]?.textContent).toContain('Visão descritiva');
-    expect(navigation[5]?.textContent).toContain('Cartões');
-    expect(navigation[6]?.textContent).toContain('Movimentos');
-    expect(navigation[7]?.textContent).toContain('Visão');
+    expect(navigation[4]?.textContent).toContain('Investimentos');
+    expect(navigation[6]?.textContent).toContain('Cartões');
+    expect(navigation[7]?.textContent).toContain('Movimentos');
+    expect(navigation[8]?.textContent).toContain('Visão');
+    expect(navigation[9]?.textContent).toContain('Carteira');
     expect(shell.querySelector('app-home a[href="/area"]')?.textContent).toContain(
       'Abrir cartões e conexão',
     );
@@ -309,10 +336,80 @@ describe('Página inicial pública', () => {
       linkTargets
         .filter((path) => path?.startsWith('/'))
         .every((path) =>
-          ['/', '/area', '/area/movimentos', '/area/visao', '/login'].includes(path ?? ''),
+          [
+            '/',
+            '/area',
+            '/area/movimentos',
+            '/area/visao',
+            '/area/investimentos',
+            '/login',
+          ].includes(path ?? ''),
         ),
     ).toBe(true);
     TestBed.inject(HttpTestingController).expectNone(() => true);
+    fixture.destroy();
+  });
+
+  // Links desktop e mobile alcançam a carteira e cada entrada emite somente GET /api/investments.
+  it('abre a carteira pelos menus desktop e mobile sem avaliar ou sincronizar cartões', async () => {
+    TestBed.inject(SessionService).startSession({
+      accessToken: 'synthetic-portfolio-navigation-token',
+      tokenType: 'Bearer',
+      expiresIn: 1800,
+      expiresAtUtc: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    });
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    const router = TestBed.inject(Router);
+    const http = TestBed.inject(HttpTestingController);
+    const shell = fixture.nativeElement as HTMLElement;
+    await router.navigateByUrl('/');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const desktopLink = shell.querySelector<HTMLAnchorElement>(
+      'aside nav a[href="/area/investimentos"]',
+    )!;
+    expect(desktopLink).not.toBeNull();
+    desktopLink.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(router.url).toBe('/area/investimentos');
+    expect(desktopLink.getAttribute('aria-current')).toBe('page');
+    const desktopRead = http.expectOne(`${API_BASE}/investments`);
+    expect(desktopRead.request.method).toBe('GET');
+    expect(desktopRead.request.headers.get('Authorization')).toBe(
+      'Bearer synthetic-portfolio-navigation-token',
+    );
+    http.expectNone(() => true);
+    desktopRead.flush(emptyInvestmentPortfolioResponse());
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('A carteira está vazia');
+
+    await router.navigateByUrl('/');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const mobileLink = shell.querySelector<HTMLAnchorElement>(
+      'nav.fixed a[href="/area/investimentos"]',
+    )!;
+    expect(mobileLink).not.toBeNull();
+    expect(mobileLink.textContent).toContain('Carteira');
+    mobileLink.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(router.url).toBe('/area/investimentos');
+    expect(mobileLink.getAttribute('aria-current')).toBe('page');
+    const mobileRead = http.expectOne(`${API_BASE}/investments`);
+    expect(mobileRead.request.method).toBe('GET');
+    http.expectNone(() => true);
+    mobileRead.flush(emptyInvestmentPortfolioResponse());
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('A carteira está vazia');
+    http.expectNone(() => true);
     fixture.destroy();
   });
 
@@ -323,7 +420,9 @@ describe('Página inicial pública', () => {
     const router = TestBed.inject(Router);
     await router.navigateByUrl('/login');
     await fixture.whenStable();
-    const outlet = fixture.debugElement.query(By.directive(RouterOutlet)).injector.get(RouterOutlet);
+    const outlet = fixture.debugElement
+      .query(By.directive(RouterOutlet))
+      .injector.get(RouterOutlet);
     const login = outlet.component as LoginPage;
     login.emailControl.setValue('member@example.test');
     login.passwordControl.setValue('synthetic-flow-password');
@@ -341,8 +440,13 @@ describe('Página inicial pública', () => {
 
     expect(router.url).toBe('/area');
     expect(fixture.nativeElement.textContent).toContain('Cartões e conexão');
-    expect(fixture.nativeElement.querySelectorAll('nav a[href="/area/movimentos"]')).toHaveLength(2);
+    expect(fixture.nativeElement.querySelectorAll('nav a[href="/area/movimentos"]')).toHaveLength(
+      2,
+    );
     expect(fixture.nativeElement.querySelectorAll('nav a[href="/area/visao"]')).toHaveLength(2);
+    expect(
+      fixture.nativeElement.querySelectorAll('nav a[href="/area/investimentos"]'),
+    ).toHaveLength(2);
     expect(fixture.nativeElement.innerHTML).not.toContain('synthetic-flow-token');
     flushAuthenticatedAreaStartup(TestBed.inject(HttpTestingController));
     fixture.detectChanges();
@@ -360,8 +464,13 @@ describe('Página inicial pública', () => {
     fixture.detectChanges();
 
     expect(router.url).toBe('/login');
-    expect(fixture.nativeElement.querySelectorAll('nav a[href="/area/movimentos"]')).toHaveLength(0);
+    expect(fixture.nativeElement.querySelectorAll('nav a[href="/area/movimentos"]')).toHaveLength(
+      0,
+    );
     expect(fixture.nativeElement.querySelectorAll('nav a[href="/area/visao"]')).toHaveLength(0);
+    expect(
+      fixture.nativeElement.querySelectorAll('nav a[href="/area/investimentos"]'),
+    ).toHaveLength(0);
     expect(fixture.nativeElement.textContent).toContain('Saída confirmada pelo servidor');
     expect(fixture.nativeElement.querySelector('[role="status"]')?.textContent).toContain(
       'Saída confirmada',
@@ -387,10 +496,12 @@ describe('Página inicial pública', () => {
     flushAuthenticatedAreaStartup(TestBed.inject(HttpTestingController));
     (fixture.nativeElement.querySelector('nav.fixed button') as HTMLButtonElement).click();
     fixture.detectChanges();
-    TestBed.inject(HttpTestingController).expectOne('http://127.0.0.1:5080/api/auth/logout').flush(
-      { detail: 'synthetic-uncertain-server-detail' },
-      { status: 503, statusText: 'Service Unavailable' },
-    );
+    TestBed.inject(HttpTestingController)
+      .expectOne('http://127.0.0.1:5080/api/auth/logout')
+      .flush(
+        { detail: 'synthetic-uncertain-server-detail' },
+        { status: 503, statusText: 'Service Unavailable' },
+      );
     await fixture.whenStable();
     fixture.detectChanges();
 
@@ -417,12 +528,17 @@ describe('Página inicial pública', () => {
     await router.navigateByUrl('/area');
     fixture.detectChanges();
     flushAuthenticatedAreaStartup(TestBed.inject(HttpTestingController));
-    TestBed.inject(HttpClient).get('http://127.0.0.1:5080/api/private/resource').subscribe({
-      error: () => undefined,
-    });
+    TestBed.inject(HttpClient)
+      .get('http://127.0.0.1:5080/api/private/resource')
+      .subscribe({
+        error: () => undefined,
+      });
     TestBed.inject(HttpTestingController)
       .expectOne('http://127.0.0.1:5080/api/private/resource')
-      .flush({ detail: 'synthetic-secret-server-detail' }, { status: 401, statusText: 'Unauthorized' });
+      .flush(
+        { detail: 'synthetic-secret-server-detail' },
+        { status: 401, statusText: 'Unauthorized' },
+      );
     await fixture.whenStable();
     fixture.detectChanges();
 
@@ -447,17 +563,24 @@ describe('Página inicial pública', () => {
     await router.navigateByUrl('/area');
     fixture.detectChanges();
     flushAuthenticatedAreaStartup(TestBed.inject(HttpTestingController));
-    TestBed.inject(HttpClient).get('http://127.0.0.1:5080/api/private/resource').subscribe({
-      error: () => undefined,
-    });
+    TestBed.inject(HttpClient)
+      .get('http://127.0.0.1:5080/api/private/resource')
+      .subscribe({
+        error: () => undefined,
+      });
     TestBed.inject(HttpTestingController)
       .expectOne('http://127.0.0.1:5080/api/private/resource')
-      .flush({ detail: 'synthetic-secret-server-detail' }, { status: 403, statusText: 'Forbidden' });
+      .flush(
+        { detail: 'synthetic-secret-server-detail' },
+        { status: 403, statusText: 'Forbidden' },
+      );
     await fixture.whenStable();
     fixture.detectChanges();
 
     expect(router.url).toBe('/area');
-    expect(TestBed.inject(SessionService).currentSession()?.accessToken).toBe('synthetic-403-token');
+    expect(TestBed.inject(SessionService).currentSession()?.accessToken).toBe(
+      'synthetic-403-token',
+    );
     expect(fixture.nativeElement.textContent).toContain('não tem permissão');
     expect(fixture.nativeElement.textContent).not.toContain('synthetic-secret-server-detail');
     expect(fixture.nativeElement.querySelector('app-authenticated-area')).not.toBeNull();
@@ -488,6 +611,9 @@ describe('Página inicial pública', () => {
 
     expect(router.url).toBe('/login');
     expect(session.currentSession()).toBeNull();
+    expect(
+      fixture.nativeElement.querySelectorAll('nav a[href="/area/investimentos"]'),
+    ).toHaveLength(0);
     expect(fixture.nativeElement.textContent).toContain('Sua sessão expirou');
     expect(fixture.nativeElement.querySelector('[role="alert"]')?.textContent).toContain(
       'Entre novamente',

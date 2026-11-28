@@ -38,6 +38,16 @@ export const routes: Routes = [
     canActivate: [authenticatedSessionGuard],
     title: 'Visão descritiva — Finora',
   },
+  // A carteira reutiliza o guard local e carrega apenas sua API manual, sem fluxo de cartão.
+  {
+    path: 'area/investimentos',
+    loadComponent: () =>
+      import('./auth/area/investment-portfolio-page').then(
+        (module) => module.InvestmentPortfolioPage,
+      ),
+    canActivate: [authenticatedSessionGuard],
+    title: 'Investimentos — Finora',
+  },
   {
     path: '**',
     component: NotFoundPage,
