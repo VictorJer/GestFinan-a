@@ -48,6 +48,16 @@ export const routes: Routes = [
     canActivate: [authenticatedSessionGuard],
     title: 'Investimentos — Finora',
   },
+  // O simulador é carregado sob demanda e mantém o mesmo guard das demais páginas financeiras.
+  {
+    path: 'area/simulador',
+    loadComponent: () =>
+      import('./auth/area/investment-simulation-page').then(
+        (module) => module.InvestmentSimulationPage,
+      ),
+    canActivate: [authenticatedSessionGuard],
+    title: 'Simulador de aportes — Finora',
+  },
   {
     path: '**',
     component: NotFoundPage,

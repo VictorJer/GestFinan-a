@@ -10,6 +10,7 @@ import { appConfig } from './app.config';
 import { API_BASE_URL } from './api-base-url.token';
 import { LoginPage } from './auth/login/login';
 import { SessionService } from './auth/session';
+import { InvestmentSimulationPage } from './auth/area/investment-simulation-page';
 import { routes } from './app.routes';
 import { HomePage } from './home/home';
 import { NotFoundPage } from './not-found/not-found';
@@ -58,6 +59,23 @@ function emptyInvestmentPortfolioResponse(): Record<string, unknown> {
         { class: 'real_estate_funds', label: 'Fundos imobiliários', currentAmount: '0.00' },
       ],
     },
+  };
+}
+
+// A resposta de cálculo usa pontos sintéticos allowlisted para testar navegação sem API externa.
+function investmentSimulationResponse(): Record<string, unknown> {
+  const points = Array.from({ length: 61 }, (_, month) => ({
+    month,
+    totalContributed: `${10000 + month * 500}.00`,
+    projectedValue: `${10000 + month * 520}.00`,
+  }));
+  const finalPoint = points[points.length - 1]!;
+
+  return {
+    points,
+    totalContributed: finalPoint.totalContributed,
+    projectedValue: finalPoint.projectedValue,
+    projectedReturn: '1200.00',
   };
 }
 
@@ -276,6 +294,7 @@ describe('Página inicial pública', () => {
       'area/movimentos',
       'area/visao',
       'area/investimentos',
+      'area/simulador',
       '**',
     ]);
     expect(navigation.map((link) => link.getAttribute('href'))).toEqual([
@@ -339,11 +358,13 @@ describe('Página inicial pública', () => {
       '/area/movimentos',
       '/area/visao',
       '/area/investimentos',
+      '/area/simulador',
       '/',
       '/area',
       '/area/movimentos',
       '/area/visao',
       '/area/investimentos',
+      '/area/simulador',
     ]);
     expect(navigation.map((link) => link.getAttribute('aria-label'))).toEqual([
       'Início',
@@ -351,20 +372,24 @@ describe('Página inicial pública', () => {
       'Movimentos',
       'Visão descritiva',
       'Carteira de investimentos',
+      'Simulador de aportes',
       'Início',
       'Cartões e conexão',
       'Movimentos',
       'Visão descritiva',
       'Carteira de investimentos',
+      'Simulador de aportes',
     ]);
     expect(navigation[1]?.textContent).toContain('Cartões e conexão');
     expect(navigation[2]?.textContent).toContain('Movimentos');
     expect(navigation[3]?.textContent).toContain('Visão descritiva');
     expect(navigation[4]?.textContent).toContain('Investimentos');
-    expect(navigation[6]?.textContent).toContain('Cartões');
-    expect(navigation[7]?.textContent).toContain('Movimentos');
-    expect(navigation[8]?.textContent).toContain('Visão');
-    expect(navigation[9]?.textContent).toContain('Carteira');
+    expect(navigation[5]?.textContent).toContain('Simulador');
+    expect(navigation[7]?.textContent).toContain('Cartões');
+    expect(navigation[8]?.textContent).toContain('Movimentos');
+    expect(navigation[9]?.textContent).toContain('Visão');
+    expect(navigation[10]?.textContent).toContain('Carteira');
+    expect(navigation[11]?.textContent).toContain('Simular');
     expect(shell.querySelector('app-home a[href="/area"]')?.textContent).toContain(
       'Abrir cartões e conexão',
     );
@@ -385,6 +410,7 @@ describe('Página inicial pública', () => {
             '/area/movimentos',
             '/area/visao',
             '/area/investimentos',
+            '/area/simulador',
             '/login',
           ].includes(path ?? ''),
         ),
@@ -452,6 +478,78 @@ describe('Página inicial pública', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('A carteira está vazia');
+    http.expectNone(() => true);
+    fixture.destroy();
+  });
+
+  // Ambos os menus alcançam a rota lazy sem ler carteira nem solicitar sync dos cartões.
+  it('abre o simulador pelos menus desktop e mobile sem leitura de carteira ou sync', async () => {
+    TestBed.inject(SessionService).startSession({
+      accessToken: 'synthetic-simulation-navigation-token',
+      tokenType: 'Bearer',
+      expiresIn: 1800,
+      expiresAtUtc: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    });
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    const router = TestBed.inject(Router);
+    const http = TestBed.inject(HttpTestingController);
+    const shell = fixture.nativeElement as HTMLElement;
+    await router.navigateByUrl('/');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const desktopLink = shell.querySelector<HTMLAnchorElement>(
+      'aside nav a[href="/area/simulador"]',
+    )!;
+    desktopLink.click();
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    fixture.detectChanges();
+
+    expect(router.url).toBe('/area/simulador');
+    expect(desktopLink.getAttribute('aria-current')).toBe('page');
+    expect(shell.querySelector('h1')?.textContent).toContain('Simulador de aportes');
+    const simulationPage = fixture.debugElement
+      .query(By.directive(RouterOutlet))
+      .injector.get(RouterOutlet).component as InvestmentSimulationPage;
+    expect(simulationPage.state().status).toBe('loading');
+    const desktopCalculation = http.expectOne(`${API_BASE}/simulations/calculate`);
+    expect(desktopCalculation.request.method).toBe('POST');
+    expect(desktopCalculation.request.headers.get('Authorization')).toBe(
+      'Bearer synthetic-simulation-navigation-token',
+    );
+    expect(desktopCalculation.request.body).toEqual({
+      initialAmount: '10000.00',
+      monthlyContribution: '500.00',
+      annualRatePercent: '10.00',
+      years: 5,
+    });
+    http.expectNone((request) => request.url.endsWith('/investments'));
+    http.expectNone((request) => request.url.toLowerCase().includes('/sync'));
+    desktopCalculation.flush(investmentSimulationResponse());
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    await router.navigateByUrl('/');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const mobileLink = shell.querySelector<HTMLAnchorElement>(
+      'nav.fixed a[href="/area/simulador"]',
+    )!;
+    mobileLink.click();
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    fixture.detectChanges();
+
+    expect(router.url).toBe('/area/simulador');
+    expect(mobileLink.getAttribute('aria-current')).toBe('page');
+    const mobileCalculation = http.expectOne(`${API_BASE}/simulations/calculate`);
+    expect(mobileCalculation.request.method).toBe('POST');
+    http.expectNone((request) => request.url.endsWith('/investments'));
+    http.expectNone((request) => request.url.toLowerCase().includes('/sync'));
+    mobileCalculation.flush(investmentSimulationResponse());
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(shell.textContent).toContain('R$\u00a041.200,00');
     http.expectNone(() => true);
     fixture.destroy();
   });
@@ -687,6 +785,7 @@ describe('Página inicial pública', () => {
     expect(
       fixture.nativeElement.querySelectorAll('nav a[href="/area/investimentos"]'),
     ).toHaveLength(2);
+    expect(fixture.nativeElement.querySelectorAll('nav a[href="/area/simulador"]')).toHaveLength(2);
     expect(fixture.nativeElement.innerHTML).not.toContain('synthetic-flow-token');
     flushAuthenticatedAreaStartup(TestBed.inject(HttpTestingController));
     fixture.detectChanges();
@@ -711,6 +810,7 @@ describe('Página inicial pública', () => {
     expect(
       fixture.nativeElement.querySelectorAll('nav a[href="/area/investimentos"]'),
     ).toHaveLength(0);
+    expect(fixture.nativeElement.querySelectorAll('nav a[href="/area/simulador"]')).toHaveLength(0);
     expect(fixture.nativeElement.textContent).toContain('Saída confirmada pelo servidor');
     expect(fixture.nativeElement.querySelector('[role="status"]')?.textContent).toContain(
       'Saída confirmada',
