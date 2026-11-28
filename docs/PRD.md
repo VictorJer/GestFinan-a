@@ -1,8 +1,9 @@
 # Finora — PRD v0
 
 **Documento de requisitos do produto**  
-**Versão:** 0.5 — aprovada explicitamente pelo titular no harness em 26/11/2026, junto do aceite local da implementação FNR-038. A revisão 0.4 permanece preservada em seu escopo anterior.\
+**Versão base aprovada:** 0.5 — aprovada explicitamente pelo titular no harness em 26/11/2026, junto do aceite local da implementação FNR-038. A revisão 0.4 permanece preservada em seu escopo anterior.\
 **Revisão 0.6 — aprovada explicitamente pelo titular no harness em 27/11/2026:** reordena somente o §12 para posicionar carteira, simulador e CSV como pacote P1 antes da primeira publicação neste recorte, após o checkpoint P0 local referenciado no backlog e no TDD. RF10–RF13 continuam P1 com critérios inalterados; a aprovação da revisão 0.5 é preservada e não se transfere a esta revisão.\
+**Revisão 0.7 — preparada e aprovada explicitamente pelo titular no harness em 28/11/2026 como gate pré-código da FNR-030:** concretiza RF12 e §8 para os limites de R$ 10.000.000,00 para valor inicial e R$ 1.000.000,00 para aporte mensal, cenários efêmeros limitados à sessão e arredondamento somente na apresentação. A aprovação da revisão 0.6 permanece preservada em seu escopo; a aprovação de 0.7 não é aceite da implementação nem autorização para operações Git ou publicação.\
 **Data:** 15 de novembro de 2026 (definição inicial em 9 de novembro)\
 **Contexto:** TCC individual; ideia aprovada pelo professor sem alterações, conforme relato do aluno.  
 **Prazo de referência:** duas semanas de desenvolvimento; data final de entrega a confirmar.  
@@ -25,8 +26,9 @@
 | 0.4 | 15/11/2026 | **Aprovada documentalmente em 16/11/2026; encerramento revisado FNR-005 aceito.** MVP descritivo sem agregados monetários de movimentos; RF04–RF07/RF15 revisados e RF17 de recorrência assistida em mudança própria. Objetivos financeiros anteriores adiados; FNR-005/5.3 substituída por revisão de escopo, nunca atendida tecnicamente. PR #12, coletas e aprovações anteriores preservados. |
 | 0.5 | 26/11/2026 | **Aprovada explicitamente pelo titular no harness; implementação local FNR-038 aceita.** Concretiza RF17/VP-07 por `recurrence-v1` e registra testes locais e limites. Integração e publicação permanecem pendentes; aprovações das revisões 0.3/0.4 permanecem em seus escopos. |
 | 0.6 | 27/11/2026 | **Aprovada explicitamente pelo titular no harness.** §12 coloca os três módulos P1 antes da primeira publicação neste recorte, após checkpoint P0 local; preserva RF10–RF13, prioridades, critérios e aprovação 0.5. A aprovação é documental: não declara checkpoint executado, aceite da implementação ou publicação. |
+| 0.7 | 28/11/2026 | **Aprovada explicitamente pelo titular no harness como gate pré-código da FNR-030.** Concretiza RF12 e §8 para os tetos do simulador, taxa efetiva, série mensal, precisão interna sem arredondamento intermediário, apresentação em centavos e até cinco cenários somente em memória na sessão atual; a leitura da carteira exige ação explícita e não a altera. Preserva a aprovação 0.6 em seu escopo; não declara implementação aceita nem autoriza operações Git ou publicação. |
 
-O PRD define requisitos e critérios de aceite; os registros factuais de implementação identificam separadamente o que foi validado localmente e o que continua pendente. A aprovação de 0.5 permanece restrita àquela revisão; a revisão 0.6 recebeu aprovação documental explícita em 27/11/2026. Essa aprovação não declara o checkpoint executado nem aceita implementação ou publicação.
+O PRD define requisitos e critérios de aceite; os registros factuais de implementação identificam separadamente o que foi validado localmente e o que continua pendente. A revisão 0.6 recebeu aprovação documental explícita em 27/11/2026; a revisão 0.7 foi aprovada em 28/11/2026 como gate pré-código da FNR-030. Essa aprovação de planejamento não é aceite da implementação, aprovação de publicação ou autorização de operações Git.
 
 ## 1. Visão do produto
 
@@ -160,7 +162,7 @@ No P0, o fluxo de autorização acontece no ambiente do provedor. Um botão que 
 | RF09 | P0 | Tratar estados da interface | Cada tela de dados possui carregamento, ausência de registros e erro com orientação de recuperação. |
 | RF10 | P1 | Cadastrar investimentos | Permitir criar, editar e excluir registros manuais de nome, classe, valor aplicado e valor atual; dados persistem após recarregar a aplicação. |
 | RF11 | P1 | Resumir carteira | Total aplicado, valor atual, diferença e distribuição por classe correspondem aos registros cadastrados. |
-| RF12 | P1 | Simular investimentos | Alterar valor inicial, aporte, taxa anual e prazo atualiza projeção, total aportado e rendimento projetado, sem alterar a carteira real. |
+| RF12 | P1 | Simular investimentos | No simulador protegido, alterar entradas válidas dentro dos limites atualiza a projeção, o total aportado e o rendimento projetado, sem alterar a carteira real. Cenários salvos ficam limitados à sessão atual e não persistem após seu encerramento ou recarga. |
 | RF13 | P1 | Exportar CSV | O arquivo contém somente as transações filtradas, com cabeçalhos, datas e valores consistentes com a interface. |
 | RF14 | P0 | Controlar acesso do titular | Login por e-mail e senha, sem cadastro público. Dados financeiros só são acessíveis ao titular autenticado. A sessão dura 30 minutos, sem renovação automática; recarregar ou expirar exige novo login. Logout confirmado invalida a sessão atual; redefinição administrativa de senha invalida todas as sessões. Criação e recuperação de acesso são administrativas, sem envio de e-mail no MVP. |
 | RF15 | P0 | Anotar movimentos | Permitir editar e limpar observação pessoal em texto simples de até 500 caracteres, preservada após sincronização. A anotação altera somente categoria e observação; valor, data, descrição, natureza e situação da origem não são editados. A confirmação de recorrência de RF17 é um registro separado, não classificação manual geral da natureza financeira. |
@@ -221,7 +223,11 @@ O critério original de RF07 na revisão 0.3 era: **“Exibir gastos efetivados 
 - Converter a taxa anual efetiva para mensal: `i = (1 + taxaAnual / 100)^(1/12) - 1`.
 - Para cada mês: `saldo = saldoAnterior × (1 + i) + aporteMensal`. O aporte ocorre no final do mês.
 - Total aportado: `valorInicial + aporteMensal × quantidadeDeMeses`. Rendimento projetado: saldo final menos total aportado.
-- Aceitar valor inicial e aporte não negativos, taxa anual entre 0% e 50% e prazo inteiro entre 1 e 30 anos. Rejeitar valores vazios, inválidos ou fora dos limites, com mensagem no campo.
+- O simulador exige autenticação. Aceitar valor inicial de R$ 0,00 a R$ 10.000.000,00, aporte mensal de R$ 0,00 a R$ 1.000.000,00, taxa anual efetiva de 0% a 50% e prazo inteiro de 1 a 30 anos, com limites inclusivos. Rejeitar valores vazios, inválidos ou fora dos limites, com mensagem no campo; entradas monetárias e taxa preservam duas casas decimais canônicas na API.
+- Manter precisão interna entre os meses, sem arredondar o saldo usado no mês seguinte. Arredondar valores monetários publicados para centavos somente na apresentação, afastando empates de zero; total aportado permanece soma exata em centavos e o rendimento deriva do saldo final interno menos o total aportado, arredondado apenas para publicação.
+- Permitir guardar até cinco cenários confirmados somente na memória da sessão autenticada atual, comparando totais e séries. Limpar as cópias ao encerrar, expirar ou trocar a sessão, sair e recarregar a página; não persistir cenários em banco ou armazenamento do navegador.
+- Oferecer, por ação explícita, leitura do total atual da carteira própria para preencher somente o valor inicial, apenas se estiver dentro do limite. Não truncar valores, preencher automaticamente ao navegar, nem alterar investimentos; rejeitar respostas de uma sessão antiga ou quando o campo tiver sido editado enquanto a leitura aguardava.
+- Não apresentar resultado antigo como projeção de entradas inválidas, falhas ou respostas de uma sessão/requisição obsoleta.
 - Informar que a projeção não desconta impostos, taxas ou inflação. Com taxa zero, o saldo final deve ser igual ao total aportado.
 
 ## 9. Requisitos não funcionais
